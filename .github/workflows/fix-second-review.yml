@@ -1,0 +1,197 @@
+name: Apply second review fixes
+
+on:
+  push:
+    branches:
+      - gregorybouteiller/kee-2-verify-real-bun-and-vendored-source-pipeline
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: gregorybouteiller/kee-2-verify-real-bun-and-vendored-source-pipeline
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.4.0
+      - name: Apply reviewed fixes
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing patch anchor in {path}: {old[:80]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # 1. Preflight scaffold/harness parent types before staging or live writes.
+          replace(
+              "cli/playbook.ts",
+              '''  for (const harness of [".agents", ".claude"]) {
+    const root = join(target, harness, "skills");
+    for (const name of skillNames) {
+      const dir = join(root, name);
+      if ((await exists(dir)) && !(await exists(join(dir, GENERATED_MARKER)))) {
+        throw new Error(`Refusing to overwrite human-owned skill directory: ${dir}`);
+      }
+    }
+  }
+
+  const stageRoot = await mkdtemp(join(target, ".keenko-stage-"));''',
+              '''  await preflightManagedParents(target);
+  for (const harness of [".agents", ".claude"]) {
+    const root = join(target, harness, "skills");
+    for (const name of skillNames) {
+      const dir = join(root, name);
+      if ((await exists(dir)) && !(await exists(join(dir, GENERATED_MARKER)))) {
+        throw new Error(`Refusing to overwrite human-owned skill directory: ${dir}`);
+      }
+    }
+  }
+
+  const stageRoot = await mkdtemp(join(target, ".keenko-stage-"));''',
+          )
+
+          replace(
+              "cli/playbook.ts",
+              '''async function applyMaterialization(target: string, stageRoot: string, managed: Map<string, string>, skillNames: string[]) {''',
+              '''async function preflightManagedParents(target: string) {
+  for (const rel of ["docs", "docs/project", ".agents", ".agents/skills", ".claude", ".claude/skills"]) {
+    const path = join(target, rel);
+    if (!(await exists(path))) continue;
+    if (!(await stat(path)).isDirectory()) throw new Error(`Managed parent must be a directory: ${path}`);
+  }
+}
+
+async function applyMaterialization(target: string, stageRoot: string, managed: Map<string, string>, skillNames: string[]) {''',
+          )
+
+          # Snapshot docs/project as one ownership unit and make rollback best-effort while preserving original failure.
+          replace(
+              "cli/playbook.ts",
+              '''    "CONTEXT.md",
+    "docs/project/architecture.md",
+    "docs/project/overrides.md",
+  ];''',
+              '''    "CONTEXT.md",
+    "docs/project",
+  ];''',
+          )
+          replace(
+              "cli/playbook.ts",
+              '''  } catch (error) {
+    for (const rel of tracked.reverse()) {
+      const dst = join(target, rel);
+      await rm(dst, { recursive: true, force: true });
+      if (existed.get(rel)) await cp(join(rollbackRoot, rel), dst, { recursive: true });
+    }
+    throw error;
+  } finally {''',
+              '''  } catch (error) {
+    const rollbackErrors: string[] = [];
+    for (const rel of [...tracked].reverse()) {
+      try {
+        const dst = join(target, rel);
+        await rm(dst, { recursive: true, force: true });
+        if (existed.get(rel)) await cp(join(rollbackRoot, rel), dst, { recursive: true });
+      } catch (rollbackError) {
+        rollbackErrors.push(`${rel}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+      }
+    }
+    if (rollbackErrors.length) console.error(`Rollback encountered cleanup errors:\n${rollbackErrors.join("\n")}`);
+    throw error;
+  } finally {''',
+          )
+
+          # Regression for a regular file at docs/project: no live state may change and retry must work.
+          replace(
+              "tests/consumer.test.ts",
+              '''  test("detects managed-block tampering and retired generated skills", async () => {''',
+              '''  test("preflights scaffold parent collisions without partial writes and remains retryable", async () => {
+    const target = await fixture();
+    await mkdir(join(target, "docs"), { recursive: true });
+    await writeFile(join(target, "docs", "project"), "human-owned project path\n");
+    const before = await hashTree(target);
+
+    const failed = await run("install", "--target", target);
+    expect(failed.code).not.toBe(0);
+    expect(failed.stderr).toContain("Managed parent must be a directory");
+    expect(await hashTree(target)).toEqual(before);
+    expect(await exists(join(target, ".playbook", "config.json"))).toBe(false);
+
+    await rm(join(target, "docs", "project"));
+    expect((await run("install", "--target", target)).code).toBe(0);
+    expect((await run("check", "--target", target)).code).toBe(0);
+  });
+
+  test("detects managed-block tampering and retired generated skills", async () => {''',
+          )
+
+          # Release-grade verification must include immutable upstream comparison.
+          replace(
+              "package.json",
+              '"check:release": "bun run typecheck && bun cli/playbook.ts check --source --release && bun test",',
+              '"check:release": "bun run typecheck && bun cli/playbook.ts check --source --release && bun test && bun run vendor:check",',
+          )
+
+          # Authenticate every release-grade check and assert publish is the exact reviewed main commit.
+          p = Path(".github/workflows/release.yml")
+          text = p.read_text()
+          text = text.replace(
+              '      - run: bun run check:release\n',
+              '      - name: Release-grade verification\n        env:\n          GITHUB_TOKEN: ${{ github.token }}\n        run: bun run check:release\n',
+          )
+          anchor = '''      - run: bun install --frozen-lockfile
+      - name: Release-grade verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
+      - run: bun run release:verify-gate
+'''
+          replacement = '''      - run: bun install --frozen-lockfile
+      - name: Assert exact reviewed main commit
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+      - name: Release-grade verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
+      - run: bun run release:verify-gate
+'''
+          if anchor not in text:
+              raise SystemExit("missing publish release anchor")
+          p.write_text(text.replace(anchor, replacement, 1))
+
+          # Keep the release runbook explicit about the branch assertion and vendor verification.
+          p = Path("docs/release-v1.md")
+          text = p.read_text()
+          marker = "Publication is a separate explicit action"
+          if marker in text and "exact current `origin/main`" not in text:
+              text += "\nPublication must be dispatched from `main`, verify `HEAD` equals the exact current `origin/main`, and pass immutable pinned-upstream vendor verification before tagging.\n"
+              p.write_text(text)
+          PY
+      - run: bun install --frozen-lockfile
+      - name: Canonical verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun run check
+          bun run vendor:check
+          bun run check:release
+      - name: Commit fixes and remove bootstrap workflow
+        run: |
+          git rm .github/workflows/fix-second-review.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cli/playbook.ts tests/consumer.test.ts package.json .github/workflows/release.yml docs/release-v1.md
+          git commit -m "fix: close second review release blockers"
+          git push origin HEAD:gregorybouteiller/kee-2-verify-real-bun-and-vendored-source-pipeline
