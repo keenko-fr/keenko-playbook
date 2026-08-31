@@ -2,5 +2,9 @@
   "repository": "cursor/plugins",
   "commit": "6fecddba65801f9b9c08b8b328d998ee5b09d290",
   "tree": "950b90234c17babd00c43e32b19ae50abb4720f5",
-  "license": "MIT"
+  "license": "MIT",
+  "files": {
+    "LICENSE": "bc957ca6bee02792566a1a028d105e02e247c6e77cf057061674273da77b200e",
+    "skills/unslop/SKILL.md": "181883e539caec8258ec9129e3ba5f133409144a2cbf2aa361158ab94cfc3441"
+  }
 }
