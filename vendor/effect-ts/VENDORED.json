@@ -1,0 +1,11 @@
+{
+  "repository": "Effect-TS/skills",
+  "commit": "2309e6f27d9955b434c0e3f394b945c136e89fd2",
+  "tree": "40ca650142b8f10d46f912d8d931f260736c6b0f",
+  "license": "MIT",
+  "files": {
+    "LICENSE": "774c3bc5924ad8ae6c5a75f1c53db13feb238ade15989625c513d07b60dedf30",
+    "skills/effect-ts/SKILL.md": "509ed4e10def32dc3f6b20854c9ae50a56b7dc525a14a02ab9871eef53a2052e",
+    "skills/effect-v3-to-v4/SKILL.md": "244dce68600c4c22cd659e05697daa192fb2167ef8cd10d087f7d700f8fa617d"
+  }
+}

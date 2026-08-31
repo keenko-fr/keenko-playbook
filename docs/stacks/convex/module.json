@@ -3,5 +3,8 @@
   "requires": [
     "typescript"
   ],
-  "skills": []
+  "skills": [
+    "convex"
+  ],
+  "incompatibleWith": []
 }

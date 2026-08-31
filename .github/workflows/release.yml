@@ -2,30 +2,98 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Prepare a reviewed release PR or publish an already-reviewed version from main
+        required: true
+        type: choice
+        options:
+          - prepare
+          - publish
+      version:
+        description: Required for publish, for example 1.0.0
+        required: false
+        type: string
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  release:
+  prepare:
+    if: inputs.mode == 'prepare'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-      - run: bun run check:release
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: Release-grade verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
       - id: version
         run: echo "version=$(bun run --silent release:prepare)" >> "$GITHUB_OUTPUT"
-      - name: Commit and publish release
+      - name: Release-grade verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
+      - name: Open release PR
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          branch="release/v${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
           git add package.json CHANGELOG.md .changeset
           git commit -m "Release v${VERSION}"
-          git tag "v${VERSION}"
-          git push origin HEAD:main "v${VERSION}"
-          gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "Release v${VERSION}" --body "Release preparation only. Human review and merge are required. Publishing remains blocked by the machine-readable v1 gate and an explicit publish dispatch."
+
+  publish:
+    if: inputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: Assert exact reviewed main commit
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+      - name: Release-grade verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
+      - run: bun run release:verify-gate
+      - name: Publish reviewed main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION=$(bun -e 'console.log(require("./package.json").version)')
+          test -n "$REQUESTED_VERSION"
+          test "$VERSION" = "$REQUESTED_VERSION"
+          test "$VERSION" != "0.1.0"
+          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${VERSION} already exists"
+            exit 1
+          fi
+
+          git tag "v${VERSION}" "$GITHUB_SHA"
+          git push --atomic \
+            --force-with-lease="refs/heads/main:${GITHUB_SHA}" \
+            origin \
+            HEAD:refs/heads/main \
+            "refs/tags/v${VERSION}:refs/tags/v${VERSION}"
+          gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes --target "$GITHUB_SHA"

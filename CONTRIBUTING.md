@@ -30,7 +30,10 @@ For a release candidate:
 
 ```bash
 bun run check:release
+bun run vendor:check
 ```
+
+Use the release workflow to prepare a release PR. Publishing is a separate explicit action after that PR is human-reviewed/merged and the machine-readable release gate is satisfied.
 
 When materialization behavior changes, also install/update/check a clean fixture consumer and verify both `.agents/skills` and `.claude/skills` match the canonical `.playbook/skills` snapshot.
 

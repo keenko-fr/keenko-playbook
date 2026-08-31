@@ -1,7 +1,9 @@
 {
   "name": "tanstack-form",
   "requires": [
-    "react"
+    "react",
+    "effect"
   ],
-  "skills": []
+  "skills": [],
+  "incompatibleWith": []
 }

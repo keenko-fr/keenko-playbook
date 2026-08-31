@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const sourcesPath = join(ROOT, "vendor", "sources.json");
+const vendorRoot = join(ROOT, "vendor");
+const sourcesPath = join(vendorRoot, "sources.json");
 const update = process.argv.includes("--update");
+const checkOnly = process.argv.includes("--check");
 
+type Hashes = Record<string, string>;
 type Source = {
   id: string;
   repository: string;
@@ -18,25 +22,47 @@ type Source = {
   license: string | null;
   includes: string[];
 };
+type Manifest = { schemaVersion: 1; sources: Source[] };
 
 async function main() {
-  const manifest = JSON.parse(await readFile(sourcesPath, "utf8")) as { schemaVersion: number; sources: Source[] };
-  for (const source of manifest.sources) {
-    if (update) await updatePin(source);
-    if (source.mode === "external") {
-      console.log(`skip ${source.id}: external first-party source (not redistributed)`);
-      continue;
+  const manifest = JSON.parse(await readFile(sourcesPath, "utf8")) as Manifest;
+  if (manifest.schemaVersion !== 1) throw new Error(`Unsupported vendor manifest schemaVersion: ${manifest.schemaVersion}`);
+  if (update) for (const source of manifest.sources) await updatePin(source);
+
+  const stageRoot = await mkdtemp(join(vendorRoot, ".sync-"));
+  try {
+    for (const source of manifest.sources) {
+      if (source.mode === "external") {
+        console.log(`skip ${source.id}: external first-party source (not redistributed)`);
+        continue;
+      }
+      if (!source.commit) throw new Error(`Refusing to vendor ${source.id} without a pinned commit`);
+      if (!source.license) throw new Error(`Refusing to vendor ${source.id} without a declared license`);
+      await materialize(source, join(stageRoot, source.id));
     }
-    if (!source.license) throw new Error(`Refusing to vendor ${source.id} without a declared license`);
-    await sync(source);
+
+    if (checkOnly) {
+      for (const source of manifest.sources.filter(({ mode }) => mode === "vendor")) {
+        const current = join(vendorRoot, source.id);
+        const staged = join(stageRoot, source.id);
+        if (!(await exists(current))) throw new Error(`Missing committed vendor snapshot ${source.id}`);
+        const [a, b] = await Promise.all([hashTree(current), hashTree(staged)]);
+        if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`Committed vendor snapshot differs from pinned upstream source: ${source.id}`);
+      }
+      console.log(`Vendor snapshots match pinned upstream sources.`);
+      return;
+    }
+
+    await replaceAll(manifest, stageRoot);
+  } finally {
+    await rm(stageRoot, { recursive: true, force: true });
   }
-  if (update) await writeFile(sourcesPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
 }
 
 async function updatePin(source: Source) {
   const commit = await apiJson<any>(`https://api.github.com/repos/${source.repository}/commits/${source.upstreamRef}`);
-  source.commit = commit.sha;
-  let tree = commit.commit.tree.sha as string;
+  source.commit = String(commit.sha);
+  let tree = String(commit.commit.tree.sha);
   if (source.rootPath) tree = await subtreeSha(source.repository, tree, source.rootPath);
   source.tree = tree;
 }
@@ -47,30 +73,83 @@ async function subtreeSha(repo: string, rootTree: string, path: string) {
     const data = await apiJson<any>(`https://api.github.com/repos/${repo}/git/trees/${tree}`);
     const entry = data.tree.find((item: any) => item.type === "tree" && item.path === part);
     if (!entry) throw new Error(`Could not resolve ${path} in ${repo}`);
-    tree = entry.sha;
+    tree = String(entry.sha);
   }
   return tree;
 }
 
-async function sync(source: Source) {
-  const target = join(ROOT, "vendor", source.id);
-  await rm(target, { recursive: true, force: true });
+async function materialize(source: Source, target: string) {
   await mkdir(target, { recursive: true });
   const tree = await apiJson<any>(`https://api.github.com/repos/${source.repository}/git/trees/${source.tree}?recursive=1`);
-  const blobs = tree.tree.filter((entry: any) => entry.type === "blob" && included(entry.path, source.includes));
+  const blobs = tree.tree.filter((entry: any) => entry.type === "blob" && included(String(entry.path), source.includes));
   for (const entry of blobs) {
     const blob = await apiJson<any>(`https://api.github.com/repos/${source.repository}/git/blobs/${entry.sha}`);
     if (blob.encoding !== "base64") throw new Error(`Unsupported blob encoding for ${source.id}:${entry.path}`);
-    const path = join(target, entry.path);
+    const path = join(target, String(entry.path));
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, Buffer.from(blob.content.replaceAll("\n", ""), "base64"));
+    await writeFile(path, Buffer.from(String(blob.content).replaceAll("\n", ""), "base64"));
   }
-  await writeFile(join(target, "VENDORED.json"), JSON.stringify({ repository: source.repository, commit: source.commit, tree: source.tree, license: source.license }, null, 2) + "\n");
-  console.log(`synced ${source.id}: ${blobs.length} files`);
+  const files = await hashTree(target, new Set(["VENDORED.json"]));
+  await writeFile(join(target, "VENDORED.json"), JSON.stringify({
+    repository: source.repository,
+    commit: source.commit,
+    tree: source.tree,
+    license: source.license,
+    files,
+  }, null, 2) + "\n");
+  console.log(`staged ${source.id}: ${blobs.length} upstream files`);
+}
+
+async function replaceAll(manifest: Manifest, stageRoot: string) {
+  const backupRoot = await mkdtemp(join(vendorRoot, ".backup-"));
+  const vendorSources = manifest.sources.filter(({ mode }) => mode === "vendor");
+  try {
+    for (const source of vendorSources) {
+      const current = join(vendorRoot, source.id);
+      if (await exists(current)) await rename(current, join(backupRoot, source.id));
+    }
+    for (const source of vendorSources) await rename(join(stageRoot, source.id), join(vendorRoot, source.id));
+    if (update) await writeFile(sourcesPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+    for (const source of vendorSources) console.log(`synced ${source.id}`);
+  } catch (error) {
+    for (const source of vendorSources) {
+      await rm(join(vendorRoot, source.id), { recursive: true, force: true });
+      const backup = join(backupRoot, source.id);
+      if (await exists(backup)) await rename(backup, join(vendorRoot, source.id));
+    }
+    throw error;
+  } finally {
+    await rm(backupRoot, { recursive: true, force: true });
+  }
 }
 
 function included(path: string, patterns: string[]) {
   return patterns.some((pattern) => pattern.endsWith("/") ? path.startsWith(pattern) : path === pattern);
+}
+
+async function hashTree(root: string, ignore = new Set<string>()) {
+  const out: Hashes = {};
+  for (const file of await findAllFiles(root)) {
+    const rel = relative(root, file).replaceAll("\\", "/");
+    if (ignore.has(rel)) continue;
+    out[rel] = createHash("sha256").update(await readFile(file)).digest("hex");
+  }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+async function findAllFiles(root: string): Promise<string[]> {
+  const out: string[] = [];
+  if (!(await exists(root))) return out;
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) out.push(...await findAllFiles(path));
+    else if (entry.isFile()) out.push(path);
+  }
+  return out.sort();
+}
+
+async function exists(path: string) {
+  try { await stat(path); return true; } catch { return false; }
 }
 
 async function apiJson<T>(url: string): Promise<T> {

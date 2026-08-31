@@ -3,5 +3,6 @@
   "requires": [
     "react"
   ],
-  "skills": []
+  "skills": [],
+  "incompatibleWith": []
 }
