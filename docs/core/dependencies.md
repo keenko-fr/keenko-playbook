@@ -22,4 +22,4 @@ Add a dependency only for a concrete capability not already provided adequately 
 - Read release/migration notes and inspect affected source/types before meaningful upgrades.
 - Regenerate affected artifacts and run focused plus canonical verification.
 - For version-sensitive APIs, trust installed source/types first, then current first-party docs; model memory is not a source.
-- Temporary compatibility workarounds must stay narrow and documented; do not build a permanent generic facade around an upstream mismatch.
+- Temporary compatibility workarounds must be narrow and documented. Do not permanently hide an upstream mismatch behind a generic facade.

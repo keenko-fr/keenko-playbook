@@ -1,47 +1,53 @@
 # Documentation
 
-Documentation exists to preserve durable knowledge and make important processes reproducible by humans and agents.
+## Canonical sources
 
-## Sources of truth
+- `README.md` is the repository entrypoint: purpose, setup, high-level structure, canonical commands, and links to deeper docs.
+- `CONTEXT.md` is concise stable project/domain context and vocabulary, not a project notebook.
+- Current architecture belongs in project architecture docs.
+- Expensive-to-reverse or rationale-sensitive decisions belong in ADRs.
+- Historical feature specifications remain useful records, but lasting policy/architecture must be extracted into current canonical docs.
+- Actionable Keenko work belongs in Linear; GitHub Issues are public intake.
+- Operational procedures belong in runbooks.
 
-- `README.md`: project entrypoint, setup, high-level structure, canonical commands, links to deeper docs.
-- `CONTEXT.md`: concise stable domain/product vocabulary and durable facts.
-- `docs/project/architecture.md`: current project-specific architecture.
-- `docs/project/overrides.md`: deliberate project deviations from Keenko defaults.
-- ADRs: significant historical decisions, rationale, and consequences.
-- feature/spec docs: durable design/implementation inputs; lasting architecture/conventions must be promoted to canonical docs/ADRs rather than relying on an old spec forever.
-- Linear: canonical actionable work.
-- runbooks: repeatable operational processes.
+Do not maintain parallel “for humans” and “for agents” restatements of the same rules. Harness files should route to canonical docs/skills rather than duplicate them.
 
-Do not maintain a separate “for agents” restatement of human rules. Harness files route to the same canonical sources.
+## `CONTEXT.md`
+
+Keep only durable information such as:
+
+- canonical domain terms;
+- important current constraints;
+- stable product facts;
+- links to relevant architecture/ADRs.
+
+Do not use it for transcripts, implementation logs, ticket status, large specifications, temporary research notes, or duplicated conventions.
 
 ## ADRs
 
-Use ADRs only for expensive-to-reverse governance/architecture decisions or rationale likely to be lost. Ordinary implementation choices do not need ADRs.
+Use an ADR for expensive-to-reverse architecture/governance choices or rationale likely to be lost. Ordinary implementation decisions do not need one.
 
-Once an ADR has materially informed implementation, preserve it as history. If the decision changes, add a superseding ADR and update the current architecture docs rather than rewriting the old decision as if it never existed. Typo/factual corrections are fine.
-
-## Context
-
-`CONTEXT.md` should remain small. Record canonical terms, important stable constraints/facts, and links to relevant architecture/ADRs. Do not turn it into a session transcript, implementation log, ticket board, scratchpad, or duplicate convention manual.
-
-## Operational runbooks
-
-Durable operational processes such as deployment, migrations, provider setup, recovery, and security procedures must be human-reproducible rather than existing only as “ask the agent”. Include applicable sections such as:
-
-- outcome;
-- prerequisites/permissions;
-- required configuration/inputs;
-- manual procedure;
-- expected results;
-- verification;
-- failure recovery/rollback;
-- security boundaries;
-- automation equivalent;
-- ownership/maintenance.
-
-Omit irrelevant sections rather than adding boilerplate.
+Once an ADR has materially informed implementation, preserve its history. If the decision changes, add a superseding ADR and link both; only minor factual/typo corrections rewrite the original. Current architecture docs must reflect the new state.
 
 ## Change discipline
 
-When a PR changes documented architecture, conventions, public contracts, migrations, or operational procedures, update the relevant durable documentation in the same PR.
+Update affected canonical docs in the same PR as the behavior/architecture/convention they describe. Do not defer routine documentation repair to a later cleanup.
+
+## Human-reproducible operations
+
+A durable operational process cannot exist only as “ask the agent”. For deployments, migrations, provider setup, recovery, security operations, and similar workflows, document the applicable:
+
+- outcome;
+- prerequisites and permissions;
+- required inputs/configuration;
+- manual procedure;
+- expected results;
+- verification;
+- recovery/rollback;
+- security boundaries;
+- automation equivalent;
+- maintenance/ownership.
+
+Omit irrelevant sections rather than adding boilerplate.
+
+Keenko core does not require Obsidian or per-session journals.

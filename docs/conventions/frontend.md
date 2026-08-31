@@ -56,27 +56,11 @@ JSX owns semantic structure, composition, data flow, interaction, accessibility,
 
 Prefer correct native semantic elements and accessible primitives before recreating behavior with `div`, click handlers, ARIA, or custom keyboard logic.
 
-Accessibility is part of the component contract: accessible name, keyboard operation, focus behavior, disabled semantics, error association, meaningful state, and appropriate roles/HTML must be preserved where relevant. Prefer established primitives that implement difficult interaction semantics correctly.
+Accessibility is part of the component contract. Preserve accessible names, keyboard operation, focus behavior, disabled semantics, error association, state semantics, and correct roles/HTML as applicable. Do not defer accessibility as optional polish.
 
 ## React state and effects
 
-State ownership:
-
-```text
-Router search/params → bookmarkable/navigation state
-TanStack Query       → server state
-TanStack Form        → editing/form state
-React local state    → ephemeral UI/component state
-```
-
-Do not copy Query results or other canonical state into React state/context merely to synchronize another copy. Derive values during rendering when they can be computed from props/current state.
-
-Use `useEffect` primarily to synchronize React with an external system (browser API, subscription, imperative widget, timer, etc.), not as ordinary application orchestration. User-triggered side effects belong in the event/mutation flow that owns the interaction rather than “set state, then wait for an Effect to notice”.
-
-Do not add `useMemo`, `useCallback`, or `memo` as ceremony. Use them for credible/measured performance needs or when stable identity is actually part of another API contract. Correctness must never depend on memoization.
-
-Derive rather than synchronize duplicate state. Persist/cache derived values only for a concrete performance, historical, query, audit, external-contract, or snapshot reason.
-
-## Markdown
-
-When Markdown is the authored content format, form state and persistence keep raw Markdown. Rendered/generated HTML is presentation output only unless a project has a deliberate derived-cache requirement. A TanStack Form-aware Markdown field belongs in the app form layer; a lower-level controlled editor belongs in shared UI only when genuinely reusable.
+- Compute values from props/Router/Query/Form/local state during render rather than mirroring them into another `useState`.
+- Use `useEffect` primarily to synchronize React with an external system (browser API, subscription, imperative widget, timer, etc.), not as ordinary application data-flow machinery.
+- User-triggered side effects run from the event/mutation flow that owns the interaction, not by setting state for an Effect to notice.
+- Do not add `useMemo`, `useCallback`, or `memo` as default ceremony. Use memoization for credible/measured performance needs or when stable identity is genuinely required by another API. Correctness never depends on memoization.

@@ -1,6 +1,6 @@
 # Generated code
 
-Never manually edit generated output. Change the owning source, configuration, schema, template, or generator and regenerate.
+Generated files are never edited manually. Change the source, configuration, schema, template, or generator and regenerate.
 
 Tracking policy is generator-specific:
 
