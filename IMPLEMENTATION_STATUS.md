@@ -13,7 +13,8 @@ This branch is the pre-1.0 Keenko Playbook release candidate after the explicit 
 - committed Matt Pocock, Effect, and pstack snapshots with pinned provenance and per-file integrity inventories;
 - transactional vendor synchronization plus non-mutating pinned-upstream drift verification;
 - pinned Bun/TypeScript toolchain, frozen dependency lock, typecheck, consumer integration tests, CI, changesets, and release preparation;
-- machine-readable v1 release gate and a review-PR-first release workflow.
+- machine-readable v1 release gate and a review-PR-first release workflow;
+- publication-time TOCTOU protection: the release tag is pushed atomically with `HEAD:main` under a lease requiring remote `main` to still equal the reviewed `GITHUB_SHA`.
 
 ## Intentionally incomplete before v1
 
