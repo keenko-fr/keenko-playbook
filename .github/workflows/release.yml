@@ -89,6 +89,11 @@ jobs:
             echo "Tag v${VERSION} already exists"
             exit 1
           fi
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+
+          git tag "v${VERSION}" "$GITHUB_SHA"
+          git push --atomic \
+            --force-with-lease="refs/heads/main:${GITHUB_SHA}" \
+            origin \
+            HEAD:refs/heads/main \
+            "refs/tags/v${VERSION}:refs/tags/v${VERSION}"
           gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes --target "$GITHUB_SHA"
