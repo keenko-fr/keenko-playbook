@@ -29,5 +29,7 @@ jobs:
           bun run vendor:sync
           find vendor -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/vendor-after.sha256
           diff -u /tmp/vendor-before.sha256 /tmp/vendor-after.sha256
+      - name: Source check
+        run: bun run check
       - name: Release-grade check
         run: bun run check:release
