@@ -221,6 +221,7 @@ async function materialize(target: string, presetName: string) {
     const current = (await exists(path)) ? await readFile(path, "utf8") : "";
     nextManaged.set(file, renderManagedFile(current, block, path));
   }
+  await preflightManagedPaths(target);
   for (const harness of [".agents", ".claude"]) {
     const root = join(target, harness, "skills");
     for (const name of skillNames) {
@@ -325,6 +326,19 @@ function renderVendorSkillAdapter(name: string, description: string, availableSk
   return `---\nname: ${name}\ndescription: ${JSON.stringify(description || `Keenko-adapted upstream ${name} workflow.`)}\n---\n\n# Keenko adapter for ${name}\n\nThis skill exposes a pinned upstream workflow through Keenko's authority and safety boundaries.\n\n## Authority guard\n\n1. Current explicit human instruction, project ADR/override, project-local docs, Keenko core, and enabled stack modules outrank the upstream reference.\n2. Do not commit, push, merge, install dependencies/tools, alter package-manager state, or perform external/destructive actions unless the current task explicitly delegates that action.\n3. Bun is the canonical package manager unless the project explicitly documents a compatibility exception. Ignore upstream commands that would introduce a competing lockfile.\n4. Do not edit the Keenko-managed blocks in AGENTS.md or CLAUDE.md directly and do not duplicate canonical conventions into harness files.\n5. Only route to skills that are actually installed. Upstream references to unavailable setup/router skills are advisory, not prerequisites. Use the repository's configured tracker/connectors and canonical docs instead.\n6. If an upstream instruction conflicts with a higher-authority rule, follow the higher-authority rule and continue with the nearest safe equivalent workflow.\n\nInstalled skill set for this snapshot:\n${availableSkills.map((skillName) => `- ${skillName}`).join("\n")}\n\n## Procedure\n\nRead \`references/upstream/SKILL.md\` and apply its procedural guidance subject to the authority guard above. Supporting upstream files are under \`references/upstream/\`. Preserve the upstream notice and provenance files shipped beside this adapter.\n`;
 }
 
+async function preflightManagedPaths(target: string) {
+  for (const rel of [".playbook", "docs", "docs/project", ".agents", ".agents/skills", ".claude", ".claude/skills"]) {
+    const path = join(target, rel);
+    if (!(await exists(path))) continue;
+    if (!(await stat(path)).isDirectory()) throw new Error(`Managed parent must be a directory: ${path}`);
+  }
+  for (const rel of ["CONTEXT.md", "docs/project/architecture.md", "docs/project/overrides.md"]) {
+    const path = join(target, rel);
+    if (!(await exists(path))) continue;
+    if (!(await stat(path)).isFile()) throw new Error(`Managed scaffold path must be a file: ${path}`);
+  }
+}
+
 async function applyMaterialization(target: string, stageRoot: string, managed: Map<string, string>, skillNames: string[]) {
   const rollbackRoot = await mkdtemp(join(target, ".keenko-rollback-"));
   const tracked = [
@@ -334,8 +348,7 @@ async function applyMaterialization(target: string, stageRoot: string, managed: 
     "AGENTS.md",
     "CLAUDE.md",
     "CONTEXT.md",
-    "docs/project/architecture.md",
-    "docs/project/overrides.md",
+    "docs/project",
   ];
   const existed = new Map<string, boolean>();
   try {
@@ -361,11 +374,17 @@ async function applyMaterialization(target: string, stageRoot: string, managed: 
       }
     }
   } catch (error) {
-    for (const rel of tracked.reverse()) {
-      const dst = join(target, rel);
-      await rm(dst, { recursive: true, force: true });
-      if (existed.get(rel)) await cp(join(rollbackRoot, rel), dst, { recursive: true });
+    const rollbackErrors: string[] = [];
+    for (const rel of [...tracked].reverse()) {
+      try {
+        const dst = join(target, rel);
+        await rm(dst, { recursive: true, force: true });
+        if (existed.get(rel)) await cp(join(rollbackRoot, rel), dst, { recursive: true });
+      } catch (rollbackError) {
+        rollbackErrors.push(`${rel}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+      }
     }
+    if (rollbackErrors.length) console.error(`Rollback encountered cleanup errors: ${rollbackErrors.join("; ")}`);
     throw error;
   } finally {
     await rm(rollbackRoot, { recursive: true, force: true });

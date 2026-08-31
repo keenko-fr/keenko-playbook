@@ -19,9 +19,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Canonical source check
         run: bun run check
-      - name: Verify committed vendor snapshots against pinned upstream
+      - name: Release-grade check
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bun run vendor:check
-      - name: Release-grade check
         run: bun run check:release

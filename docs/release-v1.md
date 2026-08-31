@@ -22,3 +22,4 @@ The release workflow has two explicit human-triggered stages:
 
 - **prepare** creates a release branch/PR after release-grade verification and never writes directly to `main`;
 - **publish** runs only from reviewed `main`, re-verifies the release candidate and `release/v1-gate.json`, then creates the tag/GitHub Release for the exact reviewed commit.
+Publication must be dispatched from `main`, assert `HEAD` equals the exact current `origin/main`, and pass immutable pinned-upstream vendor verification before tagging.

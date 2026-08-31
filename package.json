@@ -13,7 +13,7 @@
     "playbook": "bun cli/playbook.ts",
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun cli/playbook.ts check --source && bun test",
-    "check:release": "bun run typecheck && bun cli/playbook.ts check --source --release && bun test",
+    "check:release": "bun run typecheck && bun cli/playbook.ts check --source --release && bun test && bun run vendor:check",
     "vendor:sync": "bun cli/vendor-sync.ts",
     "vendor:check": "bun cli/vendor-sync.ts --check",
     "vendor:update": "bun cli/vendor-sync.ts --update",

@@ -61,6 +61,23 @@ describe("consumer materialization", () => {
     expect(await exists(join(target, ".playbook", "config.json"))).toBe(false);
   });
 
+  test("preflights scaffold parent collisions without partial writes and remains retryable", async () => {
+    const target = await fixture();
+    await mkdir(join(target, "docs"), { recursive: true });
+    await writeFile(join(target, "docs", "project"), "human-owned project path\n");
+    const before = await hashTree(target);
+
+    const failed = await run("install", "--target", target);
+    expect(failed.code).not.toBe(0);
+    expect(failed.stderr).toContain("Managed parent must be a directory");
+    expect(await hashTree(target)).toEqual(before);
+    expect(await exists(join(target, ".playbook", "config.json"))).toBe(false);
+
+    await rm(join(target, "docs", "project"));
+    expect((await run("install", "--target", target)).code).toBe(0);
+    expect((await run("check", "--target", target)).code).toBe(0);
+  });
+
   test("detects managed-block tampering and retired generated skills", async () => {
     const target = await fixture();
     expect((await run("install", "--target", target)).code).toBe(0);

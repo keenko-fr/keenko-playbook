@@ -31,10 +31,16 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - run: bun run check:release
+      - name: Release-grade verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
       - id: version
         run: echo "version=$(bun run --silent release:prepare)" >> "$GITHUB_OUTPUT"
-      - run: bun run check:release
+      - name: Release-grade verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
       - name: Open release PR
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,7 +66,15 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - run: bun run check:release
+      - name: Assert exact reviewed main commit
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+      - name: Release-grade verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
       - run: bun run release:verify-gate
       - name: Publish reviewed main commit
         env:
