@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "matt-pocock",
+      "repository": "mattpocock/skills",
+      "upstreamRef": "main",
+      "commit": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76",
+      "tree": "adb0fb8583c232cf40ce43f7283d21f364a6ac4d",
+      "rootPath": "",
+      "mode": "vendor",
+      "license": "MIT",
+      "includes": [
+        "LICENSE",
+        "skills/"
+      ]
+    },
+    {
+      "id": "effect-ts",
+      "repository": "Effect-TS/skills",
+      "upstreamRef": "main",
+      "commit": "2309e6f27d9955b434c0e3f394b945c136e89fd2",
+      "tree": "40ca650142b8f10d46f912d8d931f260736c6b0f",
+      "rootPath": "",
+      "mode": "vendor",
+      "license": "MIT",
+      "includes": [
+        "LICENSE",
+        "skills/"
+      ]
+    },
+    {
+      "id": "pstack",
+      "repository": "cursor/plugins",
+      "upstreamRef": "main",
+      "commit": "6fecddba65801f9b9c08b8b328d998ee5b09d290",
+      "tree": "950b90234c17babd00c43e32b19ae50abb4720f5",
+      "rootPath": "pstack",
+      "mode": "vendor",
+      "license": "MIT",
+      "includes": [
+        "LICENSE",
+        "skills/unslop/"
+      ]
+    },
+    {
+      "id": "convex",
+      "repository": "get-convex/agent-skills",
+      "upstreamRef": "main",
+      "commit": "cbca615354d9bd457c2cf31186e2bca048ce2fd8",
+      "tree": "32112dcac99d94619fe84f760173f37c93d0b06b",
+      "rootPath": "",
+      "mode": "external",
+      "license": null,
+      "includes": []
+    }
+  ]
+}

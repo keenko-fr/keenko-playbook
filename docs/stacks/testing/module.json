@@ -1,0 +1,7 @@
+{
+  "name": "testing",
+  "requires": [
+    "typescript"
+  ],
+  "skills": []
+}

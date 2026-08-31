@@ -1,0 +1,40 @@
+# Code style
+
+Optimize for reader load, explicit ownership, and directness rather than ceremony.
+
+## Imports and modules
+
+- Use `import type` for type-only imports.
+- Keep simple import grouping: external/workspace packages first, then project-local imports; let tooling sort within groups.
+- Do not create convenience `index.ts` barrels inside implementation trees. A barrel is appropriate only when it deliberately defines a package/module public API.
+- Prefer named exports. Use default exports only when a framework/tooling contract naturally requires one.
+- Use lowercase `kebab-case` filenames unless framework-special filenames require another form.
+
+## Naming
+
+- Prefer concise contextual names. Inside `data/packs.ts`, `find`, `get`, `insert`, `patch`, and `remove` are better than repeating `Pack` in every identifier when imports remain clear.
+- Avoid cryptic abbreviations. Conventional short forms such as `id`, `url`, `api`, `ctx`, and genuine `dto` usage are fine.
+- Name booleans as readable predicates when useful (`isActive`, `hasAccess`, `canPublish`, `shouldRetry`) without mechanically forcing a prefix when the domain word is already boolean (`enabled`, `verified`).
+- Prefer specific mutation verbs such as `insert`, `patch`, `remove`, `publish`, `archive`, `attach`, `detach`, `sync`, `record`, and `resolve`. Avoid vague `handle`, `process`, `manage`, `do`, or `execute` unless the function genuinely owns that generic boundary.
+- Use `remove` for authored deletion operations; retain native `.delete()` when calling an API that uses that name.
+- Preserve canonical domain vocabulary. Do not create synonyms for established concepts.
+
+## Functions and types
+
+- Use `const` for values and configured functions returned by APIs.
+- Use function declarations for ordinary authored functions when hoisting improves main-first reading order. Do not impose arrows everywhere.
+- Let TypeScript infer ordinary return types. Annotate when the return type is an important public contract, prevents harmful widening, documents a meaningful Effect contract, or makes complex inference clearer.
+- Prefer `satisfies` when checking a value without widening its inferred shape.
+- Treat casts, double casts, and non-null assertions as narrow boundary escape hatches. Prefer decoding, narrowing, or fixing upstream types; explain non-obvious interop casts.
+- Prefer literal unions/schema-derived types over enum-like runtime objects when no runtime object is needed.
+
+## Constants
+
+Use `SCREAMING_SNAKE_CASE` for true static module-level constants. The chosen frontend CVA style-object convention is an explicit exception. Extract a literal when its name communicates domain meaning, it is reused, or it needs a single change point; do not manufacture constants for obvious one-off literals.
+
+## Comments and suppressions
+
+- Comments explain rationale, invariants, external constraints, or dangerous edge cases, not straightforward code.
+- Use the narrowest lint suppression possible and include a concrete reason.
+- Do not merge vague TODO/FIXME notes. A temporary note must describe a useful local constraint or reference tracked work.
+- Remove commented-out implementation code; Git owns history.

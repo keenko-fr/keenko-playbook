@@ -1,0 +1,23 @@
+name: Bug or inconsistency
+description: Public intake for a playbook defect, stale convention, or installer problem.
+title: ""
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is wrong or inconsistent?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Relevant project, harness, playbook version, or reproduction details.

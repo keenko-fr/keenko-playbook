@@ -1,0 +1,7 @@
+{
+  "name": "paraglide",
+  "requires": [
+    "typescript"
+  ],
+  "skills": []
+}

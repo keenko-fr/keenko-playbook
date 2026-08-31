@@ -1,0 +1,7 @@
+{
+  "name": "effect",
+  "requires": [
+    "typescript"
+  ],
+  "skills": []
+}

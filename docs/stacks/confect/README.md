@@ -1,0 +1,71 @@
+# Confect
+
+Confect is the default Effect/Convex application-function layer when this module is enabled, but it does not own every Convex boundary.
+
+## Application functions
+
+Ordinary application-owned Convex functions prefer Confect `FunctionSpec`/`GroupSpec`, implementations, generated refs, and codec-aware callers. Endpoint args belong to the spec and independently validate/normalize the backend trust boundary even when a frontend already validated similar input.
+
+Keep endpoint Args local when they exist specifically for that endpoint. Share semantic primitives, not complete transport structs merely to remove duplication. Frontend/server code must not import backend spec source to steal an Args schema.
+
+Generated Confect services/context are used directly; do not wrap them merely to rename or re-expose them.
+
+## Confect refs vs native Convex refs
+
+Use the representation appropriate to the caller:
+
+```text
+Confect ref
+→ application contract
+→ Args/Returns codecs
+→ typed Effect/codec information
+
+Convex api/internal/components ref
+→ native Convex FunctionReference
+→ integrations requiring native references
+```
+
+Do not add cosmetic wrappers between them.
+
+Native Convex remains appropriate where required/materially better for components, workflows, third-party Convex libraries, generated/native APIs, and specific HTTP/provider/framework integrations. Verify installed Confect support before replacing a native boundary.
+
+## Client/server use
+
+Browser calls use the best installed reactive/client integration; do not force Effect execution into React for symmetry. A Confect-backed mutation may be called through the appropriate client/ref while TanStack Mutation owns pending/error/success UI state.
+
+TanStack Start server functions that meaningfully orchestrate validation/auth/multiple backend calls may use Effect internally; run the Effect once at the server-function boundary. Direct server-side Confect calls derive args from the actual ref (`Ref.Args<...>`) and use the codec-aware runner/client path rather than reconstructing types from a form/domain schema.
+
+Keep these trust boundaries distinct:
+
+```text
+Form schema
+→ browser/editing
+
+serverFn validator
+→ server-function input
+
+Confect Args
+→ authoritative backend function contract
+```
+
+## Public contracts
+
+Return schemas expose only information callers are entitled to know. Security-sensitive success/rejection distinctions may intentionally collapse for anti-enumeration; unexpected defects are not hidden merely to manufacture that behavior.
+
+## Query semantics
+
+Confect queries remain Convex queries. Do not make reactive query results depend on wall clock, randomness, or mutable process state. Persist the relevant facts or evaluate time-sensitive policy at an appropriate non-query boundary.
+
+## Persistence patches
+
+Preserve the semantic difference between `S.optionalKey` and `S.optional`; explicit `undefined` may be meaningful for clearing an optional Convex field. Prefer focused patch contracts when invariants exist; use broad partial patches only when every field is independently patchable.
+
+## Versions and generated code
+
+- Never edit `confect/_generated` or `convex/_generated` manually.
+- Run the repository's canonical codegen after specs/schema/refs/generated inputs change.
+- Keep tightly coupled `@confect/*` prereleases exact-version aligned.
+- Verify the installed Effect version satisfies Confect peers.
+- Fix/upgrade a real compatibility boundary where possible; keep unavoidable prerelease workarounds narrow and documented rather than hiding them behind permanent generic facades.
+
+The owned `confect` skill contains the procedural investigation/review workflow.
