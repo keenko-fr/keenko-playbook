@@ -2,7 +2,10 @@
   "schemaVersion": 1,
   "release": "v1.0.0",
   "checks": {
-    "freshContextReview": { "status": "pending", "evidence": "" },
+    "freshContextReview": {
+      "status": "passed",
+      "evidence": "Four independent fresh-context Codex review passes completed through candidate 179b7a755809179acf6ed8a3b9ad6dd3ec692637; final review verdict READY, TOCTOU regression FIXED, no unresolved P0-P2."
+    },
     "cleanFixture": { "status": "pending", "evidence": "" },
     "codexDogfood": { "status": "pending", "evidence": "" },
     "claudeDogfood": { "status": "pending", "evidence": "" },
