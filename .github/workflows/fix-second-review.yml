@@ -19,7 +19,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.4.0
-      - run: python3 .github/scripts/fix-second-review.py
+      - run: python3 .github/scripts/run-second-review-fix.py
       - run: bun install --frozen-lockfile
       - name: Canonical verification
         env:
