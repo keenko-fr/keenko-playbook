@@ -1,0 +1,154 @@
+    externalSkills: parseExternalSkills(item.externalSkills, "config.externalSkills"),
+    integrations: asBooleanRecord(item.integrations, "config.integrations"),
+  };
+}
+
+function parseInstalledLock(value: unknown): InstalledLock {
+  const item = asObject(value, ".playbook/lock.json");
+  assertKeys(item, ["schemaVersion", "playbookFiles", "generatedSkills", "managedBlocks"], ".playbook/lock.json");
+  if (item.schemaVersion !== LOCK_SCHEMA_VERSION) throw new Error(`Unsupported .playbook lock schemaVersion: ${String(item.schemaVersion)}`);
+  return {
+    schemaVersion: 1,
+    playbookFiles: asStringRecord(item.playbookFiles, "lock.playbookFiles"),
+    generatedSkills: asStringArray(item.generatedSkills, "lock.generatedSkills"),
+    managedBlocks: asStringRecord(item.managedBlocks, "lock.managedBlocks"),
+  };
+}
+
+function parseExternalSkills(value: unknown, label: string) {
+  const record = asObject(value ?? {}, label);
+  const out: Record<string, ExternalSkill> = {};
+  for (const [name, raw] of Object.entries(record)) {
+    const item = asObject(raw, `${label}.${name}`);
+    assertKeys(item, ["source", "repository", "commit", "install", "enabled"], `${label}.${name}`);
+    out[name] = {
+      source: asString(item.source, `${label}.${name}.source`),
+      repository: asString(item.repository, `${label}.${name}.repository`),
+      commit: asString(item.commit, `${label}.${name}.commit`),
+      install: asString(item.install, `${label}.${name}.install`),
+      enabled: asStringArray(item.enabled, `${label}.${name}.enabled`),
+    };
+  }
+  return out;
+}
+
+async function hashTree(root: string, ignore: Set<string>) {
+  const out: Hashes = {};
+  if (!(await exists(root))) return out;
+  for (const file of await findAllFiles(root)) {
+    const rel = relative(root, file).replaceAll("\\", "/");
+    if (ignore.has(rel)) continue;
+    out[rel] = hash(await readFile(file));
+  }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function hash(data: string | Buffer) {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+async function findFiles(root: string, suffix: string) {
+  return (await findAllFiles(root)).filter((path) => path.endsWith(suffix));
+}
+
+async function findAllFiles(root: string): Promise<string[]> {
+  const out: string[] = [];
+  if (!(await exists(root))) return out;
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) out.push(...await findAllFiles(path));
+    else if (entry.isFile()) out.push(path);
+  }
+  return out.sort();
+}
+
+async function exists(path: string) {
+  try { await stat(path); return true; } catch { return false; }
+}
+
+async function readJson(path: string): Promise<unknown> {
+  return JSON.parse(await readFile(path, "utf8"));
+}
+
+async function writeJson(path: string, value: unknown) {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(value, null, 2) + "\n", "utf8");
+}
+
+function asObject(value: unknown, label: string): JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
+  return value as JsonObject;
+}
+
+function asString(value: unknown, label: string) {
+  if (typeof value !== "string" || !value) throw new Error(`${label} must be a non-empty string`);
+  return value;
+}
+
+function asStringAllowEmpty(value: unknown, label: string) {
+  if (typeof value !== "string") throw new Error(`${label} must be a string`);
+  return value;
+}
+
+function asStringArray(value: unknown, label: string) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item)) throw new Error(`${label} must be an array of non-empty strings`);
+  const out = value as string[];
+  if (new Set(out).size !== out.length) throw new Error(`${label} must not contain duplicates`);
+  return out;
+}
+
+function asStringRecord(value: unknown, label: string) {
+  const record = asObject(value, label);
+  const out: Record<string, string> = {};
+  for (const [key, item] of Object.entries(record)) out[key] = asString(item, `${label}.${key}`);
+  return out;
+}
+
+function asStringArrayRecord(value: unknown, label: string) {
+  const record = asObject(value ?? {}, label);
+  const out: Record<string, string[]> = {};
+  for (const [key, item] of Object.entries(record)) out[key] = asStringArray(item, `${label}.${key}`);
+  return out;
+}
+
+function asBooleanRecord(value: unknown, label: string) {
+  const record = asObject(value ?? {}, label);
+  const out: Record<string, boolean> = {};
+  for (const [key, item] of Object.entries(record)) {
+    if (typeof item !== "boolean") throw new Error(`${label}.${key} must be boolean`);
+    out[key] = item;
+  }
+  return out;
+}
+
+function assertKeys(value: JsonObject, allowed: string[], label: string) {
+  const extra = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (extra.length) throw new Error(`${label} has unknown field(s): ${extra.join(", ")}`);
+}
+
+function unique(values: string[]) {
+  return [...new Set(values)];
+}
+
+function same(a: unknown, b: unknown) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function report(errors: string[], warnings: string[]) {
+  for (const warning of warnings) console.warn(`WARN: ${warning}`);
+  if (errors.length) {
+    for (const error of errors) console.error(`ERROR: ${error}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`Keenko Playbook check passed${warnings.length ? ` with ${warnings.length} warning(s)` : ""}.`);
+}
+
+main().catch((error) => {
+  console.error(errorMessage(error));
+  process.exitCode = 1;
+});

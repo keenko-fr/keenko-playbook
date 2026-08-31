@@ -82,7 +82,7 @@ The initial preset is `effect-convex-web`: TypeScript, React, Effect 4, Convex, 
 
 Keenko owns its integration/convention layer and prefers first-party library guidance for version-specific APIs. Vendored sources are pinned and carry provenance/license metadata. Substantial intentional forks become Keenko-owned skills instead of silently modifying vendor snapshots.
 
-Official Convex skills remain referenced externally until their repository exposes a compatible redistribution license.
+The official Convex skill repository remains an external provenance source until it exposes a compatible redistribution license. Consumers receive a Keenko-owned `convex` specialist adapter that routes to installed-version source/types and current first-party Convex documentation; the external suite is optional and never treated as silently installed.
 
 ## Releases
 
@@ -92,4 +92,4 @@ SemVer applies to playbook behavior/configuration:
 - minor: compatible rules/modules/skills;
 - major: breaking config/materialization/behavior changes.
 
-Git tags and GitHub Releases are canonical. A v1 release requires clean source/release checks, fixture install/update/check, both harnesses discovering generated skills, preset resolution, and real dogfood in a consumer project.
+Git tags and GitHub Releases are canonical. Release preparation happens through a reviewed release PR; publication is a separate explicit action gated by `release/v1-gate.json`. A v1 release requires clean source/release checks, fixture install/update/check, both harnesses discovering generated skills, preset resolution, fresh-context review, and real Codex + Claude dogfood in Anoula.

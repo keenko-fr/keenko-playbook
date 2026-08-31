@@ -4,5 +4,6 @@
     "react",
     "tanstack-router"
   ],
-  "skills": []
+  "skills": [],
+  "incompatibleWith": []
 }

@@ -5,15 +5,23 @@
   "type": "module",
   "description": "Keenko engineering conventions and portable agent workflows for Codex and Claude.",
   "license": "MIT",
+  "packageManager": "bun@1.4.0",
   "bin": {
     "playbook": "cli/playbook.ts"
   },
   "scripts": {
     "playbook": "bun cli/playbook.ts",
-    "check": "bun cli/playbook.ts check --source && bun test",
-    "check:release": "bun cli/playbook.ts check --source --release && bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun cli/playbook.ts check --source && bun test",
+    "check:release": "bun run typecheck && bun cli/playbook.ts check --source --release && bun test",
     "vendor:sync": "bun cli/vendor-sync.ts",
+    "vendor:check": "bun cli/vendor-sync.ts --check",
     "vendor:update": "bun cli/vendor-sync.ts --update",
-    "release:prepare": "bun cli/release.ts"
+    "release:prepare": "bun cli/release.ts prepare",
+    "release:verify-gate": "bun cli/release.ts verify-gate"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.0",
+    "typescript": "7.0.2"
   }
 }

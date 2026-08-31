@@ -3,5 +3,6 @@
   "requires": [
     "typescript"
   ],
-  "skills": []
+  "skills": [],
+  "incompatibleWith": []
 }

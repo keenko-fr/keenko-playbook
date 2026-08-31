@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "release": "v1.0.0",
+  "checks": {
+    "freshContextReview": { "status": "pending", "evidence": "" },
+    "cleanFixture": { "status": "pending", "evidence": "" },
+    "codexDogfood": { "status": "pending", "evidence": "" },
+    "claudeDogfood": { "status": "pending", "evidence": "" },
+    "anoulaDogfood": { "status": "pending", "evidence": "" },
+    "conventionReconciliation": { "status": "pending", "evidence": "" }
+  }
+}

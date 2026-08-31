@@ -16,7 +16,8 @@
     "testing"
   ],
   "ownedSkills": [
-    "confect"
+    "confect",
+    "convex"
   ],
   "vendorSkills": {
     "matt-pocock": [
@@ -44,15 +45,7 @@
       "unslop"
     ]
   },
-  "externalSkills": {
-    "convex": {
-      "source": "convex",
-      "enabled": [
-        "convex"
-      ],
-      "note": "Use the official first-party Convex suite directly. It is pinned for review but not redistributed until upstream declares a compatible repository license."
-    }
-  },
+  "externalSkills": {},
   "integrations": {
     "tanstackIntent": true
   }
