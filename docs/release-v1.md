@@ -22,4 +22,5 @@ The release workflow has two explicit human-triggered stages:
 
 - **prepare** creates a release branch/PR after release-grade verification and never writes directly to `main`;
 - **publish** runs only from reviewed `main`, re-verifies the release candidate and `release/v1-gate.json`, then creates the tag/GitHub Release for the exact reviewed commit.
-Publication must be dispatched from `main`, assert `HEAD` equals the exact current `origin/main`, and pass immutable pinned-upstream vendor verification before tagging.
+
+Publication must be dispatched from `main`, initially assert `HEAD` equals the fetched `origin/main`, and pass immutable pinned-upstream vendor verification. Tag publication then uses one atomic Git push that includes both `HEAD:refs/heads/main` and the release tag with `--force-with-lease=refs/heads/main:$GITHUB_SHA`. If remote `main` advances during verification, the lease fails and the atomic push creates neither a stale `main` update nor the tag.
