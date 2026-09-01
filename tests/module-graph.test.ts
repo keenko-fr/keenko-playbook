@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 
-type ModuleManifest = { requires: string[]; skills: string[] };
+type ModuleManifest = { requires: string[]; skills: string[]; uiSurface?: boolean };
 type Preset = {
   modules: string[];
   ownedSkills: string[];
@@ -30,6 +30,24 @@ describe("effect-convex-web preset", () => {
   test("TanStack Form pulls the Effect Schema dependency its convention requires", async () => {
     const form = await json<ModuleManifest>("docs/stacks/tanstack-form/module.json");
     expect(form.requires).toEqual(["react", "effect"]);
+  });
+
+  test("react-ui owns the UI stack capability without requiring prototype", async () => {
+    const reactUi = await json<ModuleManifest>("docs/stacks/react-ui/module.json");
+    const preset = await json<Preset>("presets/effect-convex-web.json");
+
+    expect(reactUi.requires).toEqual(["react"]);
+    expect(reactUi.skills).toEqual([]);
+    expect(reactUi.uiSurface).toBe(true);
+    expect(preset.modules).toContain("react-ui");
+    expect(preset.modules).not.toContain("ui");
+    expect(preset.vendorSkills["matt-pocock"]).toContain("prototype");
+  });
+
+  test("modules without a UI surface do not opt into the UI project scaffold", async () => {
+    for (const name of ["typescript", "effect", "convex", "confect", "testing"]) {
+      expect((await json<ModuleManifest>(`docs/stacks/${name}/module.json`)).uiSurface).toBeUndefined();
+    }
   });
 
   test("preset selects every module-required skill", async () => {
