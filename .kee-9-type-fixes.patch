@@ -1,0 +1,309 @@
+--- a/oxlint.config.ts
++++ b/oxlint.config.ts
+@@ -24,6 +24,7 @@
+     "eslint/no-plusplus": "off",
+     "eslint/prefer-named-capture-group": "off",
+     "eslint/prefer-template": "off",
++    "eslint/require-await": "off",
+     "eslint/sort-keys": "off",
+     "eslint/no-unused-vars": [
+       "error",
+--- a/cli/playbook.ts
++++ b/cli/playbook.ts
+@@ -473,13 +473,14 @@
+   return out;
+ }
+ 
+-function frontmatterValue(text: string, key: string) {
+-  const match = new RegExp(`^${key}:\\s*(.+)$`, "m").exec(text);
++function frontmatterValue(text: string, key: string): string | null {
++  const match = new RegExp(`^${key}:\\s*(.+)$`, "mu").exec(text);
+   if (!match) return null;
+   const raw = match[1].trim();
+   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+     try {
+-      return JSON.parse(raw);
++      const parsed: unknown = JSON.parse(raw);
++      return typeof parsed === "string" ? parsed : raw.slice(1, -1);
+     } catch {
+       return raw.slice(1, -1);
+     }
+@@ -531,7 +532,7 @@
+     if (!frontmatterValue(text, "name")) errors.push(`Invalid skill frontmatter: ${relative(SOURCE_ROOT, skill)}`);
+   }
+ 
+-  const manifest = await loadVendorManifest().catch((error) => {
++  const manifest = await loadVendorManifest().catch((error: unknown) => {
+     errors.push(errorMessage(error));
+     return null;
+   });
+@@ -838,7 +839,7 @@
+   console.log(`Keenko Playbook check passed${warnings.length ? ` with ${warnings.length} warning(s)` : ""}.`);
+ }
+ 
+-main().catch((error) => {
++main().catch((error: unknown) => {
+   console.error(errorMessage(error));
+   process.exitCode = 1;
+ });
+--- a/cli/release.ts
++++ b/cli/release.ts
+@@ -10,6 +10,8 @@
+ type Bump = "patch" | "minor" | "major";
+ const rank: Record<Bump, number> = { patch: 1, minor: 2, major: 3 };
+ 
++type JsonObject = Record<string, unknown>;
++
+ async function main() {
+   const command = process.argv[2] ?? "prepare";
+   if (command === "prepare") return await prepare();
+@@ -24,40 +26,54 @@
+   const notes: string[] = [];
+   for (const name of files) {
+     const text = await readFile(join(changesetDir, name), "utf-8");
+-    const match = /^---\s*\nbump:\s*(patch|minor|major)\s*\n---\s*\n([\s\S]*)$/.exec(text);
++    const match = /^---\s*\nbump:\s*(patch|minor|major)\s*\n---\s*\n([\s\S]*)$/u.exec(text);
+     if (!match) throw new Error(`Invalid changeset: ${name}`);
+     const next = match[1] as Bump;
+     if (rank[next] > rank[bump]) bump = next;
+     notes.push(match[2].trim());
+   }
+   const pkgPath = join(ROOT, "package.json");
+-  const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
+-  const version = bumpVersion(String(pkg.version), bump);
++  const pkg = parseJsonObject(await readFile(pkgPath, "utf-8"), "package.json");
++  const version = bumpVersion(asString(pkg.version, "package.json.version"), bump);
+   pkg.version = version;
+   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+   const changelogPath = join(ROOT, "CHANGELOG.md");
+   const current = await readFile(changelogPath, "utf-8");
+   const body = `## ${version}\n\n${notes.map((note) => `- ${note}`).join("\n")}\n\n`;
+-  await writeFile(changelogPath, current.replace(/^# Changelog\s*\n+/m, `# Changelog\n\n${body}`));
++  await writeFile(changelogPath, current.replace(/^# Changelog\s*\n+/mu, `# Changelog\n\n${body}`));
+   for (const name of files) await rm(join(changesetDir, name));
+   console.log(version);
+ }
+ 
+ async function verifyGate() {
+-  const gate = JSON.parse(await readFile(gatePath, "utf-8"));
+-  if (gate.schemaVersion !== 1 || gate.release !== "v1.0.0" || !gate.checks || typeof gate.checks !== "object") {
+-    throw new Error("Invalid v1 release gate schema");
+-  }
++  const gate = parseJsonObject(await readFile(gatePath, "utf-8"), "release/v1-gate.json");
++  if (gate.schemaVersion !== 1 || gate.release !== "v1.0.0") throw new Error("Invalid v1 release gate schema");
++  const checks = asObject(gate.checks, "release/v1-gate.json.checks");
+   const required = ["freshContextReview", "cleanFixture", "codexDogfood", "claudeDogfood", "anoulaDogfood", "conventionReconciliation"];
+   for (const name of required) {
+-    const check = gate.checks[name];
+-    if (!check || check.status !== "passed" || typeof check.evidence !== "string" || !check.evidence.trim()) {
++    const check = asObject(checks[name], `release/v1-gate.json.checks.${name}`);
++    if (check.status !== "passed" || typeof check.evidence !== "string" || !check.evidence.trim()) {
+       throw new Error(`Release gate not satisfied: ${name}`);
+     }
+   }
+   console.log("v1 release gate passed");
+ }
+ 
++function parseJsonObject(text: string, label: string): JsonObject {
++  const value: unknown = JSON.parse(text);
++  return asObject(value, label);
++}
++
++function asObject(value: unknown, label: string): JsonObject {
++  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Expected object at ${label}`);
++  return value as JsonObject;
++}
++
++function asString(value: unknown, label: string): string {
++  if (typeof value !== "string") throw new Error(`Expected string at ${label}`);
++  return value;
++}
++
+ function bumpVersion(version: string, bump: Bump) {
+   const [major, minor, patch] = version.split(".").map(Number);
+   if ([major, minor, patch].some((n) => Number.isNaN(n))) throw new Error(`Invalid version: ${version}`);
+@@ -66,7 +82,7 @@
+   return `${major}.${minor}.${patch + 1}`;
+ }
+ 
+-main().catch((error) => {
++main().catch((error: unknown) => {
+   console.error(error instanceof Error ? error.message : String(error));
+   process.exitCode = 1;
+ });
+--- a/cli/vendor-sync.ts
++++ b/cli/vendor-sync.ts
+@@ -22,7 +22,11 @@
+   license: string | null;
+   includes: string[];
+ };
+-type Manifest = { schemaVersion: 1; sources: Source[] };
++type Manifest = { schemaVersion: number; sources: Source[] };
++type GitCommitResponse = { sha: string; commit: { tree: { sha: string } } };
++type GitTreeEntry = { path: string; type: string; sha: string };
++type GitTreeResponse = { tree: GitTreeEntry[] };
++type GitBlobResponse = { encoding: string; content: string };
+ 
+ async function main() {
+   const manifest = JSON.parse(await readFile(sourcesPath, "utf-8")) as Manifest;
+@@ -61,7 +65,7 @@
+ }
+ 
+ async function updatePin(source: Source) {
+-  const commit = await apiJson<any>(`https://api.github.com/repos/${source.repository}/commits/${source.upstreamRef}`);
++  const commit = await apiJson<GitCommitResponse>(`https://api.github.com/repos/${source.repository}/commits/${source.upstreamRef}`);
+   source.commit = String(commit.sha);
+   let tree = String(commit.commit.tree.sha);
+   if (source.rootPath) tree = await subtreeSha(source.repository, tree, source.rootPath);
+@@ -71,8 +75,8 @@
+ async function subtreeSha(repo: string, rootTree: string, path: string) {
+   let tree = rootTree;
+   for (const part of path.split("/").filter(Boolean)) {
+-    const data = await apiJson<any>(`https://api.github.com/repos/${repo}/git/trees/${tree}`);
+-    const entry = data.tree.find((item: any) => item.type === "tree" && item.path === part);
++    const data = await apiJson<GitTreeResponse>(`https://api.github.com/repos/${repo}/git/trees/${tree}`);
++    const entry = data.tree.find((item) => item.type === "tree" && item.path === part);
+     if (!entry) throw new Error(`Could not resolve ${path} in ${repo}`);
+     tree = String(entry.sha);
+   }
+@@ -81,14 +85,14 @@
+ 
+ async function materialize(source: Source, target: string) {
+   await mkdir(target, { recursive: true });
+-  const tree = await apiJson<any>(`https://api.github.com/repos/${source.repository}/git/trees/${source.tree}?recursive=1`);
+-  const blobs = tree.tree.filter((entry: any) => entry.type === "blob" && included(String(entry.path), source.includes));
++  const tree = await apiJson<GitTreeResponse>(`https://api.github.com/repos/${source.repository}/git/trees/${source.tree}?recursive=1`);
++  const blobs = tree.tree.filter((entry) => entry.type === "blob" && included(entry.path, source.includes));
+   for (const entry of blobs) {
+-    const blob = await apiJson<any>(`https://api.github.com/repos/${source.repository}/git/blobs/${entry.sha}`);
++    const blob = await apiJson<GitBlobResponse>(`https://api.github.com/repos/${source.repository}/git/blobs/${entry.sha}`);
+     if (blob.encoding !== "base64") throw new Error(`Unsupported blob encoding for ${source.id}:${entry.path}`);
+-    const path = join(target, String(entry.path));
++    const path = join(target, entry.path);
+     await mkdir(dirname(path), { recursive: true });
+-    await writeFile(path, Buffer.from(String(blob.content).replaceAll("\n", ""), "base64"));
++    await writeFile(path, Buffer.from(blob.content.replaceAll("\n", ""), "base64"));
+   }
+   const files = await hashTree(target, new Set(["VENDORED.json"]));
+   await writeFile(
+@@ -175,7 +179,7 @@
+   return (await response.json()) as T;
+ }
+ 
+-main().catch((error) => {
++main().catch((error: unknown) => {
+   console.error(error instanceof Error ? error.message : String(error));
+   process.exitCode = 1;
+ });
+--- a/tests/vendor-policy.test.ts
++++ b/tests/vendor-policy.test.ts
+@@ -4,9 +4,19 @@
+ 
+ const ROOT = resolve(import.meta.dir, "..");
+ 
++type VendorSource = {
++  id: string;
++  mode: "vendor" | "external";
++  license: string | null;
++  commit: string | null;
++  tree: string;
++};
++type VendorManifest = { sources: VendorSource[] };
++type Preset = { externalSkills: Record<string, unknown>; ownedSkills: string[] };
++
+ describe("vendor policy", () => {
+   test("never redistributes a source without a declared license", async () => {
+-    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf-8"));
++    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf-8")) as VendorManifest;
+     for (const source of manifest.sources) {
+       if (source.mode === "vendor") {
+         expect(source.license).toBeTruthy();
+@@ -17,10 +27,10 @@
+   });
+ 
+   test("keeps Convex external and out of default external-skill expectations", async () => {
+-    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf-8"));
+-    const convex = manifest.sources.find((source: any) => source.id === "convex");
+-    const preset = JSON.parse(await readFile(`${ROOT}/presets/effect-convex-web.json`, "utf-8"));
+-    expect(convex.mode).toBe("external");
++    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf-8")) as VendorManifest;
++    const convex = manifest.sources.find((source) => source.id === "convex");
++    const preset = JSON.parse(await readFile(`${ROOT}/presets/effect-convex-web.json`, "utf-8")) as Preset;
++    expect(convex?.mode).toBe("external");
+     expect(preset.externalSkills).toEqual({});
+     expect(preset.ownedSkills).toContain("convex");
+   });
+--- a/tests/module-graph.test.ts
++++ b/tests/module-graph.test.ts
+@@ -4,32 +4,39 @@
+ 
+ const ROOT = resolve(import.meta.dir, "..");
+ 
+-async function json(path: string) {
+-  return JSON.parse(await readFile(join(ROOT, path), "utf-8"));
++type ModuleManifest = { requires: string[]; skills: string[] };
++type Preset = {
++  modules: string[];
++  ownedSkills: string[];
++  vendorSkills: Record<string, string[]>;
++};
++
++async function json<T>(path: string): Promise<T> {
++  return JSON.parse(await readFile(join(ROOT, path), "utf-8")) as T;
+ }
+ 
+ describe("effect-convex-web preset", () => {
+   test("keeps Confect dependencies and specialist skill explicit", async () => {
+-    const confect = await json("docs/stacks/confect/module.json");
++    const confect = await json<ModuleManifest>("docs/stacks/confect/module.json");
+     expect(confect.requires).toEqual(["effect", "convex"]);
+     expect(confect.skills).toEqual(["confect"]);
+   });
+ 
+   test("makes Effect and Convex specialist requirements executable", async () => {
+-    expect((await json("docs/stacks/effect/module.json")).skills).toEqual(["effect-ts"]);
+-    expect((await json("docs/stacks/convex/module.json")).skills).toEqual(["convex"]);
++    expect((await json<ModuleManifest>("docs/stacks/effect/module.json")).skills).toEqual(["effect-ts"]);
++    expect((await json<ModuleManifest>("docs/stacks/convex/module.json")).skills).toEqual(["convex"]);
+   });
+ 
+   test("TanStack Form pulls the Effect Schema dependency its convention requires", async () => {
+-    const form = await json("docs/stacks/tanstack-form/module.json");
++    const form = await json<ModuleManifest>("docs/stacks/tanstack-form/module.json");
+     expect(form.requires).toEqual(["react", "effect"]);
+   });
+ 
+   test("preset selects every module-required skill", async () => {
+-    const preset = await json("presets/effect-convex-web.json");
++    const preset = await json<Preset>("presets/effect-convex-web.json");
+     const selected = new Set([...preset.ownedSkills, ...Object.values(preset.vendorSkills).flat()] as string[]);
+     for (const name of preset.modules) {
+-      const module = await json(`docs/stacks/${name}/module.json`);
++      const module = await json<ModuleManifest>(`docs/stacks/${name}/module.json`);
+       for (const skill of module.skills ?? []) expect(selected.has(skill)).toBe(true);
+     }
+   });
+--- a/tests/consumer.test.ts
++++ b/tests/consumer.test.ts
+@@ -93,7 +93,7 @@
+     const target = await fixture();
+     expect((await run("install", "--target", target)).code).toBe(0);
+     const path = join(target, ".playbook", "config.json");
+-    const config = JSON.parse(await readFile(path, "utf-8"));
++    const config = JSON.parse(await readFile(path, "utf-8")) as { schemaVersion: number };
+     config.schemaVersion = 999;
+     await writeFile(path, JSON.stringify(config, null, 2) + "\n");
+     const result = await run("update", "--target", target);
+--- a/tests/release-publish.test.ts
++++ b/tests/release-publish.test.ts
+@@ -33,8 +33,10 @@
+   test("workflow uses the leased atomic push contract", async () => {
+     const workflow = await Bun.file(join(ROOT, ".github", "workflows", "release.yml")).text();
+     expect(workflow).toContain("git push --atomic");
++    // oxlint-disable-next-line no-template-curly-in-string -- This asserts literal GitHub Actions shell expansion syntax.
+     expect(workflow).toContain('--force-with-lease="refs/heads/main:${GITHUB_SHA}"');
+     expect(workflow).toContain("HEAD:refs/heads/main");
++    // oxlint-disable-next-line no-template-curly-in-string -- This asserts literal GitHub Actions shell expansion syntax.
+     expect(workflow).toContain('"refs/tags/v${VERSION}:refs/tags/v${VERSION}"');
+   });
+ });
