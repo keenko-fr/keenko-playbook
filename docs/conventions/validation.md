@@ -9,10 +9,7 @@ Use one canonical Effect Schema for each meaningful finite issue vocabulary and 
 ```ts
 import { Schema as S } from "effect";
 
-export const sShowIssue = S.Literals([
-  "unavailable",
-  "invalid_response",
-]);
+export const sShowIssue = S.Literals(["unavailable", "invalid_response"]);
 
 export type ShowIssue = typeof sShowIssue.Type;
 ```
@@ -30,12 +27,9 @@ Keep the issue schema at the narrowest genuinely shared owner. If one backend fe
 Typed failures that carry a canonical issue vocabulary use the property name `issue`:
 
 ```ts
-export class ShowFailure extends S.TaggedError<ShowFailure>()(
-  "ShowFailure",
-  {
-    issue: sShowIssue,
-  },
-) {}
+export class ShowFailure extends S.TaggedError<ShowFailure>()("ShowFailure", {
+  issue: sShowIssue,
+}) {}
 ```
 
 Do not use competing canonical field names such as `reason` or `code` for this Failure field.

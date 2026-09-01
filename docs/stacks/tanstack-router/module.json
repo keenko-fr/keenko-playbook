@@ -1,8 +1,6 @@
 {
   "name": "tanstack-router",
-  "requires": [
-    "react"
-  ],
+  "requires": ["react"],
   "skills": [],
   "incompatibleWith": []
 }

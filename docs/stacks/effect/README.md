@@ -2,6 +2,80 @@
 
 Effect is a stack module, not a universal requirement. Plain synchronous helpers remain plain TypeScript when Effect adds no value.
 
+## Tooling
+
+Effect-enabled TypeScript repositories require `@effect/tsgo` and `oxlint-plugin-effect` in addition to the canonical TypeScript tooling. The v1 pins are `@effect/tsgo@0.38.0` and `oxlint-plugin-effect@0.11.0`; the matching universal pins are recorded in `docs/core/tooling.md`.
+
+Treat `@effect/tsgo`, TypeScript, Oxlint, and `oxlint-tsgolint` as one compatibility unit. Before an upgrade, inspect the installed/current `@effect/tsgo` supported-components manifest and move the supported pins together. Re-check the pinned `oxlint-plugin-effect` pairing at the same time because its recommended rule set and overlap with Effect tsgo are convention behavior.
+
+Use `effect-tsgo patch --oxlint` after dependency installation so the Effect TypeScript-Go integration owns both the TypeScript and Oxlint integration. Keep root Oxlint `options.typeAware: true`. Extend the `@effect/tsgo/oxlint-presets` recommended preset so semantic/type-aware Effect diagnostics surface through Oxlint. When the Effect language-service plugin is enabled, set its `diagnostics` option to `false` so editor/LSP diagnostics are not duplicated; `typecheck` remains the separate TypeScript compiler verification contract.
+
+Also enable the `oxlint-plugin-effect` recommended preset for authored Effect source. It owns unconditional Effect syntax/structural policy while `@effect/tsgo` owns semantic/type-aware Effect correctness. Keep the plugin's recommended rules active when the same concern also exists in Effect tsgo; for the pinned `oxlint-plugin-effect@0.11.0` pairing, disable the corresponding `effecttsgo/*` Oxlint rules instead. The canonical plugin exception is `effect/noTernary`, because a blanket ternary ban is stylistic rather than a correctness rule.
+
+For an Effect-owned TypeScript repository, merge this Effect layer into the canonical root `oxlint.config.ts` rather than replacing the Ultracite/Keenko baseline:
+
+```ts
+import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";
+import { defineConfig } from "oxlint";
+import { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";
+import core from "ultracite/oxlint/core";
+
+export default defineConfig({
+  extends: [core, effectTsgoRecommended],
+  jsPlugins: ["oxlint-plugin-effect/plugin"],
+  options: {
+    typeAware: true,
+  },
+  rules: {
+    ...effectRecommended,
+    "effect/noTernary": "off",
+    "effecttsgo/async-function": "off",
+    "effecttsgo/crypto-random-uuid": "off",
+    "effecttsgo/crypto-random-uuid-in-effect": "off",
+    "effecttsgo/global-console": "off",
+    "effecttsgo/global-console-in-effect": "off",
+    "effecttsgo/global-date": "off",
+    "effecttsgo/global-date-in-effect": "off",
+    "effecttsgo/global-fetch": "off",
+    "effecttsgo/global-fetch-in-effect": "off",
+    "effecttsgo/global-random": "off",
+    "effecttsgo/global-random-in-effect": "off",
+    "effecttsgo/global-timers": "off",
+    "effecttsgo/global-timers-in-effect": "off",
+    "effecttsgo/new-promise": "off",
+    "effecttsgo/node-builtin-import": "off",
+    "effecttsgo/prefer-schema-over-json": "off",
+    "effecttsgo/process-env": "off",
+    "effecttsgo/process-env-in-effect": "off",
+    "effecttsgo/try-catch-in-effect-gen": "off",
+    // Keep the repository's normal Keenko overrides after the upstream presets.
+  },
+});
+```
+
+The overlap list above is the pinned plugin's versioned pairing behavior expressed on the canonical Oxlint surface. Keep the plugin's unconditional rules and preserve the remaining type-aware `effecttsgo/*` diagnostics, including `effecttsgo/floating-effect`, `effecttsgo/run-effect-inside-effect`, `effecttsgo/extends-native-error`, and `effecttsgo/unsafe-effect-type-assertion`.
+
+Compose and provide Layers at application entry points. Keep `effecttsgo/strict-effect-provide` at its upstream default in the shared root baseline because the rule cannot distinguish valid entry-point provisioning from the non-entry-point usage it is intended to discourage. A repository may enable the rule only in a machine-identifiable scope that excludes its legitimate entry points; otherwise enforce this architectural distinction through prose and review.
+
+The TypeScript language-service configuration is a separate surface. Disable its diagnostic emission globally so the editor does not repeat diagnostics already reported by Oxlint; do not use `diagnosticSeverity` there to control the Oxlint rule set.
+
+```json
+{
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnostics": false
+      }
+    ]
+  }
+}
+```
+
+This overlap list is versioned upstream behavior, not a permanent hand-maintained Keenko catalog. Re-read the installed `oxlint-plugin-effect` pairing guidance and the installed `@effect/tsgo` Oxlint configuration whenever either Effect lint package changes, then update the Oxlint overrides only when the pairing changes.
+
+In a mixed monorepo, keep type-aware linting in the root config and scope Effect-only policy to the Effect-owned workspaces instead of leaking it into non-Effect code. Use root overrides or an explicitly inherited package config according to the installed Oxlint configuration semantics; do not assume nested configs merge automatically, and keep root-only `options.typeAware` at the repository root.
+
 ## Imports
 
 Canonical authored Effect 4 code prefers named imports from the package root, with local aliases when they improve readability:
@@ -63,4 +137,4 @@ Do not expose Effect runtime types (`Option`, `Either`, services, fibers, causes
 - Use Effect `Config` inside Effect-managed code. At genuinely native synchronous Convex/provider setup boundaries, native generated environment access is appropriate.
 - Missing/invalid required runtime configuration may defect at the runtime boundary. Optional/business configuration stays typed when absence is meaningful.
 
-For Effect API details, inspect the installed Effect guidance/source before relying on memory.
+For Effect API and tooling details, inspect the installed Effect guidance/source before relying on memory.

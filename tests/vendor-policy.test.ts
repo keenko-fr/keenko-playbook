@@ -4,9 +4,19 @@ import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 
+type VendorSource = {
+  id: string;
+  mode: "vendor" | "external";
+  license: string | null;
+  commit: string | null;
+  tree: string;
+};
+type VendorManifest = { sources: VendorSource[] };
+type Preset = { externalSkills: Record<string, unknown>; ownedSkills: string[] };
+
 describe("vendor policy", () => {
   test("never redistributes a source without a declared license", async () => {
-    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf8"));
+    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf-8")) as VendorManifest;
     for (const source of manifest.sources) {
       if (source.mode === "vendor") {
         expect(source.license).toBeTruthy();
@@ -17,10 +27,10 @@ describe("vendor policy", () => {
   });
 
   test("keeps Convex external and out of default external-skill expectations", async () => {
-    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf8"));
-    const convex = manifest.sources.find((source: any) => source.id === "convex");
-    const preset = JSON.parse(await readFile(`${ROOT}/presets/effect-convex-web.json`, "utf8"));
-    expect(convex.mode).toBe("external");
+    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf-8")) as VendorManifest;
+    const convex = manifest.sources.find((source) => source.id === "convex");
+    const preset = JSON.parse(await readFile(`${ROOT}/presets/effect-convex-web.json`, "utf-8")) as Preset;
+    expect(convex?.mode).toBe("external");
     expect(preset.externalSkills).toEqual({});
     expect(preset.ownedSkills).toContain("convex");
   });

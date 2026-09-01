@@ -1,9 +1,6 @@
 {
   "name": "tanstack-start",
-  "requires": [
-    "react",
-    "tanstack-router"
-  ],
+  "requires": ["react", "tanstack-router"],
   "skills": [],
   "incompatibleWith": []
 }

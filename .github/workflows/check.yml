@@ -17,8 +17,6 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Canonical source check
-        run: bun run check
       - name: Release-grade check
         env:
           GITHUB_TOKEN: ${{ github.token }}

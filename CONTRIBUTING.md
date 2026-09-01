@@ -26,11 +26,10 @@ Run the repository's canonical source checks before PR review:
 bun run check
 ```
 
-For a release candidate:
+For a release candidate, run the stronger self-contained release check:
 
 ```bash
 bun run check:release
-bun run vendor:check
 ```
 
 Use the release workflow to prepare a release PR. Publishing is a separate explicit action after that PR is human-reviewed/merged and the machine-readable release gate is satisfied.

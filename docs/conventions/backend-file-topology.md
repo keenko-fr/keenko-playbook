@@ -2,18 +2,22 @@
 
 Backend structural section separators are navigation and file-organization conventions. They are an explicit exception to the generic rule that comments should explain rationale rather than straightforward code.
 
-Use only sections that contain code. Keep the canonical order for the file kind. Do not add empty placeholder sections or invent synonymous headings. Section names, nesting level, and order are canonical; keep the dash separator style consistent within the file.
+Use only sections that contain code. Keep the canonical order for the file kind. Do not add empty placeholder sections or invent synonymous headings. Section names, nesting level, order, width, and spacing are canonical.
+
+All separator comment lines are exactly 140 characters, including indentation. A level-1 separator starts a major section: when it follows existing code, place one blank line before the separator and no blank line after it. A level-2 separator is a subseparator inside an enclosing fluent structure: add no blank line before or after it.
 
 Level-1 separators organize top-level declarations:
 
 ```ts
-// CONSTANTS ----------------------------------------------------------------
+// CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
+const RETRY_LIMIT = 3;
 ```
 
 Level-2 separators organize nested fluent structure when the grammar below calls for them:
 
 ```ts
-  // QUERIES ---------------------------------------------------------------
+  // QUERIES -------------------------------------------------------------------------------------------------------------------------------
+  .addFunction(...)
 ```
 
 ## Confect spec files
@@ -42,16 +46,11 @@ INTERNAL ACTIONS
 Absent function kinds are omitted. `SCHEMAS` and `SPEC` are level 1; the function-kind separators are level 2 inside the fluent spec chain.
 
 ```ts
-// SPEC ---------------------------------------------------------------------
-
+// SPEC ------------------------------------------------------------------------------------------------------------------------------------
 export default GroupSpec.make()
-
-  // QUERIES ---------------------------------------------------------------
-
+  // QUERIES -------------------------------------------------------------------------------------------------------------------------------
   .addFunction(...)
-
-  // MUTATIONS -------------------------------------------------------------
-
+  // MUTATIONS -----------------------------------------------------------------------------------------------------------------------------
   .addFunction(...);
 ```
 

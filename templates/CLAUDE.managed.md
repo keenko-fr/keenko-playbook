@@ -1,4 +1,5 @@
 <!-- keenko-playbook:start -->
+
 ## Keenko Playbook
 
 Instruction precedence: current human instruction > project ADR/override > project-local docs > Keenko core > enabled stack modules > owned skills > upstream skills > generic defaults.

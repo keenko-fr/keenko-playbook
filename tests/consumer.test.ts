@@ -9,7 +9,11 @@ const CLI = join(ROOT, "cli", "playbook.ts");
 const tempRoots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(tempRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await Promise.all(
+    tempRoots.splice(0).map(async (path) => {
+      await rm(path, { recursive: true, force: true });
+    })
+  );
 });
 
 async function fixture() {
@@ -23,11 +27,7 @@ async function fixture() {
 
 async function run(...args: string[]) {
   const proc = Bun.spawn([process.execPath, CLI, ...args], { stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { stdout, stderr, code };
 }
 
@@ -36,9 +36,9 @@ describe("consumer materialization", () => {
     const target = await fixture();
     expect((await run("install", "--target", target)).code).toBe(0);
     const installed = await hashTree(target);
-    expect(await readFile(join(target, "AGENTS.md"), "utf8")).toContain("Keep me.");
-    expect(await readFile(join(target, "CLAUDE.md"), "utf8")).toContain("Keep me too.");
-    expect(await readFile(join(target, "CONTEXT.md"), "utf8")).toContain("Keep this context.");
+    expect(await readFile(join(target, "AGENTS.md"), "utf-8")).toContain("Keep me.");
+    expect(await readFile(join(target, "CLAUDE.md"), "utf-8")).toContain("Keep me too.");
+    expect(await readFile(join(target, "CONTEXT.md"), "utf-8")).toContain("Keep this context.");
 
     expect((await run("install", "--target", target)).code).not.toBe(0);
     expect(await hashTree(target)).toEqual(installed);
@@ -81,7 +81,7 @@ describe("consumer materialization", () => {
   test("detects managed-block tampering and retired generated skills", async () => {
     const target = await fixture();
     expect((await run("install", "--target", target)).code).toBe(0);
-    const agents = await readFile(join(target, "AGENTS.md"), "utf8");
+    const agents = await readFile(join(target, "AGENTS.md"), "utf-8");
     await writeFile(join(target, "AGENTS.md"), agents.replace("Instruction precedence:", "Instruction precedence: REVERSED "));
     expect((await run("check", "--target", target)).code).not.toBe(0);
 
@@ -97,7 +97,7 @@ describe("consumer materialization", () => {
     const target = await fixture();
     expect((await run("install", "--target", target)).code).toBe(0);
     const path = join(target, ".playbook", "config.json");
-    const config = JSON.parse(await readFile(path, "utf8"));
+    const config = JSON.parse(await readFile(path, "utf-8")) as { schemaVersion: number };
     config.schemaVersion = 999;
     await writeFile(path, JSON.stringify(config, null, 2) + "\n");
     const result = await run("update", "--target", target);
@@ -112,7 +112,7 @@ describe("consumer materialization", () => {
       const dir = join(target, root, "grilling");
       expect(await exists(join(dir, "UPSTREAM_LICENSE"))).toBe(true);
       expect(await exists(join(dir, "UPSTREAM_PROVENANCE.json"))).toBe(true);
-      const skill = await readFile(join(dir, "SKILL.md"), "utf8");
+      const skill = await readFile(join(dir, "SKILL.md"), "utf-8");
       expect(skill).toContain("Only route to skills that are actually installed");
       expect(skill).toContain("Do not commit, push, merge");
     }
@@ -123,7 +123,9 @@ async function hashTree(root: string) {
   const out: Record<string, string> = {};
   for (const file of await findAllFiles(root)) {
     const rel = relative(root, file).replaceAll("\\", "/");
-    out[rel] = createHash("sha256").update(await readFile(file)).digest("hex");
+    out[rel] = createHash("sha256")
+      .update(await readFile(file))
+      .digest("hex");
   }
   return out;
 }
@@ -133,12 +135,17 @@ async function findAllFiles(root: string): Promise<string[]> {
   if (!(await exists(root))) return out;
   for (const entry of await readdir(root, { withFileTypes: true })) {
     const path = join(root, entry.name);
-    if (entry.isDirectory()) out.push(...await findAllFiles(path));
+    if (entry.isDirectory()) out.push(...(await findAllFiles(path)));
     else if (entry.isFile()) out.push(path);
   }
   return out.sort();
 }
 
 async function exists(path: string) {
-  try { await stat(path); return true; } catch { return false; }
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -15,6 +15,8 @@ For React route, page, layout, and component files, use only the sections the fi
 
 Use the exact 140-character concern separators and canonical section names. Do not invent synonyms such as `CONSTANTS`, `UTILS`, `FUNCTIONS`, or `PRESENTATION`. Empty sections are omitted.
 
+A frontend concern separator is a level-1/major separator. When it follows existing code, place one blank line before the separator and no blank line after it; the first declaration in that section follows immediately. At the start of a file there is naturally no preceding blank line.
+
 `PAGE`, `LAYOUT`, and `COMPONENT` are alternatives for the main rendered unit.
 
 - `CONSTS`: static local values.

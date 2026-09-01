@@ -7,7 +7,11 @@ const ROOT = resolve(import.meta.dir, "..");
 const tempRoots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(tempRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await Promise.all(
+    tempRoots.splice(0).map(async (path) => {
+      await rm(path, { recursive: true, force: true });
+    })
+  );
 });
 
 describe("release publication", () => {
@@ -15,22 +19,28 @@ describe("release publication", () => {
     const unchanged = await gitFixture();
     const ok = await publishTag(unchanged.work, unchanged.candidate, "v1.0.0");
     expect(ok.code).toBe(0);
-    expect((await git(unchanged.root, `--git-dir=${unchanged.remote}`, "rev-parse", "refs/tags/v1.0.0")).stdout.trim()).toBe(unchanged.candidate);
+    expect((await git(unchanged.root, `--git-dir=${unchanged.remote}`, "rev-parse", "refs/tags/v1.0.0")).stdout.trim()).toBe(
+      unchanged.candidate
+    );
 
     const advanced = await gitFixture();
     await advanceMain(advanced);
     const stale = await publishTag(advanced.work, advanced.candidate, "v1.0.0");
     expect(stale.code).not.toBe(0);
     expect(stale.stderr).toContain("stale info");
-    expect((await git(advanced.root, `--git-dir=${advanced.remote}`, "rev-parse", "refs/heads/main")).stdout.trim()).not.toBe(advanced.candidate);
+    expect((await git(advanced.root, `--git-dir=${advanced.remote}`, "rev-parse", "refs/heads/main")).stdout.trim()).not.toBe(
+      advanced.candidate
+    );
     expect((await git(advanced.root, `--git-dir=${advanced.remote}`, "rev-parse", "--verify", "refs/tags/v1.0.0")).code).not.toBe(0);
   });
 
   test("workflow uses the leased atomic push contract", async () => {
     const workflow = await Bun.file(join(ROOT, ".github", "workflows", "release.yml")).text();
     expect(workflow).toContain("git push --atomic");
+    // oxlint-disable-next-line no-template-curly-in-string -- This asserts literal GitHub Actions shell expansion syntax.
     expect(workflow).toContain('--force-with-lease="refs/heads/main:${GITHUB_SHA}"');
     expect(workflow).toContain("HEAD:refs/heads/main");
+    // oxlint-disable-next-line no-template-curly-in-string -- This asserts literal GitHub Actions shell expansion syntax.
     expect(workflow).toContain('"refs/tags/v${VERSION}:refs/tags/v${VERSION}"');
   });
 });
@@ -80,23 +90,19 @@ async function advanceMain(fixture: GitFixture) {
 
 async function publishTag(work: string, candidate: string, tag: string) {
   expect((await git(work, "tag", tag, candidate)).code).toBe(0);
-  return git(
+  return await git(
     work,
     "push",
     "--atomic",
     `--force-with-lease=refs/heads/main:${candidate}`,
     "origin",
     "HEAD:refs/heads/main",
-    `refs/tags/${tag}:refs/tags/${tag}`,
+    `refs/tags/${tag}:refs/tags/${tag}`
   );
 }
 
 async function git(cwd: string, ...args: string[]) {
   const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { stdout, stderr, code };
 }

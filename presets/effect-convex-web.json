@@ -15,10 +15,7 @@
     "ui",
     "testing"
   ],
-  "ownedSkills": [
-    "confect",
-    "convex"
-  ],
+  "ownedSkills": ["confect", "convex"],
   "vendorSkills": {
     "matt-pocock": [
       "ask-matt",
@@ -38,12 +35,8 @@
       "resolving-merge-conflicts",
       "wizard"
     ],
-    "effect-ts": [
-      "effect-ts"
-    ],
-    "pstack": [
-      "unslop"
-    ]
+    "effect-ts": ["effect-ts"],
+    "pstack": ["unslop"]
   },
   "externalSkills": {},
   "integrations": {
