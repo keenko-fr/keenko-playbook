@@ -12,15 +12,15 @@ Oxlint is correctness-first. Ultracite supplies the broad generic quality baseli
 
 Tooling that can change accepted source or diagnostics is exact-pinned and upgraded as a reviewed convention change. The v1 baseline is:
 
-| Scope | Package | Version |
-| --- | --- | --- |
-| TypeScript | `typescript` | `7.0.2` |
-| Universal | `ultracite` | `7.10.7` |
-| Universal | `oxfmt` | `0.65.0` |
-| Universal | `oxlint` | `1.80.0` |
-| Universal | `oxlint-tsgolint` | `7.0.2001` |
-| Effect module | `@effect/tsgo` | `0.38.0` |
-| Effect module | `oxlint-plugin-effect` | `0.11.0` |
+| Scope         | Package                | Version    |
+| ------------- | ---------------------- | ---------- |
+| TypeScript    | `typescript`           | `7.0.2`    |
+| Universal     | `ultracite`            | `7.10.7`   |
+| Universal     | `oxfmt`                | `0.65.0`   |
+| Universal     | `oxlint`               | `1.80.0`   |
+| Universal     | `oxlint-tsgolint`      | `7.0.2001` |
+| Effect module | `@effect/tsgo`         | `0.38.0`   |
+| Effect module | `oxlint-plugin-effect` | `0.11.0`   |
 
 The Effect tooling is a compatibility unit: before upgrading `@effect/tsgo`, verify its current first-party supported TypeScript, Oxlint, and `oxlint-tsgolint` versions and move the coupled pins together. Do not infer compatibility from semver or model memory.
 

@@ -1,10 +1,6 @@
 {
   "name": "convex",
-  "requires": [
-    "typescript"
-  ],
-  "skills": [
-    "convex"
-  ],
+  "requires": ["typescript"],
+  "skills": ["convex"],
   "incompatibleWith": []
 }

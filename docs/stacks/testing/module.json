@@ -1,8 +1,6 @@
 {
   "name": "testing",
-  "requires": [
-    "typescript"
-  ],
+  "requires": ["typescript"],
   "skills": [],
   "incompatibleWith": []
 }

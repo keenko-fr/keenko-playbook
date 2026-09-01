@@ -1,10 +1,6 @@
 {
   "name": "effect",
-  "requires": [
-    "typescript"
-  ],
-  "skills": [
-    "effect-ts"
-  ],
+  "requires": ["typescript"],
+  "skills": ["effect-ts"],
   "incompatibleWith": []
 }

@@ -19,11 +19,13 @@ export default defineConfig({
   },
   rules: {
     "consistent-return": "off",
-    "curly": "off",
+    curly: "off",
     "eslint/no-await-in-loop": "off",
     "eslint/no-plusplus": "off",
     "eslint/prefer-named-capture-group": "off",
+    "eslint/prefer-destructuring": "off",
     "eslint/prefer-template": "off",
+    "eslint/require-await": "off",
     "eslint/sort-keys": "off",
     "eslint/no-unused-vars": [
       "error",

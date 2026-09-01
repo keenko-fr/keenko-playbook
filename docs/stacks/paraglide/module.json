@@ -1,8 +1,6 @@
 {
   "name": "paraglide",
-  "requires": [
-    "typescript"
-  ],
+  "requires": ["typescript"],
   "skills": [],
   "incompatibleWith": []
 }
