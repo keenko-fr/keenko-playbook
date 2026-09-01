@@ -23,18 +23,23 @@ Security-sensitive interfaces should cover representative caller states (unauthe
 
 Each implementation slice runs the smallest focused verification proving its outcome and reports exactly what ran. Typical evidence includes focused tests, relevant package typecheck, a focused build, or explicit manual/provider verification when genuinely necessary.
 
+For TypeScript changes, format/fix the touched scope and run focused lint/type/tests as appropriate. Safe formatter/linter fixes are implementation tools, not verification evidence until their diff has been inspected.
+
 Manual verification is evidence, not a replacement for automatable behavior tests.
 
 ## Merge boundary
 
-Focused checks do not replace the repository's canonical complete verification. Before merge-ready review, run the applicable project suite:
+Focused checks do not replace the repository's canonical complete verification. Keenko TypeScript repositories expose a non-remediating `bun run check`; it is the canonical merge-ready aggregate. Its applicable stages run in this conceptual order:
 
-- code generation/drift checks;
-- formatting/lint/check;
-- type checking;
-- tests;
-- builds;
-- project-specific delivery/security checks.
+1. code generation/drift checks;
+2. `format:check`;
+3. `lint`;
+4. `typecheck`;
+5. tests;
+6. builds;
+7. project-specific delivery/security checks.
+
+`check` must not rewrite tracked source. Generated drift verification may regenerate into a disposable workspace and compare output, but a green check proves the submitted tree was already valid.
 
 Generated contract changes require deterministic regeneration verification.
 

@@ -11,9 +11,14 @@
   },
   "scripts": {
     "playbook": "bun cli/playbook.ts",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
     "typecheck": "tsc --noEmit",
-    "check": "bun run typecheck && bun cli/playbook.ts check --source && bun test",
-    "check:release": "bun run typecheck && bun cli/playbook.ts check --source --release && bun test && bun run vendor:check",
+    "test": "bun test",
+    "check": "bun cli/playbook.ts check --source && bun run format:check && bun run lint && bun run typecheck && bun run test",
+    "check:release": "bun run check && bun cli/playbook.ts check --source --release && bun run vendor:check",
     "vendor:sync": "bun cli/vendor-sync.ts",
     "vendor:check": "bun cli/vendor-sync.ts --check",
     "vendor:update": "bun cli/vendor-sync.ts --update",
@@ -22,6 +27,10 @@
   },
   "devDependencies": {
     "@types/bun": "1.4.0",
-    "typescript": "7.0.2"
+    "oxfmt": "0.65.0",
+    "oxlint": "1.80.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "7.0.2",
+    "ultracite": "7.10.7"
   }
 }

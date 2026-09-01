@@ -2,10 +2,12 @@
 
 Optimize for reader load, explicit ownership, and directness rather than ceremony.
 
+Oxfmt is the canonical owner of arbitrary source formatting. Follow its output instead of maintaining parallel prose rules for quotes, semicolons, wrapping, trailing commas, or equivalent appearance details. The canonical configuration and import-sorting contract live in `tooling.md`.
+
 ## Imports and modules
 
-- Use `import type` for type-only imports.
-- Keep simple import grouping: external/workspace packages first, then project-local imports; let tooling sort within groups.
+- Use `import type` for type-only imports; linting enforces the mechanical form.
+- Keep simple import grouping: external/workspace packages first, then project-local imports. Oxfmt owns sorting within those groups and preserves side-effect import order.
 - Do not create convenience `index.ts` barrels inside implementation trees. A barrel is appropriate only when it deliberately defines a package/module public API.
 - Prefer named exports. Use default exports only when a framework/tooling contract naturally requires one.
 - Use lowercase `kebab-case` filenames unless framework-special filenames require another form.
@@ -35,7 +37,7 @@ Use `SCREAMING_SNAKE_CASE` for true static module-level constants. The chosen fr
 ## Comments and suppressions
 
 - Comments explain rationale, invariants, external constraints, or dangerous edge cases, not straightforward code.
-- Canonical structural section separators defined by file-topology conventions are an explicit exception: they are navigation/file-structure markers, not explanatory comments. Follow the owning topology document's section names, levels, order, and empty-section omission rules.
+- Canonical structural section separators defined by file-topology conventions are an explicit exception: they are navigation/file-structure markers, not explanatory comments. Follow the owning topology document's section names, levels, order, 140-column width, spacing, and empty-section omission rules.
 - Use the narrowest lint suppression possible and include a concrete reason.
 - Do not merge vague TODO/FIXME notes. A temporary note must describe a useful local constraint or reference tracked work.
 - Remove commented-out implementation code; Git owns history.

@@ -1,0 +1,36 @@
+name: KEE-9 Bootstrap
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    if: github.head_ref == 'gregorybouteiller/kee-9-define-canonical-formatting-and-linting-toolchain-before-v1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.4.0
+      - run: bun install
+      - name: Apply canonical formatter
+        run: bun run format
+      - name: Apply safe lint fixes and capture diagnostics
+        shell: bash
+        run: |
+          mkdir -p .tmp/kee-9
+          bun run lint:fix > .tmp/kee-9/lint.txt 2>&1 || true
+          bun run typecheck > .tmp/kee-9/typecheck.txt 2>&1 || true
+      - name: Capture generated lock and working-tree diff
+        shell: bash
+        run: |
+          cp bun.lock .tmp/kee-9/bun.lock
+          git diff --binary > .tmp/kee-9/working-tree.diff
+          git diff --name-only > .tmp/kee-9/changed-files.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        with:
+          name: kee-9-bootstrap
+          path: .tmp/kee-9

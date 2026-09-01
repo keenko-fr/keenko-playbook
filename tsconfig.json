@@ -12,6 +12,8 @@
   },
   "include": [
     "cli/**/*.ts",
-    "tests/**/*.ts"
+    "tests/**/*.ts",
+    "oxfmt.config.ts",
+    "oxlint.config.ts"
   ]
 }

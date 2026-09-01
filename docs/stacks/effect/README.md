@@ -2,6 +2,18 @@
 
 Effect is a stack module, not a universal requirement. Plain synchronous helpers remain plain TypeScript when Effect adds no value.
 
+## Tooling
+
+Effect-enabled TypeScript repositories require `@effect/tsgo` and `oxlint-plugin-effect` in addition to the canonical TypeScript tooling. The v1 pins are `@effect/tsgo@0.38.0` and `oxlint-plugin-effect@0.11.0`; the matching universal pins are recorded in `docs/core/tooling.md`.
+
+Treat `@effect/tsgo`, TypeScript, Oxlint, and `oxlint-tsgolint` as one compatibility unit. Before an upgrade, inspect the installed/current `@effect/tsgo` supported-components manifest and move the supported pins together.
+
+Use `effect-tsgo patch --oxlint` after dependency installation so the Effect TypeScript-Go integration owns both the TypeScript and Oxlint integration. Keep root Oxlint `options.typeAware: true`. Extend the `@effect/tsgo/oxlint-presets` recommended preset so semantic/type-aware Effect diagnostics surface through Oxlint. When the Effect language-service plugin is enabled, set its `diagnostics` option to `false` so editor/LSP diagnostics are not duplicated; `typecheck` remains the separate TypeScript compiler verification contract.
+
+Also enable the `oxlint-plugin-effect` recommended preset for authored Effect source. It owns unconditional Effect syntax/structural policy while `@effect/tsgo` owns semantic/type-aware Effect correctness. Keep only explicit Keenko exceptions with rationale; the canonical baseline disables `effect/noTernary` because a blanket ternary ban is stylistic rather than a correctness rule. Where the plugin documents a diagnostic duplicated by `@effect/tsgo`, disable the duplicate plugin rule and retain the type-aware `effecttsgo` diagnostic.
+
+In a mixed monorepo, keep type-aware linting in the root config and add a nested Effect package `oxlint.config.ts` only when needed to extend the root plus the Effect presets. Do not copy the root rule catalog into the package config.
+
 ## Imports
 
 Canonical authored Effect 4 code prefers named imports from the package root, with local aliases when they improve readability:
@@ -63,4 +75,4 @@ Do not expose Effect runtime types (`Option`, `Either`, services, fibers, causes
 - Use Effect `Config` inside Effect-managed code. At genuinely native synchronous Convex/provider setup boundaries, native generated environment access is appropriate.
 - Missing/invalid required runtime configuration may defect at the runtime boundary. Optional/business configuration stays typed when absence is meaningful.
 
-For Effect API details, inspect the installed Effect guidance/source before relying on memory.
+For Effect API and tooling details, inspect the installed Effect guidance/source before relying on memory.

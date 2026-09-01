@@ -66,6 +66,7 @@ Start with:
 
 - `docs/core/agent-behavior.md`
 - `docs/core/code-style.md`
+- `docs/core/tooling.md`
 - `docs/core/verification.md`
 - `docs/core/security.md`
 - `docs/conventions/schema-types.md`

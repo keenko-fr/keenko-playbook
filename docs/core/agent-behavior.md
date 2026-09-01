@@ -45,9 +45,11 @@ Facts are the agent's job to investigate. Genuine product, architecture, legal, 
 
 These are Keenko's always-on concise implementation principles. Vendored skills may provide procedural detail but do not replace these rules.
 
+For TypeScript implementation work, use the repository's canonical tooling rather than ad hoc formatter/linter commands. Format/fix the touched scope during implementation, inspect autofix diffs, and run focused lint/type/tests as appropriate. Never manually fight Oxfmt output or autofix generated/vendored sources. Before review handoff, run the applicable complete `bun run check` and report exactly what ran.
+
 ## Version-sensitive claims
 
-For fast-moving libraries such as Effect, Confect, Convex, TanStack, Paraglide, and provider SDKs, inspect the installed version and current primary source/types/docs before making a behavior-dependent change. Model memory is a hypothesis, not evidence.
+For fast-moving libraries such as Effect, Confect, Convex, TanStack, Paraglide, provider SDKs, and the formatting/linting toolchain, inspect the installed version and current primary source/types/docs before making a behavior-dependent change. Model memory is a hypothesis, not evidence.
 
 ## Knowledge
 
