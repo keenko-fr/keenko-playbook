@@ -16,6 +16,20 @@ Every persisted resource exposes `Fields`, `Doc`, and `Foo`. `Insert`, `Patch`, 
 
 Effect Schema values use the `s` prefix exclusively. An `s...` value is an Effect Schema, never a Standard Schema adapter.
 
+## Schema ownership
+
+Keep every schema at the narrowest layer that genuinely owns its semantics. Do not move a schema merely because it is an Effect Schema.
+
+- Endpoint-only Confect input/output details stay with the endpoint/spec; simple one-use schemas normally stay inline.
+- Feature-local application schemas and issue vocabularies stay with the feature.
+- Provider-owned `*ApiDto` schemas stay in the owning infra adapter.
+- Application representations genuinely shared across multiple backend layers belong in `packages/backend/schemas`.
+- Move/expose an application schema through `packages/shared/schemas` only when a real second workspace/runtime consumes the same representation; do not create `packages/shared` in anticipation of that consumer.
+
+For example, if `sShow` / `Show` are consumed by Confect, feature, and infra code, `packages/backend/schemas/shows.ts` is an appropriate owner. A TVMaze `sShowApiDto` remains in `infra/tvmaze.ts`, while a `sShowIssue` used only by the shows feature remains feature-local. If a frontend later genuinely consumes the same application schema or issue vocabulary, expose/move the canonical schema through the earned shared package boundary rather than importing backend implementation files.
+
+See `backend-architecture.md` for package-boundary rules and `validation.md` for `Issue` / `Failure` vocabulary.
+
 ## Type vs encoded representation
 
 Use `typeof sFoo.Type` for the normal decoded TypeScript type. Use `.Encoded` only at a boundary that explicitly needs the encoded side of a transforming schema. Do not routinely export parallel `FooEncoded` types; keep encoded aliases boundary-local.

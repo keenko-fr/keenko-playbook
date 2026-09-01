@@ -35,6 +35,7 @@ Use `SCREAMING_SNAKE_CASE` for true static module-level constants. The chosen fr
 ## Comments and suppressions
 
 - Comments explain rationale, invariants, external constraints, or dangerous edge cases, not straightforward code.
+- Canonical structural section separators defined by file-topology conventions are an explicit exception: they are navigation/file-structure markers, not explanatory comments. Follow the owning topology document's section names, levels, order, and empty-section omission rules.
 - Use the narrowest lint suppression possible and include a concrete reason.
 - Do not merge vague TODO/FIXME notes. A temporary note must describe a useful local constraint or reference tracked work.
 - Remove commented-out implementation code; Git owns history.
