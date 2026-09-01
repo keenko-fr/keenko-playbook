@@ -17,7 +17,9 @@ type ModuleManifest = {
   requires: string[];
   skills: string[];
   incompatibleWith: string[];
+  uiSurface: boolean;
 };
+type ProjectScaffoldEntry = [destination: string, template: string];
 type ExternalSkill = {
   source: string;
   repository: string;
@@ -146,17 +148,19 @@ async function loadPreset(name: string): Promise<Preset> {
   };
 }
 
-async function loadModule(name: string): Promise<ModuleManifest> {
-  const path = join(SOURCE_ROOT, "docs", "stacks", name, "module.json");
+async function loadModule(name: string, stacksRoot = join(SOURCE_ROOT, "docs", "stacks")): Promise<ModuleManifest> {
+  const path = join(stacksRoot, name, "module.json");
   const value = asObject(await readJson(path), `module ${name}`);
-  assertKeys(value, ["name", "requires", "skills", "incompatibleWith"], `module ${name}`);
+  assertKeys(value, ["name", "requires", "skills", "incompatibleWith", "uiSurface"], `module ${name}`);
   const moduleName = asString(value.name, `module ${name}.name`);
   if (moduleName !== name) throw new Error(`Module manifest name mismatch for ${name}`);
+  if (value.uiSurface !== undefined && typeof value.uiSurface !== "boolean") throw new Error(`${name}.uiSurface must be boolean`);
   return {
     name,
     requires: asStringArray(value.requires, `${name}.requires`),
     skills: asStringArray(value.skills, `${name}.skills`),
     incompatibleWith: value.incompatibleWith === undefined ? [] : asStringArray(value.incompatibleWith, `${name}.incompatibleWith`),
+    uiSurface: value.uiSurface ?? false,
   };
 }
 
@@ -184,6 +188,16 @@ async function resolveModules(initial: string[]) {
   return ordered;
 }
 
+function projectScaffoldEntries(modules: ModuleManifest[]): ProjectScaffoldEntry[] {
+  const entries: ProjectScaffoldEntry[] = [
+    ["CONTEXT.md", "project-context.md"],
+    ["docs/project/architecture.md", "project-architecture.md"],
+    ["docs/project/overrides.md", "project-overrides.md"],
+  ];
+  if (modules.some(({ uiSurface }) => uiSurface)) entries.push(["docs/project/ui.md", "project-ui.md"]);
+  return entries;
+}
+
 async function install(flags: Map<string, string | boolean>) {
   const target = resolve(flagString(flags, "target", process.cwd()));
   const presetName = flagString(flags, "preset", "effect-convex-web");
@@ -200,10 +214,13 @@ async function update(flags: Map<string, string | boolean>) {
   const nextVersion = await packageVersion();
   const preset = await loadPreset(config.preset);
   const modules = await resolveModules(preset.modules);
+  const nextModules = modules.map(({ name }) => name);
+  const previousModuleList = config.modules.join(", ");
+  const nextModuleList = nextModules.join(", ");
   console.log(`Keenko Playbook update preview`);
   console.log(`  version: ${config.version} -> ${nextVersion}`);
   console.log(`  preset:  ${config.preset}`);
-  console.log(`  modules: ${modules.map(({ name }) => name).join(", ")}`);
+  console.log(`  modules: ${previousModuleList === nextModuleList ? nextModuleList : `${previousModuleList} -> ${nextModuleList}`}`);
   if (!flags.has("apply")) {
     console.log(`No files changed. Run again with --apply to materialize this source version.`);
     return;
@@ -217,6 +234,7 @@ async function materialize(target: string, presetName: string) {
   const preset = await loadPreset(presetName);
   const modules = await resolveModules(preset.modules);
   const moduleNames = modules.map(({ name }) => name);
+  const projectScaffold = projectScaffoldEntries(modules);
   const version = await packageVersion();
   const vendorIndex = await indexVendoredSkills(true);
   const skillNames = resolveSkillNames(preset, modules, vendorIndex);
@@ -232,7 +250,7 @@ async function materialize(target: string, presetName: string) {
     const current = (await exists(path)) ? await readFile(path, "utf-8") : "";
     nextManaged.set(file, renderManagedFile(current, block, path));
   }
-  await preflightManagedPaths(target);
+  await preflightManagedPaths(target, projectScaffold);
   for (const harness of [".agents", ".claude"]) {
     const root = join(target, harness, "skills");
     for (const name of skillNames) {
@@ -296,7 +314,7 @@ async function materialize(target: string, presetName: string) {
     };
     await writeJson(join(playbookStage, "lock.json"), lock);
 
-    await applyMaterialization(target, stageRoot, nextManaged, skillNames);
+    await applyMaterialization(target, stageRoot, nextManaged, skillNames, projectScaffold);
   } finally {
     await rm(stageRoot, { recursive: true, force: true });
   }
@@ -337,20 +355,26 @@ function renderVendorSkillAdapter(name: string, description: string, availableSk
   return `---\nname: ${name}\ndescription: ${JSON.stringify(description || `Keenko-adapted upstream ${name} workflow.`)}\n---\n\n# Keenko adapter for ${name}\n\nThis skill exposes a pinned upstream workflow through Keenko's authority and safety boundaries.\n\n## Authority guard\n\n1. Current explicit human instruction, project ADR/override, project-local docs, Keenko core, and enabled stack modules outrank the upstream reference.\n2. Do not commit, push, merge, install dependencies/tools, alter package-manager state, or perform external/destructive actions unless the current task explicitly delegates that action.\n3. Bun is the canonical package manager unless the project explicitly documents a compatibility exception. Ignore upstream commands that would introduce a competing lockfile.\n4. Do not edit the Keenko-managed blocks in AGENTS.md or CLAUDE.md directly and do not duplicate canonical conventions into harness files.\n5. Only route to skills that are actually installed. Upstream references to unavailable setup/router skills are advisory, not prerequisites. Use the repository's configured tracker/connectors and canonical docs instead.\n6. If an upstream instruction conflicts with a higher-authority rule, follow the higher-authority rule and continue with the nearest safe equivalent workflow.\n\nInstalled skill set for this snapshot:\n${availableSkills.map((skillName) => `- ${skillName}`).join("\n")}\n\n## Procedure\n\nRead \`references/upstream/SKILL.md\` and apply its procedural guidance subject to the authority guard above. Supporting upstream files are under \`references/upstream/\`. Preserve the upstream notice and provenance files shipped beside this adapter.\n`;
 }
 
-async function preflightManagedPaths(target: string) {
+async function preflightManagedPaths(target: string, projectScaffold: ProjectScaffoldEntry[]) {
   for (const rel of [".playbook", "docs", "docs/project", ".agents", ".agents/skills", ".claude", ".claude/skills"]) {
     const path = join(target, rel);
     if (!(await exists(path))) continue;
     if (!(await stat(path)).isDirectory()) throw new Error(`Managed parent must be a directory: ${path}`);
   }
-  for (const rel of ["CONTEXT.md", "docs/project/architecture.md", "docs/project/overrides.md"]) {
+  for (const [rel] of projectScaffold) {
     const path = join(target, rel);
     if (!(await exists(path))) continue;
     if (!(await stat(path)).isFile()) throw new Error(`Managed scaffold path must be a file: ${path}`);
   }
 }
 
-async function applyMaterialization(target: string, stageRoot: string, managed: Map<string, string>, skillNames: string[]) {
+async function applyMaterialization(
+  target: string,
+  stageRoot: string,
+  managed: Map<string, string>,
+  skillNames: string[],
+  projectScaffold: ProjectScaffoldEntry[]
+) {
   const rollbackRoot = await mkdtemp(join(target, ".keenko-rollback-"));
   const tracked = [".playbook", ".agents/skills", ".claude/skills", "AGENTS.md", "CLAUDE.md", "CONTEXT.md", "docs/project"];
   const existed = new Map<string, boolean>();
@@ -365,7 +389,7 @@ async function applyMaterialization(target: string, stageRoot: string, managed: 
     await rm(join(target, ".playbook"), { recursive: true, force: true });
     await cp(join(stageRoot, "playbook"), join(target, ".playbook"), { recursive: true });
 
-    await ensureProjectScaffold(target);
+    await ensureProjectScaffold(target, projectScaffold);
     for (const [file, text] of managed) await writeFile(join(target, file), text, "utf-8");
 
     for (const harness of [".agents", ".claude"]) {
@@ -394,12 +418,7 @@ async function applyMaterialization(target: string, stageRoot: string, managed: 
   }
 }
 
-async function ensureProjectScaffold(target: string) {
-  const entries = [
-    ["CONTEXT.md", "project-context.md"],
-    ["docs/project/architecture.md", "project-architecture.md"],
-    ["docs/project/overrides.md", "project-overrides.md"],
-  ] as const;
+async function ensureProjectScaffold(target: string, entries: ProjectScaffoldEntry[]) {
   for (const [destination, template] of entries) {
     const path = join(target, destination);
     if (await exists(path)) continue;
@@ -512,6 +531,7 @@ async function checkSource(release: boolean) {
   const warnings: string[] = [];
   for (const required of [
     "templates/project-context.md",
+    "templates/project-ui.md",
     "docs/conventions/backend-architecture.md",
     "docs/conventions/frontend.md",
     "docs/conventions/i18n.md",
@@ -585,6 +605,15 @@ async function checkConsumer(target: string) {
     errors.push(`.playbook snapshot differs from lock; do not edit generated playbook files directly`);
   if (!same([...config.skills].sort(), [...lock.generatedSkills].sort())) errors.push(`config.skills differs from lock.generatedSkills`);
 
+  let projectScaffold = projectScaffoldEntries([]);
+  try {
+    const stacksRoot = join(playbookRoot, "docs", "stacks");
+    const modules = await Promise.all(config.modules.map((name) => loadModule(name, stacksRoot)));
+    projectScaffold = projectScaffoldEntries(modules);
+  } catch (error) {
+    errors.push(errorMessage(error));
+  }
+
   for (const harness of [".agents", ".claude"]) {
     const root = join(target, harness, "skills");
     const actualGenerated = await generatedSkillNames(root);
@@ -609,7 +638,7 @@ async function checkConsumer(target: string) {
       errors.push(errorMessage(error));
     }
   }
-  for (const file of ["CONTEXT.md", "docs/project/architecture.md", "docs/project/overrides.md"]) {
+  for (const [file] of projectScaffold) {
     if (!(await exists(join(target, file)))) errors.push(`Missing project scaffold: ${file}`);
   }
 
