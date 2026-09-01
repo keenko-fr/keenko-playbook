@@ -36,6 +36,7 @@ CLAUDE.md                  # project-owned; Keenko block managed
 docs/project/
   architecture.md
   overrides.md
+  ui.md                    # project-owned; only when an enabled module declares a UI surface
 .playbook/
   config.json              # requested preset/modules
   lock.json                # exact materialized checksums
@@ -45,7 +46,7 @@ docs/project/
 .claude/skills/            # generated native Claude copies
 ```
 
-`CONTEXT.md` is concise project/domain vocabulary and durable facts—not session logs or a second convention manual.
+Project-owned scaffold files are created only when absent and are not overwritten by updates. `CONTEXT.md` is concise project/domain vocabulary and durable facts, not session logs or a second convention manual. `docs/project/ui.md` records durable visual and interaction intent for UI-enabled projects; executable values remain in code/config.
 
 ## CLI
 
@@ -58,7 +59,7 @@ bun cli/playbook.ts update --target ../consumer --apply
 bun cli/playbook.ts check --target ../consumer
 ```
 
-`update` previews by default. `--apply` materializes the current source version. `check` verifies snapshot integrity, native skill copies, managed blocks, and required project scaffold.
+`update` previews by default. `--apply` materializes the current source version. `check` verifies snapshot integrity, native skill copies, managed blocks, and the project scaffold required by the installed modules.
 
 ## Conventions
 
@@ -77,7 +78,7 @@ Start with:
 - `docs/conventions/migrations.md`
 - enabled stack modules under `docs/stacks/`
 
-The initial preset is `effect-convex-web`: TypeScript, React, Effect 4, Convex, Confect, TanStack Start/Router/Query/Form/Table, Paraglide, UI, and testing.
+The initial preset is `effect-convex-web`: TypeScript, React, Effect 4, Convex, Confect, TanStack Start/Router/Query/Form/Table, Paraglide, React UI with Tailwind CSS 4 + shadcn/ui + Base UI 1, and testing.
 
 ## Upstream skills
 
