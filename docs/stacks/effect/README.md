@@ -10,7 +10,7 @@ Treat `@effect/tsgo`, TypeScript, Oxlint, and `oxlint-tsgolint` as one compatibi
 
 Use `effect-tsgo patch --oxlint` after dependency installation so the Effect TypeScript-Go integration owns both the TypeScript and Oxlint integration. Keep root Oxlint `options.typeAware: true`. Extend the `@effect/tsgo/oxlint-presets` recommended preset so semantic/type-aware Effect diagnostics surface through Oxlint. When the Effect language-service plugin is enabled, set its `diagnostics` option to `false` so editor/LSP diagnostics are not duplicated; `typecheck` remains the separate TypeScript compiler verification contract.
 
-Also enable the `oxlint-plugin-effect` recommended preset for authored Effect source. It owns unconditional Effect syntax/structural policy while `@effect/tsgo` owns semantic/type-aware Effect correctness. Keep the plugin's recommended rules active when the same concern also exists in Effect tsgo; for the pinned `oxlint-plugin-effect@0.11.0` pairing, disable the corresponding tsgo diagnostics instead. The canonical plugin exception is `effect/noTernary`, because a blanket ternary ban is stylistic rather than a correctness rule.
+Also enable the `oxlint-plugin-effect` recommended preset for authored Effect source. It owns unconditional Effect syntax/structural policy while `@effect/tsgo` owns semantic/type-aware Effect correctness. Keep the plugin's recommended rules active when the same concern also exists in Effect tsgo; for the pinned `oxlint-plugin-effect@0.11.0` pairing, disable the corresponding `effecttsgo/*` Oxlint rules instead. The canonical plugin exception is `effect/noTernary`, because a blanket ternary ban is stylistic rather than a correctness rule.
 
 For an Effect-owned TypeScript repository, merge this Effect layer into the canonical root `oxlint.config.ts` rather than replacing the Ultracite/Keenko baseline:
 
@@ -29,12 +29,33 @@ export default defineConfig({
   rules: {
     ...effectRecommended,
     "effect/noTernary": "off",
+    "effecttsgo/async-function": "off",
+    "effecttsgo/crypto-random-uuid": "off",
+    "effecttsgo/crypto-random-uuid-in-effect": "off",
+    "effecttsgo/global-console": "off",
+    "effecttsgo/global-console-in-effect": "off",
+    "effecttsgo/global-date": "off",
+    "effecttsgo/global-date-in-effect": "off",
+    "effecttsgo/global-fetch": "off",
+    "effecttsgo/global-fetch-in-effect": "off",
+    "effecttsgo/global-random": "off",
+    "effecttsgo/global-random-in-effect": "off",
+    "effecttsgo/global-timers": "off",
+    "effecttsgo/global-timers-in-effect": "off",
+    "effecttsgo/new-promise": "off",
+    "effecttsgo/node-builtin-import": "off",
+    "effecttsgo/prefer-schema-over-json": "off",
+    "effecttsgo/process-env": "off",
+    "effecttsgo/process-env-in-effect": "off",
+    "effecttsgo/try-catch-in-effect-gen": "off",
     // Keep the repository's normal Keenko overrides after the upstream presets.
   },
 });
 ```
 
-For the pinned plugin version, keep its unconditional rules and turn off the documented overlapping Effect tsgo diagnostics in the `@effect/language-service` plugin options. Preserve the other type-aware diagnostics, including `floatingEffect`, `runEffectInsideEffect`, `strictEffectProvide`, `extendsNativeError`, and `unsafeEffectTypeAssertion`.
+The overlap list above is the pinned plugin's versioned pairing behavior expressed on the canonical Oxlint surface. Keep the plugin's unconditional rules and preserve the remaining type-aware `effecttsgo/*` diagnostics, including `effecttsgo/floating-effect`, `effecttsgo/run-effect-inside-effect`, `effecttsgo/strict-effect-provide`, `effecttsgo/extends-native-error`, and `effecttsgo/unsafe-effect-type-assertion`.
+
+The TypeScript language-service configuration is a separate surface. Disable its diagnostic emission globally so the editor does not repeat diagnostics already reported by Oxlint; do not use `diagnosticSeverity` there to control the Oxlint rule set.
 
 ```json
 {
@@ -42,35 +63,14 @@ For the pinned plugin version, keep its unconditional rules and turn off the doc
     "plugins": [
       {
         "name": "@effect/language-service",
-        "diagnostics": false,
-        "diagnosticSeverity": {
-          "asyncFunction": "off",
-          "cryptoRandomUUID": "off",
-          "cryptoRandomUUIDInEffect": "off",
-          "globalConsole": "off",
-          "globalConsoleInEffect": "off",
-          "globalDate": "off",
-          "globalDateInEffect": "off",
-          "globalFetch": "off",
-          "globalFetchInEffect": "off",
-          "globalRandom": "off",
-          "globalRandomInEffect": "off",
-          "globalTimers": "off",
-          "globalTimersInEffect": "off",
-          "newPromise": "off",
-          "nodeBuiltinImport": "off",
-          "preferSchemaOverJson": "off",
-          "processEnv": "off",
-          "processEnvInEffect": "off",
-          "tryCatchInEffectGen": "off"
-        }
+        "diagnostics": false
       }
     ]
   }
 }
 ```
 
-This duplicate list is versioned upstream behavior, not a permanent hand-maintained Keenko catalog. Re-read the installed `oxlint-plugin-effect` pairing guidance whenever either Effect lint package changes and update the list only when upstream changes it.
+This overlap list is versioned upstream behavior, not a permanent hand-maintained Keenko catalog. Re-read the installed `oxlint-plugin-effect` pairing guidance and the installed `@effect/tsgo` Oxlint configuration whenever either Effect lint package changes, then update the Oxlint overrides only when the pairing changes.
 
 In a mixed monorepo, keep type-aware linting in the root config and scope Effect-only policy to the Effect-owned workspaces instead of leaking it into non-Effect code. Use root overrides or an explicitly inherited package config according to the installed Oxlint configuration semantics; do not assume nested configs merge automatically, and keep root-only `options.typeAware` at the repository root.
 
