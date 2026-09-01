@@ -1,12 +1,18 @@
 import { defineConfig } from "oxfmt";
 import ultracite from "ultracite/oxfmt";
 
-const ultraciteSortImports = typeof ultracite.sortImports === "object" ? ultracite.sortImports : {};
+const {
+  endOfLine: _endOfLine,
+  tabWidth: _tabWidth,
+  useTabs: _useTabs,
+  ...ultraciteFormatting
+} = ultracite;
+const ultraciteSortImports = typeof ultraciteFormatting.sortImports === "object" ? ultraciteFormatting.sortImports : {};
 
 export default defineConfig({
-  ...ultracite,
+  ...ultraciteFormatting,
   ignorePatterns: [
-    ...(ultracite.ignorePatterns ?? []),
+    ...(ultraciteFormatting.ignorePatterns ?? []),
     ".agents/skills/**",
     ".claude/skills/**",
     ".playbook/**",
