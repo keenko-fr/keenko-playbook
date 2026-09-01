@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.4.0
@@ -24,11 +26,49 @@ jobs:
           bun run lint:fix || true
           git apply --check .kee-9-type-fixes.patch
           git apply .kee-9-type-fixes.patch
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"Expected one occurrence in {path}: {old!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "oxlint.config.ts",
+              '    "eslint/prefer-template": "off",\n',
+              '    "eslint/prefer-destructuring": "off",\n    "eslint/prefer-template": "off",\n',
+          )
+
+          replace_once("cli/vendor-sync.ts", "source.commit = String(commit.sha);", "source.commit = commit.sha;")
+          replace_once("cli/vendor-sync.ts", "let tree = String(commit.commit.tree.sha);", "let tree = commit.commit.tree.sha;")
+          replace_once("cli/vendor-sync.ts", "tree = String(entry.sha);", "tree = entry.sha;")
+
+          for path in ["tests/consumer.test.ts", "tests/release-publish.test.ts"]:
+              file = Path(path)
+              text = file.read_text()
+              text, count = re.subn(
+                  r"async \(path\) => rm\(path, \{ recursive: true, force: true \}\)",
+                  "async (path) => {\n    await rm(path, { recursive: true, force: true });\n  }",
+                  text,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit(f"Expected one cleanup callback in {path}")
+              file.write_text(text)
+          PY
           bun run format
           bun run lint:fix || true
           bun run format
       - name: Verify candidate
-        run: bun run check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun run check
+          bun run check:release
       - name: Create detached candidate commit
         env:
           GITHUB_TOKEN: ${{ github.token }}
