@@ -12,11 +12,13 @@ Use `effect-tsgo patch --oxlint` after dependency installation so the Effect Typ
 
 Also enable the `oxlint-plugin-effect` recommended preset for authored Effect source. It owns unconditional Effect syntax/structural policy while `@effect/tsgo` owns semantic/type-aware Effect correctness. Keep the plugin's recommended rules active when the same concern also exists in Effect tsgo; for the pinned `oxlint-plugin-effect@0.11.0` pairing, disable the corresponding tsgo diagnostics instead. The canonical plugin exception is `effect/noTernary`, because a blanket ternary ban is stylistic rather than a correctness rule.
 
-The Effect layer added to the repository's root `oxlint.config.ts` has this shape (merge it with the canonical root Ultracite/Keenko config rather than replacing that baseline):
+For an Effect-owned TypeScript repository, merge this Effect layer into the canonical root `oxlint.config.ts` rather than replacing the Ultracite/Keenko baseline:
 
 ```ts
 import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";
+import { defineConfig } from "oxlint";
 import { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";
+import core from "ultracite/oxlint/core";
 
 export default defineConfig({
   extends: [core, effectTsgoRecommended],
@@ -70,7 +72,7 @@ For the pinned plugin version, keep its unconditional rules and turn off the doc
 
 This duplicate list is versioned upstream behavior, not a permanent hand-maintained Keenko catalog. Re-read the installed `oxlint-plugin-effect` pairing guidance whenever either Effect lint package changes and update the list only when upstream changes it.
 
-In a mixed monorepo, keep type-aware linting in the root config and scope the Effect rules with root `overrides` when only some workspaces are Effect-owned. Do not create a nested config merely for convenience: Oxlint nested configs do not merge automatically and `options.typeAware` is root-only.
+In a mixed monorepo, keep type-aware linting in the root config and scope Effect-only policy to the Effect-owned workspaces instead of leaking it into non-Effect code. Use root overrides or an explicitly inherited package config according to the installed Oxlint configuration semantics; do not assume nested configs merge automatically, and keep root-only `options.typeAware` at the repository root.
 
 ## Imports
 
