@@ -21,6 +21,7 @@ jobs:
         run: |
           set -euo pipefail
           bun run format
+          bun run lint:fix || true
           git apply --check .kee-9-type-fixes.patch
           git apply .kee-9-type-fixes.patch
           bun run format
