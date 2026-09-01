@@ -19,6 +19,12 @@ export default defineConfig({
   },
   rules: {
     "consistent-return": "off",
+    "curly": "off",
+    "eslint/no-await-in-loop": "off",
+    "eslint/no-plusplus": "off",
+    "eslint/prefer-named-capture-group": "off",
+    "eslint/prefer-template": "off",
+    "eslint/sort-keys": "off",
     "eslint/no-unused-vars": [
       "error",
       {
@@ -41,9 +47,16 @@ export default defineConfig({
         typedefs: false,
       },
     ],
+    "promise/prefer-await-to-callbacks": "off",
+    "promise/prefer-await-to-then": "off",
     "typescript/consistent-type-definitions": ["error", "type"],
+    "typescript/no-non-null-assertion": "off",
     "typescript/no-unsafe-type-assertion": "off",
     "typescript/strict-boolean-expressions": "off",
     "typescript/strict-void-return": "off",
+    "unicorn/import-style": "off",
+    "unicorn/no-array-reverse": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-await-expression-member": "off",
   },
 });
