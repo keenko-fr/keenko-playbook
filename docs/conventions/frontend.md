@@ -16,8 +16,11 @@ reusable within one feature/domain
 domain-agnostic and application-wide
 -> application UI layer
 
-genuinely shared across application/package boundaries
+domain-agnostic and genuinely shared across application/package boundaries
 -> shared UI package
+
+domain-aware and genuinely shared across application/package boundaries
+-> shared domain UI
 ```
 
 Avoid generic global component buckets for arbitrary business components.
