@@ -48,12 +48,13 @@ export default defineConfig({
     "effecttsgo/process-env": "off",
     "effecttsgo/process-env-in-effect": "off",
     "effecttsgo/try-catch-in-effect-gen": "off",
+    "effecttsgo/strict-effect-provide": "warn",
     // Keep the repository's normal Keenko overrides after the upstream presets.
   },
 });
 ```
 
-The overlap list above is the pinned plugin's versioned pairing behavior expressed on the canonical Oxlint surface. Keep the plugin's unconditional rules and preserve the remaining type-aware `effecttsgo/*` diagnostics, including `effecttsgo/floating-effect`, `effecttsgo/run-effect-inside-effect`, `effecttsgo/strict-effect-provide`, `effecttsgo/extends-native-error`, and `effecttsgo/unsafe-effect-type-assertion`.
+The overlap list above is the pinned plugin's versioned pairing behavior expressed on the canonical Oxlint surface. Keep the plugin's unconditional rules and preserve the remaining type-aware `effecttsgo/*` diagnostics, including `effecttsgo/floating-effect`, `effecttsgo/run-effect-inside-effect`, `effecttsgo/extends-native-error`, and `effecttsgo/unsafe-effect-type-assertion`. Keenko explicitly enables `effecttsgo/strict-effect-provide` at `warn` because the pinned upstream rule is disabled by default but catches Layer provisioning outside application entry points.
 
 The TypeScript language-service configuration is a separate surface. Disable its diagnostic emission globally so the editor does not repeat diagnostics already reported by Oxlint; do not use `diagnosticSeverity` there to control the Oxlint rule set.
 
