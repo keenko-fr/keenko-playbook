@@ -86,10 +86,13 @@ Preserve the semantic difference between `S.optionalKey` and `S.optional`; expli
 
 ## Versions and generated code
 
-- Never edit `confect/_generated` or `convex/_generated` manually.
+For Confect `10.0.0-next.13`, treat both `confect/_generated/` and the sibling `convex/` directory as generator-owned targets. Do not edit generated root Convex entrypoints such as `convex/schema.ts` or generated function modules manually. The supported authored exceptions inside `convex/` are `tsconfig.json` and `convex.config.ts`; keep those under normal authored-source ownership and typecheck the Convex runtime through `convex/tsconfig.json`.
+
+Confect-generated deployment/runtime modules are source-required generated artifacts for the checked-in application shape. Track them when the repository deploys/tests from source, regenerate them through the repository's canonical codegen command after Confect inputs change, and make CI detect drift across the generated targets while excluding the authored `convex/` exceptions from generator-byte comparison.
+
 - Run the repository's canonical codegen after specs/schema/refs/generated inputs change.
 - Keep tightly coupled `@confect/*` prereleases exact-version aligned.
-- Verify the installed Effect version satisfies Confect peers.
+- Verify the installed Effect version satisfies Confect peers, including optional platform peers pulled in by the CLI/server packages.
 - Fix/upgrade a real compatibility boundary where possible; keep unavoidable prerelease workarounds narrow and documented rather than hiding them behind permanent generic facades.
 
 The owned `confect` skill contains the procedural investigation/review workflow.
