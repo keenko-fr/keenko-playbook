@@ -608,7 +608,8 @@ async function checkConsumer(target: string) {
   let projectScaffold = projectScaffoldEntries([]);
   try {
     const stacksRoot = join(playbookRoot, "docs", "stacks");
-    const modules = await Promise.all(config.modules.map(async (name) => loadModule(name, stacksRoot)));
+    const modules: ModuleManifest[] = [];
+    for (const name of config.modules) modules.push(await loadModule(name, stacksRoot));
     projectScaffold = projectScaffoldEntries(modules);
   } catch (error) {
     errors.push(errorMessage(error));
