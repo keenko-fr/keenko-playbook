@@ -8,7 +8,31 @@ Ordinary application-owned Convex functions prefer Confect `FunctionSpec`/`Group
 
 Keep endpoint Args local when they exist specifically for that endpoint. Share semantic primitives, not complete transport structs merely to remove duplication. Frontend/server code must not import backend spec source to steal an Args schema.
 
+Endpoint-specific schemas normally stay inline when they are used once, simple, and do not represent meaningful reusable semantics. For example:
+
+```ts
+args: () =>
+  S.Struct({
+    query: S.Trim.check(S.isNonEmpty()),
+  }),
+```
+
+Do not extract a schema solely to name a one-use endpoint field. Prefer Effect Schema built-ins such as `S.Trim` when they already express the required semantics rather than reconstructing equivalent behavior through lower-level transformations. Extract only when the schema is reusable, sufficiently complex, or represents an actual semantic primitive.
+
 Generated Confect services/context are used directly; do not wrap them merely to rename or re-expose them.
+
+## File organization
+
+Confect specs and implementations live under the backend `confect/` owner and follow `.playbook/docs/conventions/backend-file-topology.md` for canonical section grammar.
+
+That topology is authoritative for:
+
+- level-1 `CONSTANTS` / `SCHEMAS` / `SPEC` organization in spec files;
+- level-2 query/mutation/action function-kind grouping inside `GroupSpec.make()`;
+- implementation grouping by public/internal Confect function kind;
+- empty-section omission and `INTERNALS` / `TYPES` placement.
+
+Do not duplicate or invent a different section grammar in project-local Confect files.
 
 ## Confect refs vs native Convex refs
 

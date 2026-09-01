@@ -2,6 +2,18 @@
 
 Effect is a stack module, not a universal requirement. Plain synchronous helpers remain plain TypeScript when Effect adds no value.
 
+## Imports
+
+Canonical authored Effect 4 code prefers named imports from the package root, with local aliases when they improve readability:
+
+```ts
+import { Effect as E, Schema as S } from "effect";
+```
+
+Prefer adding other Effect modules to the same root import rather than defaulting to namespace subpath imports such as `effect/Effect` or `effect/Schema`.
+
+Use a subpath import only when the required API is not suitably available from the root or a real tooling/runtime constraint requires it. Do not rewrite vendored/generated code merely to enforce this authored-code convention.
+
 ## When Effect owns the workflow
 
 Prefer Effect for workflows that compose fallible/async operations, dependencies, retries, concurrency, typed failures, or resource lifecycles. External promises/throwing APIs enter Effect at the boundary through the appropriate `Effect` constructor/adapter; run the Effect once at the outer framework boundary.
