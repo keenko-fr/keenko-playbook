@@ -92,7 +92,7 @@ Confect-generated deployment/runtime modules are source-required generated artif
 
 - Run the repository's canonical codegen after specs/schema/refs/generated inputs change.
 - Keep tightly coupled `@confect/*` prereleases exact-version aligned.
-- Verify the installed Effect version satisfies Confect peers, including optional platform peers pulled in by the CLI/server packages.
+- Verify the installed Effect version satisfies Confect's Effect peer ranges. When relevant, verify separate platform peers such as `@confect/server`'s optional `@effect/platform-node` peer against their own ranges.
 - Fix/upgrade a real compatibility boundary where possible; keep unavoidable prerelease workarounds narrow and documented rather than hiding them behind permanent generic facades.
 
 The owned `confect` skill contains the procedural investigation/review workflow.
