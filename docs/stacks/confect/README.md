@@ -28,10 +28,7 @@ Persisted resource schema modules start from application-controlled `sFooFields`
 For Confect `10.0.0-next.13`, the verified API is:
 
 ```ts
-export const sFooDoc = SystemFields.extendWithSystemFields(
-  "foo",
-  sFooFields,
-);
+export const sFooDoc = SystemFields.extendWithSystemFields("foo", sFooFields);
 export type FooDoc = typeof sFooDoc.Type;
 ```
 
