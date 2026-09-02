@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import path from "node:path";
 
-const ROOT = resolve(import.meta.dirname, "..");
-const changesetDir = join(ROOT, ".changeset");
-const gatePath = join(ROOT, "release", "v1-gate.json");
+const ROOT = path.resolve(import.meta.dirname, "..");
+const changesetDir = path.join(ROOT, ".changeset");
+const gatePath = path.join(ROOT, "release", "v1-gate.json");
 
 type Bump = "patch" | "minor" | "major";
-const rank: Record<Bump, number> = { patch: 1, minor: 2, major: 3 };
+const rank: Record<Bump, number> = { major: 3, minor: 2, patch: 1 };
 
 type JsonObject = Record<string, unknown>;
 
@@ -25,39 +25,61 @@ async function main() {
 }
 
 async function prepare() {
-  const files = (await readdir(changesetDir)).filter((name) => name.endsWith(".md") && name !== "README.md");
-  if (!files.length) throw new Error("No changesets to release");
+  const directoryEntries = await readdir(changesetDir);
+  const files = directoryEntries.filter((name) => name.endsWith(".md") && name !== "README.md");
+  if (files.length === 0) {
+    throw new Error("No changesets to release");
+  }
+
+  const changesets = await Promise.all(
+    files.map(async (name) => ({
+      name,
+      text: await readFile(path.join(changesetDir, name), "utf-8"),
+    }))
+  );
   let bump: Bump = "patch";
   const notes: string[] = [];
-  for (const name of files) {
-    const text = await readFile(join(changesetDir, name), "utf-8");
-    const match = /^---\s*\nbump:\s*(patch|minor|major)\s*\n---\s*\n([\s\S]*)$/u.exec(text);
-    if (!match) throw new Error(`Invalid changeset: ${name}`);
-    const next = match[1] as Bump;
-    if (rank[next] > rank[bump]) bump = next;
-    notes.push(match[2].trim());
+  for (const { name, text } of changesets) {
+    const match = /^---\s*\nbump:\s*(?<bump>patch|minor|major)\s*\n---\s*\n(?<notes>[\s\S]*)$/u.exec(text);
+    if (match === null || match.groups === undefined) {
+      throw new Error(`Invalid changeset: ${name}`);
+    }
+    const next = asBump(match.groups.bump, name);
+    if (rank[next] > rank[bump]) {
+      bump = next;
+    }
+    notes.push(asString(match.groups.notes, `${name}.notes`).trim());
   }
-  const pkgPath = join(ROOT, "package.json");
+
+  const pkgPath = path.join(ROOT, "package.json");
   const pkg = parseJsonObject(await readFile(pkgPath, "utf-8"), "package.json");
   const version = bumpVersion(asString(pkg.version, "package.json.version"), bump);
   pkg.version = version;
-  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-  const changelogPath = join(ROOT, "CHANGELOG.md");
+  await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+
+  const changelogPath = path.join(ROOT, "CHANGELOG.md");
   const current = await readFile(changelogPath, "utf-8");
   const body = `## ${version}\n\n${notes.map((note) => `- ${note}`).join("\n")}\n\n`;
   await writeFile(changelogPath, current.replace(/^# Changelog\s*\n+/mu, `# Changelog\n\n${body}`));
-  for (const name of files) await rm(join(changesetDir, name));
+  await Promise.all(
+    files.map(async (name) => {
+      await rm(path.join(changesetDir, name));
+    })
+  );
   console.log(version);
 }
 
 async function verifyGate() {
   const gate = parseJsonObject(await readFile(gatePath, "utf-8"), "release/v1-gate.json");
-  if (gate.schemaVersion !== 1 || gate.release !== "v1.0.0") throw new Error("Invalid v1 release gate schema");
+  if (gate.schemaVersion !== 1 || gate.release !== "v1.0.0") {
+    throw new Error("Invalid v1 release gate schema");
+  }
   const checks = asObject(gate.checks, "release/v1-gate.json.checks");
   const required = ["freshContextReview", "cleanFixture", "codexDogfood", "claudeDogfood", "anoulaDogfood", "conventionReconciliation"];
   for (const name of required) {
     const check = asObject(checks[name], `release/v1-gate.json.checks.${name}`);
-    if (check.status !== "passed" || typeof check.evidence !== "string" || !check.evidence.trim()) {
+    const evidence = asString(check.evidence, `release/v1-gate.json.checks.${name}.evidence`);
+    if (check.status !== "passed" || evidence.trim().length === 0) {
       throw new Error(`Release gate not satisfied: ${name}`);
     }
   }
@@ -70,24 +92,44 @@ function parseJsonObject(text: string, label: string): JsonObject {
 }
 
 function asObject(value: unknown, label: string): JsonObject {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Expected object at ${label}`);
-  return value as JsonObject;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`Expected object at ${label}`);
+  }
+  return Object.fromEntries(Object.entries(value));
 }
 
 function asString(value: unknown, label: string): string {
-  if (typeof value !== "string") throw new Error(`Expected string at ${label}`);
+  if (typeof value !== "string") {
+    throw new TypeError(`Expected string at ${label}`);
+  }
   return value;
 }
 
+function asBump(value: string | undefined, label: string): Bump {
+  if (value === "patch" || value === "minor" || value === "major") {
+    return value;
+  }
+  throw new Error(`Invalid bump in changeset: ${label}`);
+}
+
 function bumpVersion(version: string, bump: Bump) {
-  const [major, minor, patch] = version.split(".").map(Number);
-  if ([major, minor, patch].some((n) => Number.isNaN(n))) throw new Error(`Invalid version: ${version}`);
-  if (bump === "major") return `${major + 1}.0.0`;
-  if (bump === "minor") return `${major}.${minor + 1}.0`;
+  const parts = version.split(".").map(Number);
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
+    throw new Error(`Invalid version: ${version}`);
+  }
+  const [major = 0, minor = 0, patch = 0] = parts;
+  if (bump === "major") {
+    return `${major + 1}.0.0`;
+  }
+  if (bump === "minor") {
+    return `${major}.${minor + 1}.0`;
+  }
   return `${major}.${minor}.${patch + 1}`;
 }
 
-main().catch((error: unknown) => {
+try {
+  await main();
+} catch (error: unknown) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
-});
+}

@@ -10,7 +10,21 @@ Treat `@effect/tsgo`, TypeScript, Oxlint, and `oxlint-tsgolint` as one compatibi
 
 Use `effect-tsgo patch --oxlint` after dependency installation so the Effect TypeScript-Go integration owns both the TypeScript and Oxlint integration. Keep root Oxlint `options.typeAware: true`. Extend the `@effect/tsgo/oxlint-presets` recommended preset so semantic/type-aware Effect diagnostics surface through Oxlint. When the Effect language-service plugin is enabled, set its `diagnostics` option to `false` so editor/LSP diagnostics are not duplicated; `typecheck` remains the separate TypeScript compiler verification contract.
 
-Also enable the `oxlint-plugin-effect` recommended preset for authored Effect source. It owns unconditional Effect syntax/structural policy while `@effect/tsgo` owns semantic/type-aware Effect correctness. Keep the plugin's recommended rules active when the same concern also exists in Effect tsgo; for the pinned `oxlint-plugin-effect@0.11.0` pairing, disable the corresponding `effecttsgo/*` Oxlint rules instead. The canonical plugin exception is `effect/noTernary`, because a blanket ternary ban is stylistic rather than a correctness rule.
+Enable the `oxlint-plugin-effect` recommended preset only for authored Effect-owned source. It owns unconditional Effect syntax/structural policy while `@effect/tsgo` owns semantic/type-aware Effect correctness. Within the Oxlint diagnostic surface, one concern has one owner. For the pinned `oxlint-plugin-effect@0.11.0` and `@effect/tsgo@0.38.0` pairing, keep the plugin's recommended unconditional rules and disable the corresponding duplicate `effecttsgo/*` diagnostics.
+
+The canonical plugin exception is `effect/noTernary`. Effect should not introduce a different generic TypeScript syntax convention unless Effect semantics require that divergence. Ordinary Keenko TypeScript permits useful ternaries, while generic rules already reject problematic nested or unnecessary forms. Effect has no semantic reason to ban every conditional expression.
+
+Inside the same Effect-owned scope, disable generic async and Promise rules that conflict with Effect's more specific async policy:
+
+```ts
+"eslint/require-await": "off",
+"promise/prefer-await-to-callbacks": "off",
+"promise/prefer-await-to-then": "off",
+"typescript/promise-function-async": "off",
+"typescript/return-await": "off",
+```
+
+`effect/noAsyncFunction` owns authored async-function policy there. Do not let a generic Promise rule push `E.promise(() => fetch(url))` toward an `async` callback that the Effect rule then rejects. Promise/callback interop at Effect boundaries should be adapted with the appropriate Effect abstraction instead of mechanically rewritten to `async`/`await`.
 
 For an Effect-owned TypeScript repository, merge this Effect layer into the canonical root `oxlint.config.ts` rather than replacing the Ultracite/Keenko baseline:
 
@@ -48,12 +62,17 @@ export default defineConfig({
     "effecttsgo/process-env": "off",
     "effecttsgo/process-env-in-effect": "off",
     "effecttsgo/try-catch-in-effect-gen": "off",
+    "eslint/require-await": "off",
+    "promise/prefer-await-to-callbacks": "off",
+    "promise/prefer-await-to-then": "off",
+    "typescript/promise-function-async": "off",
+    "typescript/return-await": "off",
     // Keep the repository's normal Keenko overrides after the upstream presets.
   },
 });
 ```
 
-The overlap list above is the pinned plugin's versioned pairing behavior expressed on the canonical Oxlint surface. Keep the plugin's unconditional rules and preserve the remaining type-aware `effecttsgo/*` diagnostics, including `effecttsgo/floating-effect`, `effecttsgo/run-effect-inside-effect`, `effecttsgo/extends-native-error`, and `effecttsgo/unsafe-effect-type-assertion`.
+The overlap rule names above are compatibility data for the pinned package pairing. They are not permanent Keenko architecture. Keep the plugin's unconditional rules and preserve the remaining semantic/type-aware `effecttsgo/*` diagnostics, including `effecttsgo/floating-effect`, `effecttsgo/run-effect-inside-effect`, `effecttsgo/extends-native-error`, and `effecttsgo/unsafe-effect-type-assertion`.
 
 Compose and provide Layers at application entry points. Keep `effecttsgo/strict-effect-provide` at its upstream default in the shared root baseline because the rule cannot distinguish valid entry-point provisioning from the non-entry-point usage it is intended to discourage. A repository may enable the rule only in a machine-identifiable scope that excludes its legitimate entry points; otherwise enforce this architectural distinction through prose and review.
 
@@ -72,9 +91,9 @@ The TypeScript language-service configuration is a separate surface. Disable its
 }
 ```
 
-This overlap list is versioned upstream behavior, not a permanent hand-maintained Keenko catalog. Re-read the installed `oxlint-plugin-effect` pairing guidance and the installed `@effect/tsgo` Oxlint configuration whenever either Effect lint package changes, then update the Oxlint overrides only when the pairing changes.
+The ownership principle is stable Keenko guidance. The exact plugin to Effect-tsgo overlap list is versioned upstream compatibility data. Whenever either Effect lint package changes, inspect the installed/current plugin preset and Effect-tsgo preset/pairing, then re-derive the overlap list before changing it.
 
-In a mixed monorepo, keep type-aware linting in the root config and scope Effect-only policy to the Effect-owned workspaces instead of leaking it into non-Effect code. Use root overrides or an explicitly inherited package config according to the installed Oxlint configuration semantics; do not assume nested configs merge automatically, and keep root-only `options.typeAware` at the repository root.
+In a mixed monorepo, keep type-aware linting in the root config and scope Effect-only policy to authored Effect-owned workspaces/source instead of leaking it into non-Effect TypeScript. The plugin preset, the generic async/Promise disables, and the duplicate `effecttsgo/*` disables belong to that same Effect-owned scope. Use root overrides or an explicitly inherited package config according to the installed Oxlint configuration semantics; do not assume nested configs merge automatically, and keep root-only `options.typeAware` at the repository root.
 
 ## Imports
 
