@@ -22,18 +22,14 @@ Effect Schema values use the `s` prefix exclusively. An `s...` value is an Effec
 When an authored Effect Schema declaration owns a TypeScript representation, keep the derived type immediately below the schema with no blank line:
 
 ```ts
-export const sFoo = S.Struct({
-  name: S.String,
-});
+export const sFoo = S.Struct({ name: S.String });
 export type Foo = typeof sFoo.Type;
 ```
 
 If an encoded alias is genuinely needed, keep the schema-owned cluster contiguous:
 
 ```ts
-export const sFoo = S.Struct({
-  count: S.NumberFromString,
-});
+export const sFoo = S.Struct({ count: S.NumberFromString });
 export type Foo = typeof sFoo.Type;
 export type FooEncoded = typeof sFoo.Encoded;
 ```
@@ -106,25 +102,14 @@ A representative file can begin like this:
 
 ```ts
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
-export const sWatchlistStatus = S.Literals([
-  "planned",
-  "watching",
-  "completed",
-  "dropped",
-]);
+export const sWatchlistStatus = S.Literals(["planned", "watching", "completed", "dropped"]);
 export type WatchlistStatus = typeof sWatchlistStatus.Type;
 
 // FIELDS ----------------------------------------------------------------------------------------------------------------------------------
-export const sWatchlistFields = S.Struct({
-  tvmazeId: sTvmazeId,
-  status: sWatchlistStatus,
-});
+export const sWatchlistFields = S.Struct({ tvmazeId: sTvmazeId, status: sWatchlistStatus });
 export type WatchlistFields = typeof sWatchlistFields.Type;
 
-export const sWatchlistDoc = SystemFields.extendWithSystemFields(
-  "watchlist",
-  sWatchlistFields,
-);
+export const sWatchlistDoc = SystemFields.extendWithSystemFields("watchlist", sWatchlistFields);
 export type WatchlistDoc = typeof sWatchlistDoc.Type;
 
 // ENTITY ----------------------------------------------------------------------------------------------------------------------------------
@@ -165,16 +150,8 @@ Derive from the nearest representation that already owns the facts you need. For
 ```ts
 const sSelected = schema.mapFields(Struct.pick(["a", "b"]));
 const sWithoutMetadata = schema.mapFields(Struct.omit(["metadata"]));
-const sEvolved = schema.mapFields(
-  Struct.evolve({
-    field: (field) => S.optionalKey(field),
-  }),
-);
-const sExtended = schema.pipe(
-  S.fieldsAssign({
-    other: S.String,
-  }),
-);
+const sEvolved = schema.mapFields(Struct.evolve({ field: (field) => S.optionalKey(field) }));
+const sExtended = schema.pipe(S.fieldsAssign({ other: S.String }));
 ```
 
 Use the installed equivalents of `Struct.assign`, `S.toEncoded(...)`, `S.toType(...)`, `S.decodeTo(...)`, and Schema transformation facilities when they express the actual relationship. For values, prefer `Struct.pick` / `Struct.omit` when the operation is structural projection.
@@ -196,9 +173,7 @@ Schema composition can interact with checks/refinements. Preserve intended valid
 A Patch represents operation scope and invariants, not “make every selected field optional.” For a status-only operation where status is required:
 
 ```ts
-const sWatchlistStatusPatch = sWatchlistFields.mapFields(
-  Struct.pick(["status"]),
-);
+const sWatchlistStatusPatch = sWatchlistFields.mapFields(Struct.pick(["status"]));
 type WatchlistStatusPatch = typeof sWatchlistStatusPatch.Type;
 ```
 
