@@ -11,7 +11,7 @@
   "scripts": {
     "playbook": "bun cli/playbook.ts",
     "format": "oxfmt .",
-    "format:check": "oxfmt --check .",
+    "format:check": "oxfmt . && git diff -- docs/stacks/effect/README.md && false",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "typecheck": "tsc --noEmit",
