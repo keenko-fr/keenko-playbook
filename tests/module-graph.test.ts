@@ -80,7 +80,7 @@ describe("effect-convex-web preset", () => {
 
   test("modules without a UI surface do not opt into the UI project scaffold", async () => {
     const modules = await Promise.all(
-      ["typescript", "effect", "convex", "confect", "testing"].map(async (name) => moduleManifest(`docs/stacks/${name}/module.json`))
+      ["typescript", "effect", "convex", "confect", "testing"].map(async (name) => await moduleManifest(`docs/stacks/${name}/module.json`))
     );
     for (const module of modules) {
       expect(module.uiSurface).toBeUndefined();
@@ -90,7 +90,7 @@ describe("effect-convex-web preset", () => {
   test("preset selects every module-required skill", async () => {
     const preset = await presetManifest("presets/effect-convex-web.json");
     const selected = new Set([...preset.ownedSkills, ...Object.values(preset.vendorSkills).flat()]);
-    const modules = await Promise.all(preset.modules.map(async (name) => moduleManifest(`docs/stacks/${name}/module.json`)));
+    const modules = await Promise.all(preset.modules.map(async (name) => await moduleManifest(`docs/stacks/${name}/module.json`)));
     for (const module of modules) {
       for (const skill of module.skills) {
         expect(selected.has(skill)).toBe(true);

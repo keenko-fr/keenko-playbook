@@ -2,9 +2,9 @@
 /* oxlint-disable eslint/no-await-in-loop -- This CLI intentionally performs dependency traversal, staged filesystem updates, and rollback steps sequentially. */
 import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import path from "node:path";
+import nodePath from "node:path";
 
-const SOURCE_ROOT = path.resolve(import.meta.dirname, "..");
+const SOURCE_ROOT = nodePath.resolve(import.meta.dirname, "..");
 const START = "<!-- keenko-playbook:start -->";
 const END = "<!-- keenko-playbook:end -->";
 const GENERATED_MARKER = ".keenko-generated";
@@ -146,12 +146,12 @@ function printHelp() {
 }
 
 async function packageVersion() {
-  const pkg = asObject(await readJson(path.join(SOURCE_ROOT, "package.json")), "package.json");
+  const pkg = asObject(await readJson(nodePath.join(SOURCE_ROOT, "package.json")), "package.json");
   return asString(pkg.version, "package.json.version");
 }
 
 async function loadPreset(name: string): Promise<Preset> {
-  const value = asObject(await readJson(path.join(SOURCE_ROOT, "presets", `${name}.json`)), `preset ${name}`);
+  const value = asObject(await readJson(nodePath.join(SOURCE_ROOT, "presets", `${name}.json`)), `preset ${name}`);
   assertKeys(value, ["name", "modules", "ownedSkills", "vendorSkills", "externalSkills", "integrations"], `preset ${name}`);
   const presetName = asString(value.name, `preset ${name}.name`);
   if (presetName !== name) {
@@ -167,8 +167,8 @@ async function loadPreset(name: string): Promise<Preset> {
   };
 }
 
-async function loadModule(name: string, stacksRoot = path.join(SOURCE_ROOT, "docs", "stacks")): Promise<ModuleManifest> {
-  const path = path.join(stacksRoot, name, "module.json");
+async function loadModule(name: string, stacksRoot = nodePath.join(SOURCE_ROOT, "docs", "stacks")): Promise<ModuleManifest> {
+  const path = nodePath.join(stacksRoot, name, "module.json");
   const value = asObject(await readJson(path), `module ${name}`);
   assertKeys(value, ["name", "requires", "skills", "incompatibleWith", "uiSurface"], `module ${name}`);
   const moduleName = asString(value.name, `module ${name}.name`);
@@ -234,9 +234,9 @@ function projectScaffoldEntries(modules: ModuleManifest[]): ProjectScaffoldEntry
 }
 
 async function install(flags: Map<string, string | boolean>) {
-  const target = path.resolve(flagString(flags, "target", process.cwd()));
+  const target = nodePath.resolve(flagString(flags, "target", process.cwd()));
   const presetName = flagString(flags, "preset", "effect-convex-web");
-  const configPath = path.join(target, ".playbook", "config.json");
+  const configPath = nodePath.join(target, ".playbook", "config.json");
   if (await exists(configPath)) {
     throw new Error(`Already installed: ${configPath}`);
   }
@@ -245,15 +245,15 @@ async function install(flags: Map<string, string | boolean>) {
 }
 
 async function update(flags: Map<string, string | boolean>) {
-  const target = path.resolve(flagString(flags, "target", process.cwd()));
-  const config = parseInstalledConfig(await readJson(path.join(target, ".playbook", "config.json")));
-  parseInstalledLock(await readJson(path.join(target, ".playbook", "lock.json")));
+  const target = nodePath.resolve(flagString(flags, "target", process.cwd()));
+  const config = parseInstalledConfig(await readJson(nodePath.join(target, ".playbook", "config.json")));
+  parseInstalledLock(await readJson(nodePath.join(target, ".playbook", "lock.json")));
   const nextVersion = await packageVersion();
   const preset = await loadPreset(config.preset);
   const modules = await resolveModules(preset.modules);
   const nextModules = modules.map(({ name }) => name);
-  const previousModuleList = config.modules.path.join(", ");
-  const nextModuleList = nextModules.path.join(", ");
+  const previousModuleList = config.modules.join(", ");
+  const nextModuleList = nextModules.join(", ");
   console.log(`Keenko Playbook update preview`);
   console.log(`  version: ${config.version} -> ${nextVersion}`);
   console.log(`  preset:  ${config.preset}`);
@@ -276,43 +276,43 @@ async function materialize(target: string, presetName: string) {
   const vendorIndex = await indexVendoredSkills(true);
   const skillNames = resolveSkillNames(preset, modules, vendorIndex);
   const managedBlocks = {
-    "AGENTS.md": await readFile(path.join(SOURCE_ROOT, "templates", "AGENTS.managed.md"), "utf-8"),
-    "CLAUDE.md": await readFile(path.join(SOURCE_ROOT, "templates", "CLAUDE.managed.md"), "utf-8"),
+    "AGENTS.md": await readFile(nodePath.join(SOURCE_ROOT, "templates", "AGENTS.managed.md"), "utf-8"),
+    "CLAUDE.md": await readFile(nodePath.join(SOURCE_ROOT, "templates", "CLAUDE.managed.md"), "utf-8"),
   };
 
   // Preflight everything that can fail due to consumer-owned state before writing live files.
   const nextManaged = new Map<string, string>();
   for (const [file, block] of Object.entries(managedBlocks)) {
-    const path = path.join(target, file);
+    const path = nodePath.join(target, file);
     const current = (await exists(path)) ? await readFile(path, "utf-8") : "";
     nextManaged.set(file, renderManagedFile(current, block, path));
   }
   await preflightManagedPaths(target, projectScaffold);
   for (const harness of [".agents", ".claude"]) {
-    const root = path.join(target, harness, "skills");
+    const root = nodePath.join(target, harness, "skills");
     for (const name of skillNames) {
-      const dir = path.join(root, name);
-      if ((await exists(dir)) && !(await exists(path.join(dir, GENERATED_MARKER)))) {
+      const dir = nodePath.join(root, name);
+      if ((await exists(dir)) && !(await exists(nodePath.join(dir, GENERATED_MARKER)))) {
         throw new Error(`Refusing to overwrite human-owned skill directory: ${dir}`);
       }
     }
   }
 
-  const stageRoot = await mkdtemp(path.join(target, ".keenko-stage-"));
+  const stageRoot = await mkdtemp(nodePath.join(target, ".keenko-stage-"));
   try {
-    const playbookStage = path.join(stageRoot, "playbook");
+    const playbookStage = nodePath.join(stageRoot, "playbook");
     await mkdir(playbookStage, { recursive: true });
-    await cp(path.join(SOURCE_ROOT, "docs", "core"), path.join(playbookStage, "docs", "core"), { recursive: true });
-    await mkdir(path.join(playbookStage, "docs", "stacks"), { recursive: true });
+    await cp(nodePath.join(SOURCE_ROOT, "docs", "core"), nodePath.join(playbookStage, "docs", "core"), { recursive: true });
+    await mkdir(nodePath.join(playbookStage, "docs", "stacks"), { recursive: true });
     for (const module of modules) {
-      await cp(path.join(SOURCE_ROOT, "docs", "stacks", module.name), path.join(playbookStage, "docs", "stacks", module.name), {
+      await cp(nodePath.join(SOURCE_ROOT, "docs", "stacks", module.name), nodePath.join(playbookStage, "docs", "stacks", module.name), {
         recursive: true,
       });
     }
-    await cp(path.join(SOURCE_ROOT, "docs", "conventions"), path.join(playbookStage, "docs", "conventions"), { recursive: true });
+    await cp(nodePath.join(SOURCE_ROOT, "docs", "conventions"), nodePath.join(playbookStage, "docs", "conventions"), { recursive: true });
 
     for (const name of preset.ownedSkills) {
-      await cp(path.join(SOURCE_ROOT, "skills", name), path.join(playbookStage, "skills", name), { recursive: true });
+      await cp(nodePath.join(SOURCE_ROOT, "skills", name), nodePath.join(playbookStage, "skills", name), { recursive: true });
     }
     for (const [sourceId, names] of Object.entries(preset.vendorSkills)) {
       for (const name of names) {
@@ -320,13 +320,13 @@ async function materialize(target: string, presetName: string) {
         if (!skill) {
           throw new Error(`Missing vendored skill ${sourceId}:${name}`);
         }
-        await materializeVendorSkill(skill, name, skillNames, path.join(playbookStage, "skills", name));
+        await materializeVendorSkill(skill, name, skillNames, nodePath.join(playbookStage, "skills", name));
       }
     }
 
     const vendorManifest = await loadVendorManifest();
     const externalSources = vendorManifest.sources.filter(({ mode }) => mode === "external");
-    await writeJson(path.join(playbookStage, "external-sources.json"), { schemaVersion: 1, sources: externalSources });
+    await writeJson(nodePath.join(playbookStage, "external-sources.json"), { schemaVersion: 1, sources: externalSources });
 
     const config: InstalledConfig = {
       externalSkills: preset.externalSkills,
@@ -337,14 +337,14 @@ async function materialize(target: string, presetName: string) {
       skills: [...skillNames].toSorted(),
       version,
     };
-    await writeJson(path.join(playbookStage, "config.json"), config);
+    await writeJson(nodePath.join(playbookStage, "config.json"), config);
 
-    const nativeStage = path.join(stageRoot, "native");
+    const nativeStage = nodePath.join(stageRoot, "native");
     for (const harness of [".agents", ".claude"]) {
       for (const name of skillNames) {
-        const dst = path.join(nativeStage, harness, "skills", name);
-        await cp(path.join(playbookStage, "skills", name), dst, { recursive: true });
-        await writeFile(path.join(dst, GENERATED_MARKER), "generated by keenko-playbook\n", "utf-8");
+        const dst = nodePath.join(nativeStage, harness, "skills", name);
+        await cp(nodePath.join(playbookStage, "skills", name), dst, { recursive: true });
+        await writeFile(nodePath.join(dst, GENERATED_MARKER), "generated by keenko-playbook\n", "utf-8");
       }
     }
 
@@ -354,7 +354,7 @@ async function materialize(target: string, presetName: string) {
       playbookFiles: await hashTree(playbookStage, new Set(["lock.json"])),
       schemaVersion: LOCK_SCHEMA_VERSION,
     };
-    await writeJson(path.join(playbookStage, "lock.json"), lock);
+    await writeJson(nodePath.join(playbookStage, "lock.json"), lock);
 
     await applyMaterialization(target, stageRoot, nextManaged, skillNames, projectScaffold);
   } finally {
@@ -393,20 +393,20 @@ function resolveSkillNames(preset: Preset, modules: ModuleManifest[], vendorInde
 async function materializeVendorSkill(skill: VendoredSkill, name: string, availableSkills: string[], dst: string) {
   await mkdir(dst, { recursive: true });
   const wrapper = renderVendorSkillAdapter(name, skill.description, availableSkills);
-  await writeFile(path.join(dst, "SKILL.md"), wrapper, "utf-8");
-  await cp(skill.dir, path.join(dst, "references", "upstream"), { recursive: true });
-  const sourceRoot = path.join(SOURCE_ROOT, "vendor", skill.source.id);
-  await cp(path.join(sourceRoot, "LICENSE"), path.join(dst, "UPSTREAM_LICENSE"));
-  await cp(path.join(sourceRoot, "VENDORED.json"), path.join(dst, "UPSTREAM_PROVENANCE.json"));
+  await writeFile(nodePath.join(dst, "SKILL.md"), wrapper, "utf-8");
+  await cp(skill.dir, nodePath.join(dst, "references", "upstream"), { recursive: true });
+  const sourceRoot = nodePath.join(SOURCE_ROOT, "vendor", skill.source.id);
+  await cp(nodePath.join(sourceRoot, "LICENSE"), nodePath.join(dst, "UPSTREAM_LICENSE"));
+  await cp(nodePath.join(sourceRoot, "VENDORED.json"), nodePath.join(dst, "UPSTREAM_PROVENANCE.json"));
 }
 
 function renderVendorSkillAdapter(name: string, description: string, availableSkills: string[]) {
-  return `---\nname: ${name}\ndescription: ${JSON.stringify(description.length > 0 ? description : `Keenko-adapted upstream ${name} workflow.`)}\n---\n\n# Keenko adapter for ${name}\n\nThis skill exposes a pinned upstream workflow through Keenko's authority and safety boundaries.\n\n## Authority guard\n\n1. Current explicit human instruction, project ADR/override, project-local docs, Keenko core, and enabled stack modules outrank the upstream reference.\n2. Do not commit, push, merge, install dependencies/tools, alter package-manager state, or perform external/destructive actions unless the current task explicitly delegates that action.\n3. Bun is the canonical package manager unless the project explicitly documents a compatibility exception. Ignore upstream commands that would introduce a competing lockfile.\n4. Do not edit the Keenko-managed blocks in AGENTS.md or CLAUDE.md directly and do not duplicate canonical conventions into harness files.\n5. Only route to skills that are actually installed. Upstream references to unavailable setup/router skills are advisory, not prerequisites. Use the repository's configured tracker/connectors and canonical docs instead.\n6. If an upstream instruction conflicts with a higher-authority rule, follow the higher-authority rule and continue with the nearest safe equivalent workflow.\n\nInstalled skill set for this snapshot:\n${availableSkills.map((skillName) => `- ${skillName}`).path.join("\n")}\n\n## Procedure\n\nRead \`references/upstream/SKILL.md\` and apply its procedural guidance subject to the authority guard above. Supporting upstream files are under \`references/upstream/\`. Preserve the upstream notice and provenance files shipped beside this adapter.\n`;
+  return `---\nname: ${name}\ndescription: ${JSON.stringify(description.length > 0 ? description : `Keenko-adapted upstream ${name} workflow.`)}\n---\n\n# Keenko adapter for ${name}\n\nThis skill exposes a pinned upstream workflow through Keenko's authority and safety boundaries.\n\n## Authority guard\n\n1. Current explicit human instruction, project ADR/override, project-local docs, Keenko core, and enabled stack modules outrank the upstream reference.\n2. Do not commit, push, merge, install dependencies/tools, alter package-manager state, or perform external/destructive actions unless the current task explicitly delegates that action.\n3. Bun is the canonical package manager unless the project explicitly documents a compatibility exception. Ignore upstream commands that would introduce a competing lockfile.\n4. Do not edit the Keenko-managed blocks in AGENTS.md or CLAUDE.md directly and do not duplicate canonical conventions into harness files.\n5. Only route to skills that are actually installed. Upstream references to unavailable setup/router skills are advisory, not prerequisites. Use the repository's configured tracker/connectors and canonical docs instead.\n6. If an upstream instruction conflicts with a higher-authority rule, follow the higher-authority rule and continue with the nearest safe equivalent workflow.\n\nInstalled skill set for this snapshot:\n${availableSkills.map((skillName) => `- ${skillName}`).join("\n")}\n\n## Procedure\n\nRead \`references/upstream/SKILL.md\` and apply its procedural guidance subject to the authority guard above. Supporting upstream files are under \`references/upstream/\`. Preserve the upstream notice and provenance files shipped beside this adapter.\n`;
 }
 
 async function preflightManagedPaths(target: string, projectScaffold: ProjectScaffoldEntry[]) {
   for (const rel of [".playbook", "docs", "docs/project", ".agents", ".agents/skills", ".claude", ".claude/skills"]) {
-    const path = path.join(target, rel);
+    const path = nodePath.join(target, rel);
     if (!(await exists(path))) {
       continue;
     }
@@ -415,7 +415,7 @@ async function preflightManagedPaths(target: string, projectScaffold: ProjectSca
     }
   }
   for (const [rel] of projectScaffold) {
-    const path = path.join(target, rel);
+    const path = nodePath.join(target, rel);
     if (!(await exists(path))) {
       continue;
     }
@@ -432,52 +432,52 @@ async function applyMaterialization(
   skillNames: string[],
   projectScaffold: ProjectScaffoldEntry[]
 ) {
-  const rollbackRoot = await mkdtemp(path.join(target, ".keenko-rollback-"));
+  const rollbackRoot = await mkdtemp(nodePath.join(target, ".keenko-rollback-"));
   const tracked = [".playbook", ".agents/skills", ".claude/skills", "AGENTS.md", "CLAUDE.md", "CONTEXT.md", "docs/project"];
   const existed = new Map<string, boolean>();
   try {
     for (const rel of tracked) {
-      const src = path.join(target, rel);
+      const src = nodePath.join(target, rel);
       const present = await exists(src);
       existed.set(rel, present);
       if (present) {
-        await cp(src, path.join(rollbackRoot, rel), { recursive: true });
+        await cp(src, nodePath.join(rollbackRoot, rel), { recursive: true });
       }
     }
 
-    await rm(path.join(target, ".playbook"), { force: true, recursive: true });
-    await cp(path.join(stageRoot, "playbook"), path.join(target, ".playbook"), { recursive: true });
+    await rm(nodePath.join(target, ".playbook"), { force: true, recursive: true });
+    await cp(nodePath.join(stageRoot, "playbook"), nodePath.join(target, ".playbook"), { recursive: true });
 
     await ensureProjectScaffold(target, projectScaffold);
     for (const [file, text] of managed) {
-      await writeFile(path.join(target, file), text, "utf-8");
+      await writeFile(nodePath.join(target, file), text, "utf-8");
     }
 
     for (const harness of [".agents", ".claude"]) {
-      const root = path.join(target, harness, "skills");
+      const root = nodePath.join(target, harness, "skills");
       await mkdir(root, { recursive: true });
       for (const name of await generatedSkillNames(root)) {
-        await rm(path.join(root, name), { recursive: true, force: true });
+        await rm(nodePath.join(root, name), { force: true, recursive: true });
       }
       for (const name of skillNames) {
-        await cp(path.join(stageRoot, "native", harness, "skills", name), path.join(root, name), { recursive: true });
+        await cp(nodePath.join(stageRoot, "native", harness, "skills", name), nodePath.join(root, name), { recursive: true });
       }
     }
   } catch (error) {
     const rollbackErrors: string[] = [];
     for (const rel of [...tracked].toReversed()) {
       try {
-        const dst = path.join(target, rel);
+        const dst = nodePath.join(target, rel);
         await rm(dst, { force: true, recursive: true });
-        if (existed.get(rel)) {
-          await cp(path.join(rollbackRoot, rel), dst, { recursive: true });
+        if (existed.get(rel) === true) {
+          await cp(nodePath.join(rollbackRoot, rel), dst, { recursive: true });
         }
       } catch (rollbackError) {
         rollbackErrors.push(`${rel}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
       }
     }
-    if (rollbackErrors.length) {
-      console.error(`Rollback encountered cleanup errors: ${rollbackErrors.path.join("; ")}`);
+    if (rollbackErrors.length > 0) {
+      console.error(`Rollback encountered cleanup errors: ${rollbackErrors.join("; ")}`);
     }
     throw error;
   } finally {
@@ -487,12 +487,12 @@ async function applyMaterialization(
 
 async function ensureProjectScaffold(target: string, entries: ProjectScaffoldEntry[]) {
   for (const [destination, template] of entries) {
-    const path = path.join(target, destination);
+    const path = nodePath.join(target, destination);
     if (await exists(path)) {
       continue;
     }
-    await mkdir(path.dirname(path), { recursive: true });
-    await cp(path.join(SOURCE_ROOT, "templates", template), path);
+    await mkdir(nodePath.dirname(path), { recursive: true });
+    await cp(nodePath.join(SOURCE_ROOT, "templates", template), path);
   }
 }
 
@@ -506,14 +506,14 @@ function renderManagedFile(current: string, block: string, path: string) {
   if (!starts.length) {
     return current.trimEnd() ? `${current.trimEnd()}\n\n${canonical}\n` : `${canonical}\n`;
   }
-  const start = starts[0];
-  const end = ends[0];
+  const [start = -1] = starts;
+  const [end = -1] = ends;
   if (end < start) {
     throw new Error(`Broken Keenko managed block in ${path}`);
   }
   const prefix = current.slice(0, start).trimEnd();
   const suffix = current.slice(end + END.length).trimStart();
-  return `${[prefix, canonical, suffix].filter(Boolean).path.join("\n\n")}\n`;
+  return `${[prefix, canonical, suffix].filter(Boolean).join("\n\n")}\n`;
 }
 
 function managedBlock(text: string, path: string) {
@@ -544,7 +544,7 @@ async function generatedSkillNames(root: string) {
     return out;
   }
   for (const entry of await readdir(root, { withFileTypes: true })) {
-    if (entry.isDirectory() && (await exists(path.join(root, entry.name, GENERATED_MARKER)))) {
+    if (entry.isDirectory() && (await exists(nodePath.join(root, entry.name, GENERATED_MARKER)))) {
       out.push(entry.name);
     }
   }
@@ -553,9 +553,6 @@ async function generatedSkillNames(root: string) {
 
 async function indexVendoredSkills(requireValidSnapshots: boolean) {
   const index = new Map<string, VendoredSkill>();
-  for (const name of await findOwnedSkills()) {
-    index.set(`owned:${name}`, { dir: path.join(SOURCE_ROOT, "skills", name), source: null as never, description: "" });
-  }
   const manifest = await loadVendorManifest();
   for (const source of manifest.sources) {
     if (source.mode !== "vendor") {
@@ -564,19 +561,19 @@ async function indexVendoredSkills(requireValidSnapshots: boolean) {
     if (requireValidSnapshots) {
       await validateVendorSnapshot(source);
     }
-    const root = path.join(SOURCE_ROOT, "vendor", source.id);
+    const root = nodePath.join(SOURCE_ROOT, "vendor", source.id);
     if (!(await exists(root))) {
       continue;
     }
     for (const skillFile of await findFiles(root, "SKILL.md")) {
       const text = await readFile(skillFile, "utf-8");
       const name = frontmatterValue(text, "name");
-      if (!name) {
+      if (name === null || name.length === 0) {
         continue;
       }
       index.set(`${source.id}:${name}`, {
         description: frontmatterValue(text, "description") ?? `Upstream ${name} workflow.`,
-        dir: path.dirname(skillFile),
+        dir: nodePath.dirname(skillFile),
         source,
       });
     }
@@ -586,12 +583,12 @@ async function indexVendoredSkills(requireValidSnapshots: boolean) {
 
 async function findOwnedSkills() {
   const out: string[] = [];
-  const root = path.join(SOURCE_ROOT, "skills");
+  const root = nodePath.join(SOURCE_ROOT, "skills");
   if (!(await exists(root))) {
     return out;
   }
   for (const entry of await readdir(root, { withFileTypes: true })) {
-    if (entry.isDirectory() && (await exists(path.join(root, entry.name, "SKILL.md")))) {
+    if (entry.isDirectory() && (await exists(nodePath.join(root, entry.name, "SKILL.md")))) {
       out.push(entry.name);
     }
   }
@@ -621,7 +618,7 @@ async function check(flags: Map<string, string | boolean>) {
     await checkSource(flags.has("release"));
     return;
   }
-  await checkConsumer(path.resolve(flagString(flags, "target", process.cwd())));
+  await checkConsumer(nodePath.resolve(flagString(flags, "target", process.cwd())));
 }
 
 async function checkSource(release: boolean) {
@@ -637,7 +634,9 @@ async function checkSource(release: boolean) {
     "docs/conventions/schema-types.md",
     "docs/conventions/validation.md",
   ]) {
-    if (!(await exists(path.join(SOURCE_ROOT, required)))) errors.push(`Missing canonical source file: ${required}`);
+    if (!(await exists(nodePath.join(SOURCE_ROOT, required)))) {
+      errors.push(`Missing canonical source file: ${required}`);
+    }
   }
 
   let vendorIndex = new Map<string, VendoredSkill>();
@@ -647,25 +646,25 @@ async function checkSource(release: boolean) {
     errors.push(String(error));
   }
 
-  for (const file of await findFiles(path.join(SOURCE_ROOT, "presets"), ".json")) {
+  for (const file of await findFiles(nodePath.join(SOURCE_ROOT, "presets"), ".json")) {
     try {
-      const preset = await loadPreset(path.basename(file, ".json"));
+      const preset = await loadPreset(nodePath.basename(file, ".json"));
       const modules = await resolveModules(preset.modules);
       resolveSkillNames(preset, modules, vendorIndex, !release);
       for (const name of preset.ownedSkills) {
-        if (!(await exists(path.join(SOURCE_ROOT, "skills", name, "SKILL.md")))) {
+        if (!(await exists(nodePath.join(SOURCE_ROOT, "skills", name, "SKILL.md")))) {
           errors.push(`Missing owned skill ${name}`);
         }
       }
     } catch (error) {
-      errors.push(`${path.relative(SOURCE_ROOT, file)}: ${errorMessage(error)}`);
+      errors.push(`${nodePath.relative(SOURCE_ROOT, file)}: ${errorMessage(error)}`);
     }
   }
 
-  for (const skill of await findFiles(path.join(SOURCE_ROOT, "skills"), "SKILL.md")) {
+  for (const skill of await findFiles(nodePath.join(SOURCE_ROOT, "skills"), "SKILL.md")) {
     const text = await readFile(skill, "utf-8");
     if (!frontmatterValue(text, "name")) {
-      errors.push(`Invalid skill frontmatter: ${path.relative(SOURCE_ROOT, skill)}`);
+      errors.push(`Invalid skill frontmatter: ${nodePath.relative(SOURCE_ROOT, skill)}`);
     }
   }
 
@@ -699,12 +698,12 @@ async function checkSource(release: boolean) {
 async function checkConsumer(target: string) {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const playbookRoot = path.join(target, ".playbook");
+  const playbookRoot = nodePath.join(target, ".playbook");
   let config: InstalledConfig;
   let lock: InstalledLock;
   try {
-    config = parseInstalledConfig(await readJson(path.join(playbookRoot, "config.json")));
-    lock = parseInstalledLock(await readJson(path.join(playbookRoot, "lock.json")));
+    config = parseInstalledConfig(await readJson(nodePath.join(playbookRoot, "config.json")));
+    lock = parseInstalledLock(await readJson(nodePath.join(playbookRoot, "lock.json")));
   } catch (error) {
     report([errorMessage(error)], warnings);
     return;
@@ -720,7 +719,7 @@ async function checkConsumer(target: string) {
 
   let projectScaffold = projectScaffoldEntries([]);
   try {
-    const stacksRoot = path.join(playbookRoot, "docs", "stacks");
+    const stacksRoot = nodePath.join(playbookRoot, "docs", "stacks");
     const modules: ModuleManifest[] = [];
     for (const name of config.modules) {
       modules.push(await loadModule(name, stacksRoot));
@@ -731,19 +730,19 @@ async function checkConsumer(target: string) {
   }
 
   for (const harness of [".agents", ".claude"]) {
-    const root = path.join(target, harness, "skills");
+    const root = nodePath.join(target, harness, "skills");
     const actualGenerated = await generatedSkillNames(root);
     if (!same(actualGenerated, [...lock.generatedSkills].toSorted())) {
       errors.push(`Generated skill set drift: ${harness}/skills`);
     }
     for (const name of lock.generatedSkills) {
-      const dir = path.join(root, name);
-      if (!(await exists(path.join(dir, GENERATED_MARKER)))) {
-        errors.push(`Missing generated marker: ${path.relative(target, dir)}`);
+      const dir = nodePath.join(root, name);
+      if (!(await exists(nodePath.join(dir, GENERATED_MARKER)))) {
+        errors.push(`Missing generated marker: ${nodePath.relative(target, dir)}`);
         continue;
       }
       const generated = await hashTree(dir, new Set([GENERATED_MARKER]));
-      const canonical = await hashTree(path.join(playbookRoot, "skills", name), new Set());
+      const canonical = await hashTree(nodePath.join(playbookRoot, "skills", name), new Set());
       if (!same(generated, canonical)) {
         errors.push(`Generated skill drift: ${harness}/skills/${name}`);
       }
@@ -752,7 +751,7 @@ async function checkConsumer(target: string) {
 
   for (const file of ["AGENTS.md", "CLAUDE.md"]) {
     try {
-      const block = managedBlock(await readFile(path.join(target, file), "utf-8"), file);
+      const block = managedBlock(await readFile(nodePath.join(target, file), "utf-8"), file);
       if (hash(block) !== lock.managedBlocks[file]) {
         errors.push(`Keenko managed block drift: ${file}`);
       }
@@ -761,7 +760,7 @@ async function checkConsumer(target: string) {
     }
   }
   for (const [file] of projectScaffold) {
-    if (!(await exists(path.join(target, file)))) {
+    if (!(await exists(nodePath.join(target, file)))) {
       errors.push(`Missing project scaffold: ${file}`);
     }
   }
@@ -780,20 +779,20 @@ async function checkConsumer(target: string) {
 }
 
 async function validateVendorSnapshot(source: VendorSource) {
-  if (!source.commit) {
+  if (source.commit === null || source.commit.length === 0) {
     throw new Error(`Vendor source ${source.id} has no pinned commit`);
   }
-  if (!source.license) {
+  if (source.license === null || source.license.length === 0) {
     throw new Error(`Vendor source ${source.id} has no redistributable license`);
   }
-  const root = path.join(SOURCE_ROOT, "vendor", source.id);
+  const root = nodePath.join(SOURCE_ROOT, "vendor", source.id);
   if (!(await exists(root))) {
     throw new Error(`Missing vendor snapshot ${source.id}; run bun run vendor:sync`);
   }
-  if (!(await exists(path.join(root, "LICENSE")))) {
+  if (!(await exists(nodePath.join(root, "LICENSE")))) {
     throw new Error(`Missing vendor license ${source.id}/LICENSE`);
   }
-  const provenance = parseVendorProvenance(await readJson(path.join(root, "VENDORED.json")), source.id);
+  const provenance = parseVendorProvenance(await readJson(nodePath.join(root, "VENDORED.json")), source.id);
   if (
     provenance.repository !== source.repository ||
     provenance.commit !== source.commit ||
@@ -809,13 +808,13 @@ async function validateVendorSnapshot(source: VendorSource) {
 }
 
 async function loadVendorManifest(): Promise<VendorManifest> {
-  const value = asObject(await readJson(path.join(SOURCE_ROOT, "vendor", "sources.json")), "vendor/sources.json");
+  const value = asObject(await readJson(nodePath.join(SOURCE_ROOT, "vendor", "sources.json")), "vendor/sources.json");
   assertKeys(value, ["schemaVersion", "sources"], "vendor/sources.json");
   if (value.schemaVersion !== 1) {
     throw new Error(`Unsupported vendor manifest schemaVersion: ${String(value.schemaVersion)}`);
   }
   if (!Array.isArray(value.sources)) {
-    throw new Error(`vendor/sources.json.sources must be an array`);
+    throw new TypeError(`vendor/sources.json.sources must be an array`);
   }
   return { schemaVersion: 1, sources: value.sources.map(parseVendorSource) };
 }
@@ -910,13 +909,13 @@ async function hashTree(root: string, ignore: Set<string>) {
     return out;
   }
   for (const file of await findAllFiles(root)) {
-    const rel = path.relative(root, file).replaceAll("\\", "/");
+    const rel = nodePath.relative(root, file).replaceAll("\\", "/");
     if (ignore.has(rel)) {
       continue;
     }
     out[rel] = hash(await readFile(file));
   }
-  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(Object.entries(out).toSorted(([a], [b]) => a.localeCompare(b)));
 }
 
 function hash(data: string | Buffer) {
@@ -934,7 +933,7 @@ async function findAllFiles(root: string): Promise<string[]> {
     return out;
   }
   for (const entry of await readdir(root, { withFileTypes: true })) {
-    const path = path.join(root, entry.name);
+    const path = nodePath.join(root, entry.name);
     if (entry.isDirectory()) {
       out.push(...(await findAllFiles(path)));
     } else if (entry.isFile()) {
@@ -958,36 +957,41 @@ async function readJson(path: string): Promise<unknown> {
 }
 
 async function writeJson(path: string, value: unknown) {
-  await mkdir(path.dirname(path), { recursive: true });
+  await mkdir(nodePath.dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
 }
 
 function asObject(value: unknown, label: string): JsonObject {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} must be an object`);
   }
-  return value as JsonObject;
+  return Object.fromEntries(Object.entries(value));
 }
 
 function asString(value: unknown, label: string) {
-  if (typeof value !== "string" || !value) {
-    throw new Error(`${label} must be a non-empty string`);
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError(`${label} must be a non-empty string`);
   }
   return value;
 }
 
 function asStringAllowEmpty(value: unknown, label: string) {
   if (typeof value !== "string") {
-    throw new Error(`${label} must be a string`);
+    throw new TypeError(`${label} must be a string`);
   }
   return value;
 }
 
-function asStringArray(value: unknown, label: string) {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item)) {
-    throw new Error(`${label} must be an array of non-empty strings`);
+function asStringArray(value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${label} must be an array of non-empty strings`);
   }
-  const out = value as string[];
+  const out = value.map((item, index) => {
+    if (typeof item !== "string" || item.length === 0) {
+      throw new TypeError(`${label}[${index}] must be a non-empty string`);
+    }
+    return item;
+  });
   if (new Set(out).size !== out.length) {
     throw new Error(`${label} must not contain duplicates`);
   }
@@ -1027,7 +1031,7 @@ function asBooleanRecord(value: unknown, label: string) {
 function assertKeys(value: JsonObject, allowed: string[], label: string) {
   const extra = Object.keys(value).filter((key) => !allowed.includes(key));
   if (extra.length) {
-    throw new Error(`${label} has unknown field(s): ${extra.path.join(", ")}`);
+    throw new Error(`${label} has unknown field(s): ${extra.join(", ")}`);
   }
 }
 
