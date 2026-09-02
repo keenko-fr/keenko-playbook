@@ -59,13 +59,13 @@ Use the representation appropriate to the caller:
 
 ```text
 Confect ref
--> application contract
--> Args/Returns codecs
--> typed Effect/codec information
+→ application contract
+→ Args/Returns codecs
+→ typed Effect/codec information
 
 Convex api/internal/components ref
--> native Convex FunctionReference
--> integrations requiring native references
+→ native Convex FunctionReference
+→ integrations requiring native references
 ```
 
 Do not add cosmetic wrappers between them.
@@ -82,13 +82,13 @@ Keep these trust boundaries distinct:
 
 ```text
 Form schema
--> browser/editing
+→ browser/editing
 
 serverFn validator
--> server-function input
+→ server-function input
 
 Confect Args
--> authoritative backend function contract
+→ authoritative backend function contract
 ```
 
 ## Public contracts
