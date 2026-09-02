@@ -35,7 +35,7 @@ async function prepare() {
     files.map(async (name) => ({
       name,
       text: await readFile(path.join(changesetDir, name), "utf-8"),
-    })),
+    }))
   );
   let bump: Bump = "patch";
   const notes: string[] = [];
