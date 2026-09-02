@@ -9,6 +9,6 @@ Canonical reusable conventions that cut across stack modules:
 - `frontend.md`: renderer-neutral component ownership, DISPLAY, accessibility, UI completeness, and project UI decision ownership;
 - `frontend-file-topology.md`: canonical React file section order;
 - `i18n.md`: Paraglide/Sherlock message ownership and identity;
-- `migrations.md`: expand -> migrate -> contract and safe backfills.
+- `migrations.md`: expand → migrate → contract and safe backfills.
 
 Enabled stack modules add library-specific rules. Project-local architecture/overrides outrank these shared defaults according to the standard authority hierarchy.
