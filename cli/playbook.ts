@@ -410,7 +410,8 @@ async function preflightManagedPaths(target: string, projectScaffold: ProjectSca
     if (!(await exists(path))) {
       continue;
     }
-    if (!(await stat(path)).isDirectory()) {
+    const info = await stat(path);
+    if (!info.isDirectory()) {
       throw new Error(`Managed parent must be a directory: ${path}`);
     }
   }
@@ -419,7 +420,8 @@ async function preflightManagedPaths(target: string, projectScaffold: ProjectSca
     if (!(await exists(path))) {
       continue;
     }
-    if (!(await stat(path)).isFile()) {
+    const info = await stat(path);
+    if (!info.isFile()) {
       throw new Error(`Managed scaffold path must be a file: ${path}`);
     }
   }
@@ -581,20 +583,6 @@ async function indexVendoredSkills(requireValidSnapshots: boolean) {
   return index;
 }
 
-async function findOwnedSkills() {
-  const out: string[] = [];
-  const root = nodePath.join(SOURCE_ROOT, "skills");
-  if (!(await exists(root))) {
-    return out;
-  }
-  for (const entry of await readdir(root, { withFileTypes: true })) {
-    if (entry.isDirectory() && (await exists(nodePath.join(root, entry.name, "SKILL.md")))) {
-      out.push(entry.name);
-    }
-  }
-  return out;
-}
-
 function frontmatterValue(text: string, key: string): string | null {
   const match = new RegExp(`^${key}:\\s*(.+)$`, "mu").exec(text);
   if (!match) {
@@ -663,7 +651,8 @@ async function checkSource(release: boolean) {
 
   for (const skill of await findFiles(nodePath.join(SOURCE_ROOT, "skills"), "SKILL.md")) {
     const text = await readFile(skill, "utf-8");
-    if (!frontmatterValue(text, "name")) {
+    const skillName = frontmatterValue(text, "name");
+    if (skillName === null || skillName.length === 0) {
       errors.push(`Invalid skill frontmatter: ${nodePath.relative(SOURCE_ROOT, skill)}`);
     }
   }
