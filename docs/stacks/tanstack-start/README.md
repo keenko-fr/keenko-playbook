@@ -16,4 +16,14 @@ serverFn validator → web-server input
 Confect Args → backend application function contract
 ```
 
+## Route definition property order
+
+TanStack Router route-option property order can affect TypeScript inference. Framework-required ordering outranks generic alphabetical `sort-keys` inside route-definition option objects.
+
+For the current TanStack Router rule, inference-sensitive ordering applies to objects passed to `createRoute`, `createFileRoute`, `createRootRoute`, and `createRootRouteWithContext`. Re-check the installed/current TanStack Router lint package before changing this list because the supported APIs and order belong to TanStack, not to Keenko.
+
+Prefer TanStack's published `@tanstack/router/create-route-property-order` rule through Oxlint's JS-plugin support when the pinned Oxlint and TanStack plugin pairing has executable evidence in the consuming repository. Do not add ESLint solely to run this rule.
+
+The Playbook does not currently pin or install a TanStack Router lint package, so its own CI cannot prove that pairing. Until a consumer proves the rule under its pinned versions, use the narrow fallback: disable generic `sort-keys` only for the files that own TanStack route-definition objects, keep the rest of the TanStack Start code under the normal Ultracite `sort-keys` rule, and follow TanStack's documented semantic property order in those objects. Treat automatic route-order enforcement as unavailable until the Oxlint plugin integration is verified.
+
 Use TanStack Intent/current package guidance for exact APIs.
