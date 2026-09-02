@@ -6,7 +6,22 @@ Keenko TypeScript repositories use Oxfmt for formatting and Oxlint for linting, 
 
 Oxfmt output is canonical for formatter-owned choices. Do not restate quotes, semicolons, trailing commas, wrapping behavior, or other arbitrary formatter output as independent prose rules. The deliberate Keenko formatting override is `printWidth: 140`; `.editorconfig` remains responsible for editor-neutral invariants such as LF, final newline, and indentation. When inheriting an upstream formatter preset, strip any preset fields that overlap those EditorConfig-owned invariants before passing the config to Oxfmt. For the pinned Ultracite baseline, remove `endOfLine`, `tabWidth`, and `useTabs`; their values must come from `.editorconfig` even when the upstream preset currently matches them.
 
-Oxlint is correctness-first. Ultracite supplies the broad generic quality baseline; Keenko adds only high-signal mechanically enforceable semantic or architectural rules and explicit compatibility exceptions. Do not duplicate formatter rules or TypeScript compiler diagnostics merely for ceremony.
+Oxlint is correctness-first. Canonical lint policy is layered:
+
+```text
+pinned Ultracite defaults
++ universal Keenko delta
++ selected stack/framework delta
++ genuine repository-local exceptions
+```
+
+Ultracite owns the broad generic syntax and quality baseline. Keep the Keenko delta small and explicit. An override is admissible only when it preserves a settled Keenko convention, resolves a demonstrated supported-tool/runtime/framework conflict, or removes duplicate diagnostic ownership without removing the concern. Historical presence, migration convenience, stylistic preference, or making existing code green are not sufficient reasons.
+
+Stack, framework, and runtime overrides must be scoped to the files or workspaces that need them. When a generic rule conflicts with a more knowledgeable stack or framework rule, the specific rule owns that concern in its scope. Within one Oxlint diagnostic surface, one concern has one owner. Do not keep two rules that report the same problem merely because both upstream presets enable them.
+
+Exact overlap rule names are versioned compatibility data, not permanent Keenko convention. Re-derive an overlap list from the installed/current presets and supported package pairing whenever either owning lint package changes. Detailed stack-specific lists belong in their stack module rather than here.
+
+Do not duplicate formatter rules or TypeScript compiler diagnostics merely for ceremony.
 
 ## Canonical version set
 
@@ -22,15 +37,15 @@ Tooling that can change accepted source or diagnostics is exact-pinned and upgra
 | Effect module | `@effect/tsgo`         | `0.38.0`   |
 | Effect module | `oxlint-plugin-effect` | `0.11.0`   |
 
-The Effect tooling is a compatibility unit: before upgrading `@effect/tsgo`, verify its current first-party supported TypeScript, Oxlint, and `oxlint-tsgolint` versions and move the coupled pins together. Do not infer compatibility from semver or model memory.
+The Effect tooling is a compatibility unit: before upgrading `@effect/tsgo`, verify its current first-party supported TypeScript, Oxlint, and `oxlint-tsgolint` versions and move the coupled pins together. Re-check `oxlint-plugin-effect` at the same time because its preset and overlap with Effect tsgo are versioned compatibility data.
 
 ## Root configuration and monorepos
 
-A TypeScript repository owns root `oxfmt.config.ts` and `oxlint.config.ts` files. Root configuration is the canonical baseline for every workspace. Add a nested/package config only for a genuine stack, runtime, generated-file, or architectural difference, and inherit the root configuration rather than copying it.
+A TypeScript repository owns root `oxfmt.config.ts` and `oxlint.config.ts` files. Root configuration is the canonical baseline for every workspace. Add a nested/package config or root override only for a genuine stack, runtime, generated-file, or architectural difference, and inherit the root configuration rather than copying it.
 
 `options.typeAware: true` is required in the root Oxlint configuration. Keep TypeScript type checking as a separate `typecheck` script; do not enable Oxlint's experimental type-check mode as a replacement for the compiler contract.
 
-Oxfmt owns mechanical import sorting. Keep external and workspace packages before project-local imports and preserve side-effect import order. `import type` remains a semantic convention in `code-style.md`; the linter enforces the mechanical form.
+Oxfmt owns mechanical import sorting. Keep external and workspace packages before project-local imports and preserve side-effect import order. Type-import semantics remain a convention in `code-style.md` and the TypeScript stack; the linter enforces the mechanical form.
 
 ## Generated, managed, and vendored files
 
