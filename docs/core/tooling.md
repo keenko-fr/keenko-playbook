@@ -83,7 +83,7 @@ Only applicable stages run. A drift check may regenerate into a disposable works
 
 ## CI and agents
 
-CI consumes the canonical package scripts and never auto-fixes, persists rewritten tracked source as remediation, or pushes formatting/lint changes. A required merge gate proves the equivalent of `bun run check`; job topology may split the work for performance without creating a second command contract.
+CI consumes the canonical package scripts and never auto-fixes, persists rewritten tracked source as remediation, or pushes formatting/lint changes. A required merge gate proves the equivalent of `bun run check`; job topology may split the work for performance without creating a second command contract. Run Bun-backed CI at the minimum/reference version defined in `dependencies.md`; for the current v1 baseline that version is `1.4.0`. Do not add a moving latest-Bun job yet. The supported runtime range remains owned by `dependencies.md`.
 
 During implementation, agents format/fix the touched scope and run focused lint, type, and tests as appropriate. Safe autofixes are encouraged only when their resulting diff is inspected. Never manually fight Oxfmt output and never autofix generated/vendored sources. Before review handoff, run the applicable complete `bun run check` and report exactly what passed, failed, was not run, or was unavailable.
 
