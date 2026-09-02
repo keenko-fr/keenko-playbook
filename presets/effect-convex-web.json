@@ -12,7 +12,7 @@
     "tanstack-form",
     "tanstack-table",
     "paraglide",
-    "ui",
+    "react-ui",
     "testing"
   ],
   "ownedSkills": ["confect", "convex"],

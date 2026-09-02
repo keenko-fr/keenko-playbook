@@ -39,6 +39,10 @@ describe("consumer materialization", () => {
     expect(await readFile(join(target, "AGENTS.md"), "utf-8")).toContain("Keep me.");
     expect(await readFile(join(target, "CLAUDE.md"), "utf-8")).toContain("Keep me too.");
     expect(await readFile(join(target, "CONTEXT.md"), "utf-8")).toContain("Keep this context.");
+    expect(await exists(join(target, "docs", "project", "ui.md"))).toBe(true);
+    const config = JSON.parse(await readFile(join(target, ".playbook", "config.json"), "utf-8")) as { modules: string[] };
+    expect(config.modules).toContain("react-ui");
+    expect(config.modules).not.toContain("ui");
 
     expect((await run("install", "--target", target)).code).not.toBe(0);
     expect(await hashTree(target)).toEqual(installed);
@@ -46,6 +50,65 @@ describe("consumer materialization", () => {
     expect(await hashTree(target)).toEqual(installed);
     expect((await run("update", "--target", target, "--apply")).code).toBe(0);
     expect(await hashTree(target)).toEqual(installed);
+    expect((await run("check", "--target", target)).code).toBe(0);
+  });
+
+  test("preserves a project-owned UI specification on install and update", async () => {
+    const target = await fixture();
+    const uiPath = join(target, "docs", "project", "ui.md");
+    const projectUi = "# Project UI\n\nKeep this product decision.\n";
+    await mkdir(join(target, "docs", "project"), { recursive: true });
+    await writeFile(uiPath, projectUi);
+
+    expect((await run("install", "--target", target)).code).toBe(0);
+    expect(await readFile(uiPath, "utf-8")).toBe(projectUi);
+    expect((await run("update", "--target", target, "--apply")).code).toBe(0);
+    expect(await readFile(uiPath, "utf-8")).toBe(projectUi);
+    expect((await run("check", "--target", target)).code).toBe(0);
+  });
+
+  test("requires the UI project scaffold when the installed modules declare a UI surface", async () => {
+    const target = await fixture();
+    expect((await run("install", "--target", target)).code).toBe(0);
+    await rm(join(target, "docs", "project", "ui.md"));
+
+    const result = await run("check", "--target", target);
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("Missing project scaffold: docs/project/ui.md");
+  });
+
+  test("updates persisted ui module installs to react-ui without a compatibility alias", async () => {
+    const target = await fixture();
+    expect((await run("install", "--target", target)).code).toBe(0);
+
+    const playbookRoot = join(target, ".playbook");
+    const configPath = join(playbookRoot, "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf-8")) as { modules: string[] };
+    config.modules = config.modules.map((name) => (name === "react-ui" ? "ui" : name));
+    await writeFile(configPath, JSON.stringify(config, null, 2) + "\n");
+    await rm(join(playbookRoot, "docs", "stacks", "react-ui"), { recursive: true, force: true });
+    await mkdir(join(playbookRoot, "docs", "stacks", "ui"), { recursive: true });
+    await writeFile(
+      join(playbookRoot, "docs", "stacks", "ui", "module.json"),
+      JSON.stringify({ name: "ui", requires: ["react"], skills: [], incompatibleWith: [] }, null, 2) + "\n"
+    );
+    await writeFile(join(playbookRoot, "docs", "stacks", "ui", "README.md"), "# UI\n");
+    await rm(join(target, "docs", "project", "ui.md"));
+
+    const preview = await run("update", "--target", target);
+    expect(preview.code).toBe(0);
+    expect(preview.stdout).toContain("ui");
+    expect(preview.stdout).toContain("react-ui");
+    expect(preview.stdout).toContain(" -> ");
+    expect(await exists(join(playbookRoot, "docs", "stacks", "ui"))).toBe(true);
+
+    expect((await run("update", "--target", target, "--apply")).code).toBe(0);
+    const updated = JSON.parse(await readFile(configPath, "utf-8")) as { modules: string[] };
+    expect(updated.modules).toContain("react-ui");
+    expect(updated.modules).not.toContain("ui");
+    expect(await exists(join(playbookRoot, "docs", "stacks", "ui"))).toBe(false);
+    expect(await exists(join(playbookRoot, "docs", "stacks", "react-ui"))).toBe(true);
+    expect(await exists(join(target, "docs", "project", "ui.md"))).toBe(true);
     expect((await run("check", "--target", target)).code).toBe(0);
   });
 
@@ -76,6 +139,18 @@ describe("consumer materialization", () => {
     await rm(join(target, "docs", "project"));
     expect((await run("install", "--target", target)).code).toBe(0);
     expect((await run("check", "--target", target)).code).toBe(0);
+  });
+
+  test("preflights project UI scaffold collisions without partial writes", async () => {
+    const target = await fixture();
+    await mkdir(join(target, "docs", "project", "ui.md"), { recursive: true });
+    const before = await hashTree(target);
+
+    const result = await run("install", "--target", target);
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("Managed scaffold path must be a file");
+    expect(await hashTree(target)).toEqual(before);
+    expect(await exists(join(target, ".playbook", "config.json"))).toBe(false);
   });
 
   test("detects managed-block tampering and retired generated skills", async () => {

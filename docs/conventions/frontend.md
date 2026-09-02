@@ -1,30 +1,35 @@
-# Frontend ownership and rendering
+# Frontend UI quality
+
+This convention owns renderer-neutral frontend and UI quality rules. Renderer-specific programming and styling rules belong in the enabled renderer modules.
 
 ## Component ownership
 
 Use this ownership ladder:
 
 ```text
-used only in one file
-→ local COMPONENTS
+used only in one rendered unit
+-> keep local
 
 reusable within one feature/domain
-→ features/<feature>/components
+-> keep with that feature/domain
 
-cross-application + domain-agnostic
-→ shared UI package
+domain-agnostic and application-wide
+-> application UI layer
+
+domain-agnostic and genuinely shared across application/package boundaries
+-> shared UI package
 
 domain-aware and genuinely shared across application/package boundaries
-→ shared domain UI
+-> shared domain UI
 ```
 
-Avoid a generic global `components/` bucket for arbitrary business components.
+Avoid generic global component buckets for arbitrary business components.
 
-Shared UI owns generic interaction, accessibility, visual state, semantic attributes, and styling. It does not know application terminology, domain values, or business workflows. Start domain-aware UI in its feature and promote it only after a genuine second application/package consumer makes local ownership inadequate.
+Shared UI owns generic interaction, accessibility, visual state, semantic attributes, and styling contracts. It does not know application terminology, domain values, or business workflows. Start domain-aware UI with its feature and promote it only when a real second application/package consumer makes local ownership inadequate.
 
-A domain-agnostic primitive may be promoted earlier when primitive-level ownership is itself clear. Prefer an existing shadcn/Base UI/shared primitive before reimplementing foundational interaction behavior.
+Keep renderer-specific implementations local by default. Share them across renderers only when the implementation itself has earned a real shared boundary.
 
-## DISPLAY
+## DISPLAY and visual representation
 
 `DISPLAY` answers how an application/domain value is represented to a user. It may contain:
 
@@ -32,35 +37,44 @@ A domain-agnostic primitive may be promoted earlier when primitive-level ownersh
 - icons;
 - locale-aware formatters;
 - display-only options;
-- finite domain-value → user-meaning mappings.
+- finite domain-value to user-meaning mappings.
 
-It does not contain business/persistence rules, Tailwind classes, CVA definitions, or literal translated copy.
+It does not contain business or persistence rules, styling classes, style definitions, or literal translated copy.
 
-For finite values, use exhaustive typed maps, normally named concisely such as `statusDisplay`, `stateDisplay`, `typeDisplay`, or `roleDisplay`, with `satisfies Record<...>` so new domain values require deliberate UI handling.
+For finite values, use exhaustive typed maps, normally named concisely such as `statusDisplay`, `stateDisplay`, `typeDisplay`, or `roleDisplay`, so new domain values require deliberate UI handling.
 
-## STYLES
+Keep user meaning separate from visual representation. `DISPLAY` owns meaning. The enabled renderer/UI stack owns the implementation of visual styles.
 
-Component-owned styles live in an uppercase CVA object named for the main rendered unit. Keep meaningful/repeated styling out of JSX; trivial one-off structural classes may remain inline when extraction would add noise.
+## Semantic structure and accessibility
 
-When state already exists, expose it via canonical semantic attributes such as `data-status`, `data-active`, `data-invalid`, `data-selected`, or `data-orientation` and style from that state. Use canonical English programmatic values in attributes. Do not create a CVA variant merely to mirror existing state.
+Use semantic structure that expresses the content and interaction correctly. Prefer native semantics and accessibility-capable primitives before recreating established interaction behavior.
 
-CVA variants represent genuine reusable visual API choices such as size, density, emphasis, tone, or a real orientation API.
+Accessibility is part of the component contract. Preserve accessible names, keyboard operation, focus behavior, disabled semantics, error association, state semantics, and appropriate roles as applicable. Do not defer accessibility as optional polish.
 
-Keep meaning and visuals separate: `DISPLAY` decides what `draft` means to the user; `STYLES` decides how `data-status="draft"` looks.
+Separate domain and user meaning from visual representation when they can vary independently. Visual changes must not silently change domain meaning, and domain values must not become styling APIs by accident.
 
-## JSX responsibility
+## UI completeness contract
 
-JSX owns semantic structure, composition, data flow, interaction, accessibility, and meaningful state exposure. `DISPLAY` owns user meaning; `STYLES` owns visuals; Paraglide owns interface copy.
+An implementation must deliberately handle the applicable states and constraints:
 
-## Semantics and accessibility
+- initial/loading state;
+- empty state;
+- failure state;
+- pending mutations or actions;
+- responsive behavior;
+- keyboard and focus behavior;
+- reduced-motion behavior where motion exists.
 
-Prefer correct native semantic elements and accessible primitives before recreating behavior with `div`, click handlers, ARIA, or custom keyboard logic.
+"Deliberately handle" can mean deciding that a state is not applicable. Do not leave an applicable state to accidental framework or browser behavior.
 
-Accessibility is part of the component contract. Preserve accessible names, keyboard operation, focus behavior, disabled semantics, error association, state semantics, and correct roles/HTML as applicable. Do not defer accessibility as optional polish.
+Responsive intent, interaction feedback, and action completion should be clear for the feature being implemented. The shared convention does not choose exact presentation. It does not prescribe spinner versus skeleton, toast versus inline feedback, exact breakpoints, confirmation-dialog policy, motion duration, default density, or a specific responsive composition.
 
-## React state and effects
+## Project UI decisions
 
-- Compute values from props/Router/Query/Form/local state during render rather than mirroring them into another `useState`.
-- Use `useEffect` primarily to synchronize React with an external system (browser API, subscription, imperative widget, timer, etc.), not as ordinary application data-flow machinery.
-- User-triggered side effects run from the event/mutation flow that owns the interaction, not by setting state for an Effect to notice.
-- Do not add `useMemo`, `useCallback`, or `memo` as default ceremony. Use memoization for credible/measured performance needs or when stable identity is genuinely required by another API. Correctness never depends on memoization.
+`docs/project/ui.md` is the canonical project-owned document for durable visual and interaction decisions when the enabled stack has a meaningful UI surface. Linear owns feature/product scope and acceptance decisions. Code and configuration own executable implementations and exact values such as theme tokens, CSS values, and component code.
+
+An external design artifact such as Figma is authoritative only when `docs/project/ui.md` explicitly delegates authority to it. A design link in a ticket or repository does not become canonical by itself.
+
+When a material UI choice is not settled in `docs/project/ui.md` or another higher-authority source, do not silently invent a durable project convention. Small local details may follow established project precedent. Material choices that affect layout, information hierarchy, navigation, responsive behavior, or the interaction model require an explicit human decision.
+
+When the `prototype` skill is installed, prefer it to explore materially different UI directions before a human settles the choice. Renderer modules must not depend on that optional exploration workflow merely to enforce UI conventions.

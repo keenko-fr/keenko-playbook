@@ -6,7 +6,7 @@ Canonical reusable conventions that cut across stack modules:
 - `backend-file-topology.md`: canonical backend and Confect file section grammar;
 - `schema-types.md`: Effect Schema representation/persistence/transport vocabulary and schema ownership;
 - `validation.md`: stable Issue vocabularies and typed Failure conventions;
-- `frontend.md`: component ownership, DISPLAY/STYLES, React state/effects, accessibility;
+- `frontend.md`: renderer-neutral component ownership, DISPLAY, accessibility, UI completeness, and project UI decision ownership;
 - `frontend-file-topology.md`: canonical React file section order;
 - `i18n.md`: Paraglide/Sherlock message ownership and identity;
 - `migrations.md`: expand → migrate → contract and safe backfills.
