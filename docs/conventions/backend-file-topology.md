@@ -107,11 +107,11 @@ INTERNALS
 TYPES
 ```
 
-Each named exported feature function gets its own section, using that function name as the section label (`search` -> `SEARCH`).
+Each named exported feature function gets its own section, using that function name as the section label (`search` → `SEARCH`).
 
 - `SCHEMAS` owns feature-local schemas and their immediately adjacent schema-derived types.
 - `ERRORS` owns feature-local Schema-tagged Failure classes; do not add redundant companion aliases.
-- `INTERNALS` owns non-exported helpers, including pure policy mappers such as provider Issue -> feature Issue translation.
+- `INTERNALS` owns non-exported helpers, including pure policy mappers such as provider Issue → feature Issue translation.
 - `TYPES` is last and contains only standalone non-schema-derived types.
 
 Empty sections are omitted.
