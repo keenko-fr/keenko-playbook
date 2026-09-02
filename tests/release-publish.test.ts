@@ -10,7 +10,7 @@ afterEach(async () => {
   await Promise.all(
     tempRoots.splice(0).map(async (root) => {
       await rm(root, { force: true, recursive: true });
-    }),
+    })
   );
 });
 
@@ -97,7 +97,7 @@ async function publishTag(work: string, candidate: string, tag: string) {
     `--force-with-lease=refs/heads/main:${candidate}`,
     "origin",
     "HEAD:refs/heads/main",
-    `refs/tags/${tag}:refs/tags/${tag}`,
+    `refs/tags/${tag}:refs/tags/${tag}`
   );
 }
 
