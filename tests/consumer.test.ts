@@ -12,7 +12,7 @@ afterEach(async () => {
   await Promise.all(
     tempRoots.splice(0).map(async (root) => {
       await rm(root, { force: true, recursive: true });
-    }),
+    })
   );
 });
 
@@ -105,7 +105,7 @@ describe("consumer materialization", () => {
     await mkdir(path.join(playbookRoot, "docs", "stacks", "ui"), { recursive: true });
     await writeFile(
       path.join(playbookRoot, "docs", "stacks", "ui", "module.json"),
-      `${JSON.stringify({ incompatibleWith: [], name: "ui", requires: ["react"], skills: [] }, null, 2)}\n`,
+      `${JSON.stringify({ incompatibleWith: [], name: "ui", requires: ["react"], skills: [] }, null, 2)}\n`
     );
     await writeFile(path.join(playbookRoot, "docs", "stacks", "ui", "README.md"), "# UI\n");
     await rm(path.join(target, "docs", "project", "ui.md"));
@@ -204,7 +204,7 @@ describe("consumer materialization", () => {
         const skill = await readFile(path.join(dir, "SKILL.md"), "utf-8");
         expect(skill).toContain("Only route to skills that are actually installed");
         expect(skill).toContain("Do not commit, push, merge");
-      }),
+      })
     );
   });
 });
@@ -236,7 +236,7 @@ async function hashTree(root: string) {
       const relativePath = path.relative(root, file).replaceAll("\\", "/");
       const content = await readFile(file);
       return { hash: createHash("sha256").update(content).digest("hex"), relativePath };
-    }),
+    })
   );
   const out: Record<string, string> = {};
   for (const { hash, relativePath } of hashes) {
@@ -260,7 +260,7 @@ async function findAllFiles(root: string): Promise<string[]> {
         return [entryPath];
       }
       return [];
-    }),
+    })
   );
   return paths.flat().toSorted();
 }
