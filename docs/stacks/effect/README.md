@@ -303,7 +303,7 @@ const showIssueFrom = Match.type<TvMazeIssue>().pipe(
   Match.withReturnType<ShowIssue>(),
   Match.when("unavailable", () => "unavailable"),
   Match.when("invalid_response", () => "invalid_response"),
-  Match.exhaustive,
+  Match.exhaustive
 );
 ```
 
