@@ -56,7 +56,7 @@ async function main() {
   const stageRoot = await mkdtemp(join(vendorRoot, ".sync-"));
   try {
     const vendorSources = manifest.sources.filter(({ mode }) => mode === "vendor");
-    await Promise.all(
+    await settleAll(
       vendorSources.map(async (source) => {
         if (source.commit === null) {
           throw new Error(`Refusing to vendor ${source.id} without a pinned commit`);
@@ -95,6 +95,15 @@ async function main() {
   }
 }
 
+async function settleAll(tasks: Promise<void>[]) {
+  const results = await Promise.allSettled(tasks);
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure !== undefined && failure.status === "rejected") {
+    const reason: unknown = failure.reason;
+    throw reason instanceof Error ? reason : new Error(String(reason));
+  }
+}
+
 async function updatePin(source: Source) {
   const commit = await apiJson<GitCommitResponse>(`https://api.github.com/repos/${source.repository}/commits/${source.upstreamRef}`);
   source.commit = commit.sha;
@@ -123,7 +132,7 @@ async function materialize(source: Source, target: string) {
   await mkdir(target, { recursive: true });
   const tree = await apiJson<GitTreeResponse>(`https://api.github.com/repos/${source.repository}/git/trees/${source.tree}?recursive=1`);
   const blobs = tree.tree.filter((entry) => entry.type === "blob" && included(entry.path, source.includes));
-  await Promise.all(
+  await settleAll(
     blobs.map(async (entry) => {
       const blob = await apiJson<GitBlobResponse>(`https://api.github.com/repos/${source.repository}/git/blobs/${entry.sha}`);
       if (blob.encoding !== "base64") {
