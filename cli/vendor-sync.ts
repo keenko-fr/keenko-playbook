@@ -138,12 +138,13 @@ async function materialize(source: Source, target: string) {
   await writeFile(
     join(target, "VENDORED.json"),
     `${JSON.stringify(
+      // oxlint-disable-next-line eslint/sort-keys -- Provenance key order is part of the committed vendor snapshot bytes.
       {
-        commit: source.commit,
-        files,
-        license: source.license,
         repository: source.repository,
+        commit: source.commit,
         tree: source.tree,
+        license: source.license,
+        files,
       },
       null,
       2
