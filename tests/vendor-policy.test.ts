@@ -1,23 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import path from "node:path";
 
-const ROOT = resolve(import.meta.dir, "..");
+const ROOT = path.resolve(import.meta.dir, "..");
 
-type VendorSource = {
-  id: string;
-  mode: "vendor" | "external";
-  license: string | null;
+interface VendorSource {
   commit: string | null;
+  id: string;
+  license: string | null;
+  mode: "vendor" | "external";
   tree: string;
-};
-type VendorManifest = { sources: VendorSource[] };
-type Preset = { externalSkills: Record<string, unknown>; ownedSkills: string[] };
+}
 
 describe("vendor policy", () => {
   test("never redistributes a source without a declared license", async () => {
-    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf-8")) as VendorManifest;
-    for (const source of manifest.sources) {
+    const manifest = await readJsonObject(`${ROOT}/vendor/sources.json`);
+    const sources = asArray(manifest.sources, "vendor/sources.json.sources").map(asVendorSource);
+    for (const source of sources) {
       if (source.mode === "vendor") {
         expect(source.license).toBeTruthy();
         expect(source.commit).toBeTruthy();
@@ -27,11 +26,62 @@ describe("vendor policy", () => {
   });
 
   test("keeps Convex external and out of default external-skill expectations", async () => {
-    const manifest = JSON.parse(await readFile(`${ROOT}/vendor/sources.json`, "utf-8")) as VendorManifest;
-    const convex = manifest.sources.find((source) => source.id === "convex");
-    const preset = JSON.parse(await readFile(`${ROOT}/presets/effect-convex-web.json`, "utf-8")) as Preset;
+    const manifest = await readJsonObject(`${ROOT}/vendor/sources.json`);
+    const sources = asArray(manifest.sources, "vendor/sources.json.sources").map(asVendorSource);
+    const convex = sources.find((source) => source.id === "convex");
+    const preset = await readJsonObject(`${ROOT}/presets/effect-convex-web.json`);
+    const externalSkills = asObject(preset.externalSkills, "preset.externalSkills");
+    const ownedSkills = asArray(preset.ownedSkills, "preset.ownedSkills").map((value) => asString(value, "preset.ownedSkills[]"));
     expect(convex?.mode).toBe("external");
-    expect(preset.externalSkills).toEqual({});
-    expect(preset.ownedSkills).toContain("convex");
+    expect(externalSkills).toEqual({});
+    expect(ownedSkills).toContain("convex");
   });
 });
+
+async function readJsonObject(filePath: string): Promise<Record<string, unknown>> {
+  const value: unknown = JSON.parse(await readFile(filePath, "utf-8"));
+  return asObject(value, filePath);
+}
+
+function asVendorSource(value: unknown): VendorSource {
+  const source = asObject(value, "vendor source");
+  const mode = source.mode;
+  if (mode !== "vendor" && mode !== "external") {
+    throw new Error("Expected vendor source mode");
+  }
+  return {
+    commit: asNullableString(source.commit, "vendor source commit"),
+    id: asString(source.id, "vendor source id"),
+    license: asNullableString(source.license, "vendor source license"),
+    mode,
+    tree: asString(source.tree, "vendor source tree"),
+  };
+}
+
+function asObject(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Expected object at ${label}`);
+  }
+  return Object.fromEntries(Object.entries(value));
+}
+
+function asArray(value: unknown, label: string): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Expected array at ${label}`);
+  }
+  return value;
+}
+
+function asString(value: unknown, label: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`Expected string at ${label}`);
+  }
+  return value;
+}
+
+function asNullableString(value: unknown, label: string): string | null {
+  if (value === null) {
+    return null;
+  }
+  return asString(value, label);
+}
