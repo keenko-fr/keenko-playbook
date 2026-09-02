@@ -23,7 +23,6 @@ jobs:
         run: |
           python <<'PY'
           from pathlib import Path
-          import re
 
           p = Path("cli/playbook.ts")
           s = p.read_text()
@@ -34,7 +33,7 @@ jobs:
               )
           s = s.replace('import { basename, dirname, join, relative, resolve } from "node:path";', 'import path from "node:path";')
           for name in ["basename", "dirname", "join", "relative", "resolve"]:
-              s = re.sub(rf"(?<![.A-Za-z0-9_]){name}\\(", f"path.{name}(", s)
+              s = s.replace(f"{name}(", f"path.{name}(")
           s = s.replace(".sort()", ".toSorted()")
           s = s.replace(".reverse()", ".toReversed()")
           s = s.replace(
