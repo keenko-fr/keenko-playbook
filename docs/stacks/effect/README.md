@@ -81,14 +81,7 @@ In a mixed monorepo, keep type-aware linting in the root config and scope Effect
 Canonical authored Effect 4 code prefers named imports from the package root, with local aliases when they improve readability:
 
 ```ts
-import {
-  Context,
-  Effect as E,
-  Layer,
-  Match,
-  Schema as S,
-  Struct,
-} from "effect";
+import { Context, Effect as E, Layer, Match, Schema as S, Struct } from "effect";
 ```
 
 Prefer adding other Effect modules to the same root import rather than defaulting to namespace subpath imports such as `effect/Effect` or `effect/Schema`.
@@ -96,12 +89,7 @@ Prefer adding other Effect modules to the same root import rather than defaultin
 Use a subpath import only when the required API is not suitably available from the root or a real tooling/runtime constraint requires it. The first-party HTTP client APIs in Effect `4.0.0-beta.107` are one such case:
 
 ```ts
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientRequest,
-  HttpClientResponse,
-} from "effect/unstable/http";
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 ```
 
 Do not rewrite vendored/generated code merely to enforce this authored-code convention.
@@ -155,11 +143,9 @@ tvmaze.infra.search
 The explicit string owns the stable operation/tracing identity. Keep the callback anonymous rather than giving it a second semantic operation name:
 
 ```ts
-const search = E.fn("tvmaze.infra.search")(
-  function* (query: string) {
-    // ...
-  },
-);
+const search = E.fn("tvmaze.infra.search")(function* (query: string) {
+  // ...
+});
 ```
 
 Prefer Effect/Option/Match combinators over manual branching when an appropriate semantic combinator exists. Native `switch` remains fine outside Effect-oriented typed/exhaustive code or when materially clearer.
@@ -182,16 +168,8 @@ For Effect `4.0.0-beta.107`, prefer the installed structural APIs over reconstru
 ```ts
 schema.mapFields(Struct.pick(["a"]));
 schema.mapFields(Struct.omit(["a"]));
-schema.mapFields(
-  Struct.evolve({
-    field: (field) => S.optionalKey(field),
-  }),
-);
-schema.pipe(
-  S.fieldsAssign({
-    other: S.String,
-  }),
-);
+schema.mapFields(Struct.evolve({ field: (field) => S.optionalKey(field) }));
+schema.pipe(S.fieldsAssign({ other: S.String }));
 ```
 
 `Struct.assign`, `S.toEncoded(...)`, `S.toType(...)`, `S.decodeTo(...)`, Schema transformation facilities, and value-level `Struct.pick` / `Struct.omit` are also available for the relationships they actually model.
@@ -207,19 +185,13 @@ Expected input/state/operator failures use the typed Effect error channel. Expec
 A canonical issue-bearing Failure follows the shared validation guidance:
 
 ```ts
-export const sTvMazeIssue = S.Literals([
-  "unavailable",
-  "invalid_response",
-]);
+export const sTvMazeIssue = S.Literals(["unavailable", "invalid_response"]);
 export type TvMazeIssue = typeof sTvMazeIssue.Type;
 
-export class TvMazeFailure extends S.TaggedError<TvMazeFailure>()(
-  "TvMazeFailure",
-  {
-    issue: sTvMazeIssue,
-    cause: S.optional(S.Defect()),
-  },
-) {}
+export class TvMazeFailure extends S.TaggedError<TvMazeFailure>()("TvMazeFailure", {
+  issue: sTvMazeIssue,
+  cause: S.optional(S.Defect()),
+}) {}
 ```
 
 `cause` is diagnostic and opaque; application behavior branches on stable `issue`, not on `cause`. Do not automatically expose an internal cause through public/server-client Failure contracts. See `validation.md` for one-Failure-versus-several and public-boundary rules.
@@ -244,19 +216,14 @@ When practical, use `make` as the canonical source of a service implementation a
 const make = E.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
 
-  const search = E.fn("tvmaze.infra.search")(
-    function* (query: string) {
-      // use httpClient and return application representations
-    },
-  );
+  const search = E.fn("tvmaze.infra.search")(function* (query: string) {
+    // use httpClient and return application representations
+  });
 
   return { search };
 });
 
-export class TvMaze extends Context.Service<
-  TvMaze,
-  E.Success<typeof make>
->()("TvMaze") {
+export class TvMaze extends Context.Service<TvMaze, E.Success<typeof make>>()("TvMaze") {
   static readonly layer = Layer.effect(this, make);
 }
 ```
@@ -346,11 +313,10 @@ Cross-layer provider Failure -> feature Failure translation uses the pure Issue 
 
 ```ts
 providerOperation(...).pipe(
-  E.mapError(
-    (failure) =>
-      new ShowFailure({
-        issue: showIssueFrom(failure.issue),
-      }),
+  E.mapError((failure) =>
+    new ShowFailure({
+      issue: showIssueFrom(failure.issue),
+    }),
   ),
 );
 ```
