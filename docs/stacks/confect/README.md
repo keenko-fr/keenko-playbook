@@ -21,6 +21,21 @@ Do not extract a schema solely to name a one-use endpoint field. Prefer Effect S
 
 Generated Confect services/context are used directly; do not wrap them merely to rename or re-expose them.
 
+## Persisted document system fields
+
+Persisted resource schema modules start from application-controlled `sFooFields` and derive the complete `sFooDoc` with Confect's installed system-field facility. Do not manually recreate Convex `_id` or `_creationTime`.
+
+For Confect `10.0.0-next.13`, the verified API is:
+
+```ts
+export const sFooDoc = SystemFields.extendWithSystemFields("foo", sFooFields);
+export type FooDoc = typeof sFooDoc.Type;
+```
+
+The table name is the first argument and the schema is the second. Inspect the installed Confect source before documenting exact syntax for another version.
+
+`schema-types.md` owns the persisted-resource grammar, representation relationships, and structural derivation rules. Do not duplicate that grammar here.
+
 ## File organization
 
 Confect specs and implementations live under the backend `confect/` owner and follow `.playbook/docs/conventions/backend-file-topology.md` for canonical section grammar.
@@ -30,7 +45,8 @@ That topology is authoritative for:
 - level-1 `CONSTANTS` / `SCHEMAS` / `SPEC` organization in spec files;
 - level-2 query/mutation/action function-kind grouping inside `GroupSpec.make()`;
 - implementation grouping by public/internal Confect function kind;
-- empty-section omission and `INTERNALS` / `TYPES` placement.
+- schema/type adjacency;
+- empty-section omission and `INTERNALS` / standalone-only `TYPES` placement.
 
 Do not duplicate or invent a different section grammar in project-local Confect files.
 
@@ -76,6 +92,8 @@ Confect Args
 
 Return schemas expose only information callers are entitled to know. Security-sensitive success/rejection distinctions may intentionally collapse for anti-enumeration; unexpected defects are not hidden merely to manufacture that behavior.
 
+Internal diagnostic Failure causes do not automatically cross a public Confect/server-client contract. See `validation.md` for issue/cause and public-boundary rules.
+
 ## Query semantics
 
 Confect queries remain Convex queries. Do not make reactive query results depend on wall clock, randomness, or mutable process state. Persist the relevant facts or evaluate time-sensitive policy at an appropriate non-query boundary.
@@ -83,6 +101,8 @@ Confect queries remain Convex queries. Do not make reactive query results depend
 ## Persistence patches
 
 Preserve the semantic difference between `S.optionalKey` and `S.optional`; explicit `undefined` may be meaningful for clearing an optional Convex field. Prefer focused patch contracts when invariants exist; use broad partial patches only when every field is independently patchable.
+
+Focused persistence-only Patch schemas stay with the data owner; shared Patch representations live in the persisted resource schema module only when they have a genuine cross-layer consumer.
 
 ## Versions and generated code
 

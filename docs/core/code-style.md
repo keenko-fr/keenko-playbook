@@ -12,6 +12,40 @@ Oxfmt is the canonical owner of arbitrary source formatting. Follow its output i
 - Prefer named exports. Use default exports only when a framework/tooling contract naturally requires one.
 - Use lowercase `kebab-case` filenames unless framework-special filenames require another form.
 
+### Architectural module imports
+
+Only architectural `data` and `features` modules use a special namespace-import convention.
+
+Always namespace-import a data module. When the imported module represents the same concept as the consuming file, use the short architectural name:
+
+```ts
+import * as data from "../data/watchlist";
+```
+
+When it represents a different concept, preserve the missing concept information:
+
+```ts
+import * as usersData from "../data/users";
+```
+
+Always namespace-import a features module using the same rule:
+
+```ts
+import * as features from "../features/watchlist";
+import * as usersFeatures from "../features/users";
+```
+
+Do not redundantly name same-concept imports `watchlistData` or `watchlistFeatures` when the consuming file already supplies the `watchlist` context.
+
+Other architectural modules use named imports by default, including infra, schemas, Confect helpers, and ordinary modules:
+
+```ts
+import { TvMaze } from "../infra/tvmaze";
+import { sWatchlist, type Watchlist, type WatchlistInsert } from "../schemas/watchlist";
+```
+
+Do not use generic `infra` or `schemas` namespace aliases. The convention optimizes for information that is not already present in the current module's concept.
+
 ## Naming
 
 - Prefer concise contextual names. Inside `data/packs.ts`, `find`, `get`, `insert`, `patch`, and `remove` are better than repeating `Pack` in every identifier when imports remain clear.
