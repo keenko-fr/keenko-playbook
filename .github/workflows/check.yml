@@ -19,73 +19,47 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Repair KEE-9 source migration
+      - name: Finish KEE-9 source migration
         run: |
           python <<'PY'
           from pathlib import Path
 
-          p = Path("cli/playbook.ts")
-          s = p.read_text()
-          s = s.replace(".path.join(", ".join(")
-          s = s.replace('import path from "node:path";', 'import nodePath from "node:path";')
-          for method in ["join", "dirname", "relative", "resolve", "basename"]:
-              s = s.replace(f"path.{method}(", f"nodePath.{method}(")
-          s = s.replace("Object.entries(out).sort(([a], [b]) => a.localeCompare(b))", "Object.entries(out).toSorted(([a], [b]) => a.localeCompare(b))")
-          s = s.replace(
-              '  for (const name of await findOwnedSkills()) {\n    index.set(`owned:${name}`, { dir: nodePath.join(SOURCE_ROOT, "skills", name), source: null as never, description: "" });\n  }\n',
-              '',
-          )
-          s = s.replace('if (!name) {', 'if (name === null || name.length === 0) {')
-          s = s.replace('if (!source.commit) {', 'if (source.commit === null || source.commit.length === 0) {')
-          s = s.replace('if (!source.license) {', 'if (source.license === null || source.license.length === 0) {')
-          s = s.replace('if (config.integrations.tanstackIntent) {', 'if (config.integrations.tanstackIntent === true) {')
-          s = s.replace('if (existed.get(rel)) {', 'if (existed.get(rel) === true) {')
-          s = s.replace('if (rollbackErrors.length) {', 'if (rollbackErrors.length > 0) {')
-          s = s.replace('const start = starts[0];\n  const end = ends[0];', 'const [start = -1] = starts;\n  const [end = -1] = ends;')
-          s = s.replace(
-              '  const manifest = await loadVendorManifest().catch((error: unknown) => {\n    errors.push(errorMessage(error));\n    return null;\n  });\n  if (manifest) {',
-              '  let manifest: VendorManifest | null = null;\n  try {\n    manifest = await loadVendorManifest();\n  } catch (error: unknown) {\n    errors.push(errorMessage(error));\n  }\n  if (manifest !== null) {',
-          )
-          s = s.replace(
-              'function asObject(value: unknown, label: string): JsonObject {\n  if (!value || typeof value !== "object" || Array.isArray(value)) {\n    throw new Error(`${label} must be an object`);\n  }\n  return value as JsonObject;\n}',
-              'function asObject(value: unknown, label: string): JsonObject {\n  if (value === null || typeof value !== "object" || Array.isArray(value)) {\n    throw new TypeError(`${label} must be an object`);\n  }\n  return Object.fromEntries(Object.entries(value));\n}',
-          )
-          s = s.replace(
-              'function asString(value: unknown, label: string) {\n  if (typeof value !== "string" || !value) {\n    throw new Error(`${label} must be a non-empty string`);\n  }\n  return value;\n}',
-              'function asString(value: unknown, label: string) {\n  if (typeof value !== "string" || value.length === 0) {\n    throw new TypeError(`${label} must be a non-empty string`);\n  }\n  return value;\n}',
-          )
-          s = s.replace(
-              'function asStringAllowEmpty(value: unknown, label: string) {\n  if (typeof value !== "string") {\n    throw new Error(`${label} must be a string`);\n  }\n  return value;\n}',
-              'function asStringAllowEmpty(value: unknown, label: string) {\n  if (typeof value !== "string") {\n    throw new TypeError(`${label} must be a string`);\n  }\n  return value;\n}',
-          )
-          s = s.replace(
-              'function asStringArray(value: unknown, label: string) {\n  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item)) {\n    throw new Error(`${label} must be an array of non-empty strings`);\n  }\n  const out = value as string[];\n  if (new Set(out).size !== out.length) {\n    throw new Error(`${label} must not contain duplicates`);\n  }\n  return out;\n}',
-              'function asStringArray(value: unknown, label: string): string[] {\n  if (!Array.isArray(value)) {\n    throw new TypeError(`${label} must be an array of non-empty strings`);\n  }\n  const out = value.map((item, index) => {\n    if (typeof item !== "string" || item.length === 0) {\n      throw new TypeError(`${label}[${index}] must be a non-empty string`);\n    }\n    return item;\n  });\n  if (new Set(out).size !== out.length) {\n    throw new Error(`${label} must not contain duplicates`);\n  }\n  return out;\n}',
-          )
-          s = s.replace('throw new Error(`${label}.${key} must be boolean`);', 'throw new TypeError(`${label}.${key} must be boolean`);')
-          p.write_text(s)
-
           p = Path("cli/vendor-sync.ts")
           s = p.read_text()
-          s = s.replace('import path from "node:path";', 'import nodePath from "node:path";')
-          for method in ["join", "dirname", "relative", "resolve"]:
-              s = s.replace(f"path.{method}(", f"nodePath.{method}(")
-          s = s.replace('type Hashes = Record<string, string>;\n', '')
+          if 'from "node:path"' not in s:
+              s = s.replace(
+                  'import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";\n',
+                  'import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";\nimport path from "node:path";\n',
+              )
           p.write_text(s)
 
-          p = Path("tests/module-graph.test.ts")
+          p = Path("cli/playbook.ts")
           s = p.read_text()
-          s = s.replace('.map(async (name) => moduleManifest(`docs/stacks/${name}/module.json`))', '.map(async (name) => await moduleManifest(`docs/stacks/${name}/module.json`))')
-          s = s.replace('preset.modules.map(async (name) => moduleManifest(`docs/stacks/${name}/module.json`))', 'preset.modules.map(async (name) => await moduleManifest(`docs/stacks/${name}/module.json`))')
+          s = s.replace(
+              '    if (!(await stat(path)).isDirectory()) {\n      throw new Error(`Managed parent must be a directory: ${path}`);\n    }',
+              '    const info = await stat(path);\n    if (!info.isDirectory()) {\n      throw new Error(`Managed parent must be a directory: ${path}`);\n    }',
+          )
+          s = s.replace(
+              '    if (!(await stat(path)).isFile()) {\n      throw new Error(`Managed scaffold path must be a file: ${path}`);\n    }',
+              '    const info = await stat(path);\n    if (!info.isFile()) {\n      throw new Error(`Managed scaffold path must be a file: ${path}`);\n    }',
+          )
+          start = s.find('async function findOwnedSkills() {')
+          if start != -1:
+              end = s.find('\nfunction frontmatterValue', start)
+              s = s[:start] + s[end + 1:]
+          s = s.replace(
+              '    if (!frontmatterValue(text, "name")) {\n      errors.push(`Invalid skill frontmatter: ${nodePath.relative(SOURCE_ROOT, skill)}`);\n    }',
+              '    const skillName = frontmatterValue(text, "name");\n    if (skillName === null || skillName.length === 0) {\n      errors.push(`Invalid skill frontmatter: ${nodePath.relative(SOURCE_ROOT, skill)}`);\n    }',
+          )
           p.write_text(s)
           PY
           bun run lint:fix || true
           bun run format || true
           git config user.name "keenko-coder"
           git config user.email "actions@users.noreply.github.com"
-          git add cli/playbook.ts cli/vendor-sync.ts tests/module-graph.test.ts
+          git add cli/playbook.ts cli/vendor-sync.ts
           if ! git diff --cached --quiet; then
-            git commit -m "KEE-9 repair source migration"
+            git commit -m "KEE-9 finish source lint migration"
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
           bun run lint || true
