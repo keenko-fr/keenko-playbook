@@ -3,7 +3,12 @@
 ## Package/runtime policy
 
 - Bun is the default package manager, workspace runner, and TypeScript tooling runtime for Keenko TypeScript repositories. Use another tool only for a concrete project/tool compatibility reason.
+- The current v1 baseline supports Bun `>=1.4.0 <2`. Bun `1.4.0` is the minimum supported version and the reference verification version. Bun `<1.4.0` is unsupported. Bun 2.x is outside the supported range; supporting a new Bun major requires an explicit compatibility decision and verification.
+- A root declaration such as `"packageManager": "bun@1.4.0"` records the repository's reference toolchain version. For the v1 baseline it matches the minimum/reference version, but it does not narrow the supported range or make newer compatible Bun 1.x releases unsupported.
 - A repository has one canonical package manager and one corresponding lockfile. Do not mix competing lockfiles.
+- Keep the committed Bun lockfile format version 2 canonical. Lockfile format version 2 is separate from the Bun 2.x runtime major. Do not regenerate or downgrade the lockfile to accommodate an unsupported local Bun; update the local Bun runtime instead.
+- Do not add mise, asdf, Volta-like machinery, custom bootstrap scripts, or another version-manager requirement solely to enforce this baseline.
+- Do not use a `preinstall` script as the Bun compatibility guard. An incompatible Bun can fail while parsing `bun.lock` before repository scripts run.
 
 ## Adding dependencies
 
@@ -21,6 +26,7 @@ Add a dependency only for a concrete capability not already provided adequately 
 
 - Keep unrelated upgrades out of feature work.
 - Read release/migration notes and inspect affected source/types before meaningful upgrades.
+- Changing the supported Bun range or its minimum/reference version is a runtime/toolchain compatibility change. Verify the new minimum against the committed lockfile format and canonical repository checks, assess contributor and CI impact, and update the reference declaration plus minimum-version CI together. Widening support to a new Bun major requires its own compatibility decision and verification.
 - Tooling upgrades that can change formatting or diagnostics are convention changes: inspect the effective preset/config/rule/output delta rather than accepting a version bump mechanically.
 - Regenerate affected artifacts and run focused plus canonical verification.
 - For version-sensitive APIs, trust installed source/types first, then current first-party docs; model memory is not a source.
