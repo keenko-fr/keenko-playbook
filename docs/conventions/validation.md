@@ -29,12 +29,9 @@ Expected typed failures in owned Effect code use Schema-tagged error values. Do 
 A Failure carrying canonical issue semantics uses the property name `issue`:
 
 ```ts
-export class ShowFailure extends S.TaggedError<ShowFailure>()(
-  "ShowFailure",
-  {
-    issue: sShowIssue,
-  },
-) {}
+export class ShowFailure extends S.TaggedError<ShowFailure>()("ShowFailure", {
+  issue: sShowIssue,
+}) {}
 ```
 
 The class already provides the TypeScript type identity `ShowFailure`; do not add a redundant companion alias.
@@ -60,13 +57,10 @@ Do not expose a lower-level HTTP `status` or similar transport detail as stable 
 Internal typed Failures preserve the originating technical cause when it is useful for diagnostics:
 
 ```ts
-export class TvMazeFailure extends S.TaggedError<TvMazeFailure>()(
-  "TvMazeFailure",
-  {
-    issue: sTvMazeIssue,
-    cause: S.optional(S.Defect()),
-  },
-) {}
+export class TvMazeFailure extends S.TaggedError<TvMazeFailure>()("TvMazeFailure", {
+  issue: sTvMazeIssue,
+  cause: S.optional(S.Defect()),
+}) {}
 ```
 
 Use the original lower-level error/defect value rather than eagerly flattening it to a debug string. Examples include HTTP client errors, schema/decode errors, and storage/provider errors.
@@ -110,11 +104,10 @@ Then map the Effect error channel:
 
 ```ts
 providerOperation(...).pipe(
-  E.mapError(
-    (failure) =>
-      new ShowFailure({
-        issue: showIssueFrom(failure.issue),
-      }),
+  E.mapError((failure) =>
+    new ShowFailure({
+      issue: showIssueFrom(failure.issue),
+    }),
   ),
 );
 ```
