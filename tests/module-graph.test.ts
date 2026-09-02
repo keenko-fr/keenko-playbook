@@ -23,7 +23,7 @@ async function json(filePath: string): Promise<Record<string, unknown>> {
 
 async function moduleManifest(filePath: string): Promise<ModuleManifest> {
   const value = await json(filePath);
-  const uiSurface = value.uiSurface;
+  const { uiSurface } = value;
   if (uiSurface !== undefined && typeof uiSurface !== "boolean") {
     throw new Error(`Expected optional boolean at ${filePath}.uiSurface`);
   }
@@ -80,7 +80,7 @@ describe("effect-convex-web preset", () => {
 
   test("modules without a UI surface do not opt into the UI project scaffold", async () => {
     const modules = await Promise.all(
-      ["typescript", "effect", "convex", "confect", "testing"].map((name) => moduleManifest(`docs/stacks/${name}/module.json`))
+      ["typescript", "effect", "convex", "confect", "testing"].map(async (name) => moduleManifest(`docs/stacks/${name}/module.json`))
     );
     for (const module of modules) {
       expect(module.uiSurface).toBeUndefined();
@@ -90,7 +90,7 @@ describe("effect-convex-web preset", () => {
   test("preset selects every module-required skill", async () => {
     const preset = await presetManifest("presets/effect-convex-web.json");
     const selected = new Set([...preset.ownedSkills, ...Object.values(preset.vendorSkills).flat()]);
-    const modules = await Promise.all(preset.modules.map((name) => moduleManifest(`docs/stacks/${name}/module.json`)));
+    const modules = await Promise.all(preset.modules.map(async (name) => moduleManifest(`docs/stacks/${name}/module.json`)));
     for (const module of modules) {
       for (const skill of module.skills) {
         expect(selected.has(skill)).toBe(true);
@@ -108,11 +108,11 @@ function asObject(value: unknown, label: string): Record<string, unknown> {
 
 function asStringArray(value: unknown, label: string): string[] {
   if (!Array.isArray(value)) {
-    throw new Error(`Expected array at ${label}`);
+    throw new TypeError(`Expected array at ${label}`);
   }
   return value.map((item, index) => {
     if (typeof item !== "string") {
-      throw new Error(`Expected string at ${label}[${index}]`);
+      throw new TypeError(`Expected string at ${label}[${index}]`);
     }
     return item;
   });

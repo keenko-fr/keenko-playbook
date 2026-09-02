@@ -219,11 +219,11 @@ async function readJsonObject(filePath: string): Promise<Record<string, unknown>
 
 function asStringArray(value: unknown, label: string): string[] {
   if (!Array.isArray(value)) {
-    throw new Error(`Expected array at ${label}`);
+    throw new TypeError(`Expected array at ${label}`);
   }
   return value.map((item, index) => {
     if (typeof item !== "string") {
-      throw new Error(`Expected string at ${label}[${index}]`);
+      throw new TypeError(`Expected string at ${label}[${index}]`);
     }
     return item;
   });

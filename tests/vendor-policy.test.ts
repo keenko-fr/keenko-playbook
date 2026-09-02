@@ -45,7 +45,7 @@ async function readJsonObject(filePath: string): Promise<Record<string, unknown>
 
 function asVendorSource(value: unknown): VendorSource {
   const source = asObject(value, "vendor source");
-  const mode = source.mode;
+  const { mode } = source;
   if (mode !== "vendor" && mode !== "external") {
     throw new Error("Expected vendor source mode");
   }
@@ -67,14 +67,14 @@ function asObject(value: unknown, label: string): Record<string, unknown> {
 
 function asArray(value: unknown, label: string): unknown[] {
   if (!Array.isArray(value)) {
-    throw new Error(`Expected array at ${label}`);
+    throw new TypeError(`Expected array at ${label}`);
   }
   return value;
 }
 
 function asString(value: unknown, label: string): string {
   if (typeof value !== "string") {
-    throw new Error(`Expected string at ${label}`);
+    throw new TypeError(`Expected string at ${label}`);
   }
   return value;
 }

@@ -140,11 +140,11 @@ async function materialize(source: Source, target: string) {
     join(target, "VENDORED.json"),
     `${JSON.stringify(
       {
-        repository: source.repository,
         commit: source.commit,
-        tree: source.tree,
-        license: source.license,
         files,
+        license: source.license,
+        repository: source.repository,
+        tree: source.tree,
       },
       null,
       2
@@ -200,7 +200,12 @@ async function hashTree(root: string, ignore = new Set<string>()) {
       if (ignore.has(rel)) {
         return null;
       }
-      return [rel, createHash("sha256").update(await readFile(file)).digest("hex")] as const;
+      return [
+        rel,
+        createHash("sha256")
+          .update(await readFile(file))
+          .digest("hex"),
+      ] as const;
     })
   );
   return Object.fromEntries(
