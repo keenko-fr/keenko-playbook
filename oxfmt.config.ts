@@ -42,11 +42,6 @@ export default defineConfig({
   },
 });
 
-function stripEditorConfigFields({
-  endOfLine: _endOfLine,
-  tabWidth: _tabWidth,
-  useTabs: _useTabs,
-  ...formatting
-}: typeof ultracite) {
+function stripEditorConfigFields({ endOfLine: _endOfLine, tabWidth: _tabWidth, useTabs: _useTabs, ...formatting }: typeof ultracite) {
   return formatting;
 }
