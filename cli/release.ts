@@ -61,7 +61,11 @@ async function prepare() {
   const current = await readFile(changelogPath, "utf-8");
   const body = `## ${version}\n\n${notes.map((note) => `- ${note}`).join("\n")}\n\n`;
   await writeFile(changelogPath, current.replace(/^# Changelog\s*\n+/mu, `# Changelog\n\n${body}`));
-  await Promise.all(files.map((name) => rm(path.join(changesetDir, name))));
+  await Promise.all(
+    files.map(async (name) => {
+      await rm(path.join(changesetDir, name));
+    })
+  );
   console.log(version);
 }
 
@@ -89,14 +93,14 @@ function parseJsonObject(text: string, label: string): JsonObject {
 
 function asObject(value: unknown, label: string): JsonObject {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`Expected object at ${label}`);
+    throw new TypeError(`Expected object at ${label}`);
   }
   return Object.fromEntries(Object.entries(value));
 }
 
 function asString(value: unknown, label: string): string {
   if (typeof value !== "string") {
-    throw new Error(`Expected string at ${label}`);
+    throw new TypeError(`Expected string at ${label}`);
   }
   return value;
 }
