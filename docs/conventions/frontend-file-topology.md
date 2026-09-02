@@ -32,4 +32,4 @@ Keep a component/page/layout props type immediately after the function it descri
 
 When a frontend file owns an Effect Schema and a corresponding TypeScript representation, keep the schema-derived type immediately below the schema declaration instead of collecting it in `TYPES`.
 
-Prefer function declarations for intentionally trailing local components/helpers when hoisting supports the static-dependencies -> main-unit -> implementation-details reading order.
+Prefer function declarations for intentionally trailing local components/helpers when hoisting supports the static-dependencies → main-unit → implementation-details reading order.
