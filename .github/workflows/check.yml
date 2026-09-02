@@ -17,14 +17,12 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Show safe-fix file contents
+      - name: Build safe-fix patch
         run: |
           bun run lint:fix || true
           bun run format
-          for file in cli/playbook.ts cli/vendor-sync.ts cli/release.ts tests/consumer.test.ts tests/module-graph.test.ts tests/vendor-policy.test.ts tests/release-publish.test.ts; do
-            echo "BEGIN_BASE64:${file}"
-            base64 -w0 "$file"
-            echo
-            echo "END_BASE64:${file}"
-          done
-          exit 1
+          git diff --binary -- cli/playbook.ts cli/vendor-sync.ts cli/release.ts tests/consumer.test.ts tests/module-graph.test.ts tests/vendor-policy.test.ts tests/release-publish.test.ts > /tmp/kee-9-safe-fix.patch
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: kee-9-safe-fix
+          path: /tmp/kee-9-safe-fix.patch
