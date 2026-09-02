@@ -17,19 +17,19 @@ Do not add an intermediate `src/` directory by default. These are ownership dire
 
 ```text
 confect
--> backend function contracts and Confect implementations
+→ backend function contracts and Confect implementations
 
 schemas
--> organized cross-layer application representations and provider-namespaced wire representations
+→ organized cross-layer application representations and provider-namespaced wire representations
 
 features
--> application/use-case orchestration and policy
+→ application/use-case orchestration and policy
 
 data
--> focused persistence reads/writes
+→ focused persistence reads/writes
 
 infra
--> external/substitutable technical capabilities, provider adapters, and reusable technical infrastructure
+→ external/substitutable technical capabilities, provider adapters, and reusable technical infrastructure
 ```
 
 Do not collapse layers merely because current implementations are small. See `backend-file-topology.md` for canonical file section grammar.
