@@ -41,11 +41,7 @@ Other architectural modules use named imports by default, including infra, schem
 
 ```ts
 import { TvMaze } from "../infra/tvmaze";
-import {
-  sWatchlist,
-  type Watchlist,
-  type WatchlistInsert,
-} from "../schemas/watchlist";
+import { sWatchlist, type Watchlist, type WatchlistInsert } from "../schemas/watchlist";
 ```
 
 Do not use generic `infra` or `schemas` namespace aliases. The convention optimizes for information that is not already present in the current module's concept.
