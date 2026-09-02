@@ -80,7 +80,7 @@ describe("effect-convex-web preset", () => {
 
   test("modules without a UI surface do not opt into the UI project scaffold", async () => {
     const modules = await Promise.all(
-      ["typescript", "effect", "convex", "confect", "testing"].map((name) => moduleManifest(`docs/stacks/${name}/module.json`)),
+      ["typescript", "effect", "convex", "confect", "testing"].map((name) => moduleManifest(`docs/stacks/${name}/module.json`))
     );
     for (const module of modules) {
       expect(module.uiSurface).toBeUndefined();
