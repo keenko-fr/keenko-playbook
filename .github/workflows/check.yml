@@ -19,36 +19,32 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Apply KEE-9 source migration
+      - name: Repair KEE-9 source migration
         run: |
           python <<'PY'
           from pathlib import Path
 
           p = Path("cli/playbook.ts")
           s = p.read_text()
-          if "oxlint-disable eslint/no-await-in-loop" not in s:
-              s = s.replace(
-                  "#!/usr/bin/env bun\n",
-                  "#!/usr/bin/env bun\n/* oxlint-disable eslint/no-await-in-loop -- This CLI intentionally performs dependency traversal, staged filesystem updates, and rollback steps sequentially. */\n",
-              )
-          s = s.replace('import { basename, dirname, join, relative, resolve } from "node:path";', 'import path from "node:path";')
-          for name in ["basename", "dirname", "join", "relative", "resolve"]:
-              s = s.replace(f"{name}(", f"path.{name}(")
-          s = s.replace(".sort()", ".toSorted()")
-          s = s.replace(".reverse()", ".toReversed()")
+          s = s.replace(".path.join(", ".join(")
+          s = s.replace('import path from "node:path";', 'import nodePath from "node:path";')
+          for method in ["join", "dirname", "relative", "resolve", "basename"]:
+              s = s.replace(f"path.{method}(", f"nodePath.{method}(")
+          s = s.replace("Object.entries(out).sort(([a], [b]) => a.localeCompare(b))", "Object.entries(out).toSorted(([a], [b]) => a.localeCompare(b))")
           s = s.replace(
-              'const externalSources = (await loadVendorManifest()).sources.filter(({ mode }) => mode === "external");',
-              'const vendorManifest = await loadVendorManifest();\n    const externalSources = vendorManifest.sources.filter(({ mode }) => mode === "external");',
-          )
-          s = s.replace('if (!(await stat(path)).isDirectory()) {', 'const info = await stat(path);\n    if (!info.isDirectory()) {')
-          s = s.replace('if (!(await stat(path)).isFile()) {', 'const info = await stat(path);\n    if (!info.isFile()) {')
-          s = s.replace(
-              'return (await findAllFiles(root)).filter((path) => path.endsWith(suffix));',
-              'const files = await findAllFiles(root);\n  return files.filter((filePath) => filePath.endsWith(suffix));',
-          )
-          s = s.replace(
-              '  for (const name of await findOwnedSkills()) {\n    index.set(`owned:${name}`, { dir: path.join(SOURCE_ROOT, "skills", name), source: null as never, description: "" });\n  }\n',
+              '  for (const name of await findOwnedSkills()) {\n    index.set(`owned:${name}`, { dir: nodePath.join(SOURCE_ROOT, "skills", name), source: null as never, description: "" });\n  }\n',
               '',
+          )
+          s = s.replace('if (!name) {', 'if (name === null || name.length === 0) {')
+          s = s.replace('if (!source.commit) {', 'if (source.commit === null || source.commit.length === 0) {')
+          s = s.replace('if (!source.license) {', 'if (source.license === null || source.license.length === 0) {')
+          s = s.replace('if (config.integrations.tanstackIntent) {', 'if (config.integrations.tanstackIntent === true) {')
+          s = s.replace('if (existed.get(rel)) {', 'if (existed.get(rel) === true) {')
+          s = s.replace('if (rollbackErrors.length) {', 'if (rollbackErrors.length > 0) {')
+          s = s.replace('const start = starts[0];\n  const end = ends[0];', 'const [start = -1] = starts;\n  const [end = -1] = ends;')
+          s = s.replace(
+              '  const manifest = await loadVendorManifest().catch((error: unknown) => {\n    errors.push(errorMessage(error));\n    return null;\n  });\n  if (manifest) {',
+              '  let manifest: VendorManifest | null = null;\n  try {\n    manifest = await loadVendorManifest();\n  } catch (error: unknown) {\n    errors.push(errorMessage(error));\n  }\n  if (manifest !== null) {',
           )
           s = s.replace(
               'function asObject(value: unknown, label: string): JsonObject {\n  if (!value || typeof value !== "object" || Array.isArray(value)) {\n    throw new Error(`${label} must be an object`);\n  }\n  return value as JsonObject;\n}',
@@ -67,32 +63,29 @@ jobs:
               'function asStringArray(value: unknown, label: string): string[] {\n  if (!Array.isArray(value)) {\n    throw new TypeError(`${label} must be an array of non-empty strings`);\n  }\n  const out = value.map((item, index) => {\n    if (typeof item !== "string" || item.length === 0) {\n      throw new TypeError(`${label}[${index}] must be a non-empty string`);\n    }\n    return item;\n  });\n  if (new Set(out).size !== out.length) {\n    throw new Error(`${label} must not contain duplicates`);\n  }\n  return out;\n}',
           )
           s = s.replace('throw new Error(`${label}.${key} must be boolean`);', 'throw new TypeError(`${label}.${key} must be boolean`);')
-          s = s.replace('if (!skill) {', 'if (skill === undefined) {')
-          s = s.replace('if (!name) {', 'if (name === null || name.length === 0) {')
-          s = s.replace('if (!source.commit) {', 'if (source.commit === null || source.commit.length === 0) {')
-          s = s.replace('if (!source.license) {', 'if (source.license === null || source.license.length === 0) {')
-          s = s.replace('if (config.integrations.tanstackIntent) {', 'if (config.integrations.tanstackIntent === true) {')
-          s = s.replace('if (errors.length) {', 'if (errors.length > 0) {')
-          s = s.replace('warnings.length ? ` with ${warnings.length} warning(s)` : ""', 'warnings.length > 0 ? ` with ${warnings.length} warning(s)` : ""')
-          s = s.replace(
-              'main().catch((error: unknown) => {\n  console.error(errorMessage(error));\n  process.exitCode = 1;\n});',
-              'try {\n  await main();\n} catch (error: unknown) {\n  console.error(errorMessage(error));\n  process.exitCode = 1;\n}',
-          )
-          s = s.replace(
-              '  const manifest = await loadVendorManifest().catch((error: unknown) => {\n    errors.push(errorMessage(error));\n    return null;\n  });\n  if (manifest) {',
-              '  let manifest: VendorManifest | null = null;\n  try {\n    manifest = await loadVendorManifest();\n  } catch (error: unknown) {\n    errors.push(errorMessage(error));\n  }\n  if (manifest !== null) {',
-          )
-          s = s.replace('description || `Keenko-adapted upstream ${name} workflow.`', 'description.length > 0 ? description : `Keenko-adapted upstream ${name} workflow.`')
-          s = s.replace('const raw = match[1].trim();', 'const [, matched = ""] = match;\n  const raw = matched.trim();')
+          p.write_text(s)
+
+          p = Path("cli/vendor-sync.ts")
+          s = p.read_text()
+          s = s.replace('import path from "node:path";', 'import nodePath from "node:path";')
+          for method in ["join", "dirname", "relative", "resolve"]:
+              s = s.replace(f"path.{method}(", f"nodePath.{method}(")
+          s = s.replace('type Hashes = Record<string, string>;\n', '')
+          p.write_text(s)
+
+          p = Path("tests/module-graph.test.ts")
+          s = p.read_text()
+          s = s.replace('.map(async (name) => moduleManifest(`docs/stacks/${name}/module.json`))', '.map(async (name) => await moduleManifest(`docs/stacks/${name}/module.json`))')
+          s = s.replace('preset.modules.map(async (name) => moduleManifest(`docs/stacks/${name}/module.json`))', 'preset.modules.map(async (name) => await moduleManifest(`docs/stacks/${name}/module.json`))')
           p.write_text(s)
           PY
           bun run lint:fix || true
           bun run format || true
           git config user.name "keenko-coder"
           git config user.email "actions@users.noreply.github.com"
-          git add cli/playbook.ts cli/vendor-sync.ts cli/release.ts tests/consumer.test.ts tests/module-graph.test.ts tests/vendor-policy.test.ts tests/release-publish.test.ts
+          git add cli/playbook.ts cli/vendor-sync.ts tests/module-graph.test.ts
           if ! git diff --cached --quiet; then
-            git commit -m "KEE-9 migrate sources to restored Ultracite defaults"
+            git commit -m "KEE-9 repair source migration"
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
           bun run lint || true
