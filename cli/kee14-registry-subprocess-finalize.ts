@@ -62,3 +62,8 @@ async function startRegistry(root: string, version: string, tarball: string, man
 source = source.slice(0, start) + helper + source.slice(end);
 await writeFile(target, source);
 await rm(import.meta.filename);
+
+const lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], { stderr: "inherit", stdout: "inherit" });
+if (lintFix.exitCode !== 0) {
+  throw new Error("Staging lint fixes failed");
+}
