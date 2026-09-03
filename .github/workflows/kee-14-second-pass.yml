@@ -164,6 +164,10 @@ jobs:
               'codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate",',
               'codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate",'
           )
+          source = source.replace(
+              'ui: `bunx --bun shadcn@${versions.shadcn} add -c apps/web`,',
+              'ui: `bunx --bun shadcn@${versions.shadcn} add -c apps/web && bun run codegen`,'
+          )
           source = source.replace('    base: "base",\n', '')
           source = source.replace(
               '  tree.delete("apps/web/README.md");',
