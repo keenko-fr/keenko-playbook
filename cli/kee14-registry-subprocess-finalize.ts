@@ -47,9 +47,9 @@ async function startRegistry(root: string, version: string, tarball: string, man
   });
 
   return {
-    async add(packageVersion, packageTarball) {
+    add(packageVersion, packageTarball) {
       packages[packageVersion] = packageTarball;
-      await writeState();
+      return writeState();
     },
     env: { BUN_CONFIG_REGISTRY: origin, NPM_CONFIG_REGISTRY: origin },
     stop() {
