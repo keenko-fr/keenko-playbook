@@ -4,6 +4,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
+const EXPECTED_SHA = "$" + "{{ inputs.expected_sha }}";
+const VERSION = "$" + "{version}";
 const REPOSITORY = {
   type: "git",
   url: "git+https://github.com/keenko-fr/keenko-playbook.git",
@@ -54,12 +56,12 @@ describe("public package contract", () => {
     const release = await readFile(path.join(ROOT, ".github/workflows/release.yml"), "utf-8");
     expect(release).toContain("Prepare reviewable Nx release commit");
     expect(release).toContain("Verify exact reviewed main commit");
-    expect(release).toContain('test "$(git rev-parse origin/main)" = "${{ inputs.expected_sha }}"');
-    expect(release).toContain('git checkout -B main "${{ inputs.expected_sha }}"');
+    expect(release).toContain(`test "$(git rev-parse origin/main)" = "${EXPECTED_SHA}"`);
+    expect(release).toContain(`git checkout -B main "${EXPECTED_SHA}"`);
     expect(release).toContain("git branch --set-upstream-to=origin/main main");
     expect(release).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
-    expect(release).toContain('test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"');
-    expect(release).toContain('test "$(git rev-list -n 1 "v${version}")" = "${{ inputs.expected_sha }}"');
+    expect(release).toContain(`test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"`);
+    expect(release).toContain(`test "$(git rev-list -n 1 "v${VERSION}")" = "${EXPECTED_SHA}"`);
     expect(release).toContain("id-token: write");
     expect(release).toContain("registry-url: https://registry.npmjs.org");
     expect(release).toContain("NPM_CONFIG_PROVENANCE: true");
