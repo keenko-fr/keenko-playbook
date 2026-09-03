@@ -9,5 +9,5 @@
     "rewriteRelativeImportExtensions": true,
     "rootDir": "."
   },
-  "include": ["cli/**/*.ts", "src/**/*.ts"]
+  "include": ["cli/keenko.ts", "src/**/*.ts"]
 }

@@ -180,30 +180,59 @@ function listTreeFiles(tree: Tree, root: string): string[] {
 
 function renderManagedBlock(current: string, template: string, file: string) {
   const block = managedBlock(template);
-  const start = current.indexOf(START);
-  const end = current.indexOf(END);
-  if ((start === -1) !== (end === -1) || (start !== -1 && end < start)) {
-    throw new Error(`Malformed Keenko managed block in ${file}`);
+  const range = managedRange(current, file);
+  if (range === null) {
+    if (current.length === 0) {
+      return `${block}\n`;
+    }
+    const separator = current.endsWith("\n\n") ? "" : current.endsWith("\n") ? "\n" : "\n\n";
+    return `${current}${separator}${block}\n`;
   }
-  if (start === -1) {
-    return current.trim().length === 0 ? `${block}\n` : `${current.trimEnd()}\n\n${block}\n`;
-  }
-  return `${current.slice(0, start)}${block}${current.slice(end + END.length)}`;
+  return `${current.slice(0, range.start)}${block}${current.slice(range.end)}`;
 }
 
 function verifyManagedBlock(current: string | null, template: string, file: string) {
   if (current === null) {
     throw new Error(`Missing ${file}`);
   }
-  const start = current.indexOf(START);
-  const end = current.indexOf(END);
-  if (start === -1 || end < start) {
-    throw new Error(`Missing or malformed Keenko managed block in ${file}`);
+  const range = managedRange(current, file);
+  if (range === null) {
+    throw new Error(`Missing Keenko managed block in ${file}. Run 'bunx nx g keenko:sync'.`);
   }
-  const actual = current.slice(start, end + END.length);
+  const actual = current.slice(range.start, range.end);
   if (actual !== managedBlock(template)) {
     throw new Error(`Keenko managed block has drifted in ${file}. Run 'bunx nx g keenko:sync'.`);
   }
+}
+
+function managedRange(current: string, file: string): { end: number; start: number } | null {
+  const starts = markerPositions(current, START);
+  const ends = markerPositions(current, END);
+  if (starts.length === 0 && ends.length === 0) {
+    return null;
+  }
+  const [start] = starts;
+  const [end] = ends;
+  if (starts.length !== 1 || ends.length !== 1 || start === undefined || end === undefined || end < start) {
+    throw new Error(
+      `Invalid Keenko managed block in ${file}: expected exactly one ${START} followed by exactly one ${END}. Remove duplicate or stray markers, then run 'bunx nx g keenko:sync'.`
+    );
+  }
+  return { end: end + END.length, start };
+}
+
+function markerPositions(current: string, marker: string) {
+  const positions: number[] = [];
+  let offset = 0;
+  while (offset <= current.length) {
+    const index = current.indexOf(marker, offset);
+    if (index === -1) {
+      break;
+    }
+    positions.push(index);
+    offset = index + marker.length;
+  }
+  return positions;
 }
 
 function managedBlock(template: string) {

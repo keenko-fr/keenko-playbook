@@ -37,6 +37,10 @@ jobs:
           git fetch origin main --tags
           test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
           test "$(git rev-parse origin/main)" = "${{ inputs.expected_sha }}"
+          git checkout -B main "${{ inputs.expected_sha }}"
+          git branch --set-upstream-to=origin/main main
+          test "$(git symbolic-ref --short HEAD)" = "main"
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
       - run: bun install --frozen-lockfile
       - name: Release-grade verification
         env:

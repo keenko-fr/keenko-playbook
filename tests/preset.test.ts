@@ -21,8 +21,13 @@ describe("Keenko Nx preset", () => {
     expect(tree.read("packages/backend/package.json", "utf-8")).toContain('"@confect/server": "10.0.0-next.21"');
     const rootPackage = tree.read("package.json", "utf-8") ?? "";
     expect(rootPackage).not.toContain('"latest"');
+    expect(rootPackage).toContain('"@nx/oxlint": "23.2.0"');
     expect(rootPackage).toContain('"codegen:check": "keenko check --guidance --codegen"');
     expect(rootPackage).toContain(`"check": "${CURRENT_CHECK}"`);
+    const oxlint = tree.read("oxlint.config.ts", "utf-8") ?? "";
+    expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
+    expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
+    expect(oxlint).toContain('sourceTag: "scope:shared"');
     expect(tree.exists(".playbook/config.json")).toBe(false);
   });
 

@@ -10,9 +10,15 @@ import path from "node:path";
 import presetGenerator from "../src/generators/preset/generator.ts";
 import { verifyGuidance } from "../src/guidance.ts";
 
+interface SemverApi {
+  compare: (left: string, right: string) => number;
+  major: (version: string) => number;
+  prerelease: (version: string) => (number | string)[] | null;
+  valid: (version: string) => string | null;
+}
+
 const PACKAGE_ROOT = packageRoot();
-const EXACT_VERSION =
-  /^(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?:-(?<pre>(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/u;
+const semver = createRequire(import.meta.url)("semver") as SemverApi;
 
 async function main() {
   const [command = "help", ...args] = process.argv.slice(2);
@@ -53,7 +59,7 @@ async function create(args: string[]) {
       await run("bun", ["install"], stage);
       await run("bun", ["run", "codegen"], stage);
     }
-    await run("git", ["init", "--quiet"], stage);
+    await run("git", ["init", "--quiet", "--initial-branch=main"], stage);
     await rename(stage, target);
   } catch (error) {
     await rm(stage, { force: true, recursive: true });
@@ -69,7 +75,7 @@ async function upgrade(args: string[]) {
   const root = process.cwd();
   const installed = await installedVersion(root);
   const target = requested ?? registryVersionForMajor(installed);
-  const comparison = compareVersions(target, installed);
+  const comparison = semver.compare(target, installed);
   if (comparison < 0) {
     throw new Error(`Keenko does not support automated downgrades: ${installed} -> ${target}`);
   }
@@ -181,7 +187,9 @@ async function installedVersion(root: string) {
   if (typeof pkg.version !== "string") {
     throw new TypeError(`${packagePath}.version must be a string`);
   }
-  parseVersion(pkg.version);
+  if (!isExactVersion(pkg.version)) {
+    throw new Error(`Expected an exact installed Keenko version, found ${pkg.version}`);
+  }
   return pkg.version;
 }
 
@@ -198,88 +206,25 @@ function explicitUpgradeTarget(args: string[]) {
 }
 
 function registryVersionForMajor(installed: string) {
-  const parsedInstalled = parseVersion(installed);
-  const raw = execFileSync("npm", ["view", `keenko@${parsedInstalled.major}`, "version", "--json"], { encoding: "utf-8" }).trim();
+  const installedMajor = semver.major(installed);
+  const raw = execFileSync("npm", ["view", `keenko@${installedMajor}`, "version", "--json"], { encoding: "utf-8" }).trim();
   const value: unknown = JSON.parse(raw);
   const candidates = (Array.isArray(value) ? value : [value])
-    .filter((item): item is string => typeof item === "string" && isExactVersion(item) && !item.includes("-"))
-    .filter((item) => parseVersion(item).major === parsedInstalled.major)
-    .toSorted(compareVersions);
+    .filter((item): item is string => typeof item === "string" && isExactVersion(item) && semver.prerelease(item) === null)
+    .filter((item) => semver.major(item) === installedMajor)
+    .toSorted(semver.compare);
   const target = candidates.at(-1);
   if (target === undefined) {
-    throw new Error(`No stable Keenko release is available on supported major ${parsedInstalled.major}`);
+    throw new Error(`No stable Keenko release is available on supported major ${installedMajor}`);
   }
-  if (compareVersions(target, installed) < 0) {
-    throw new Error(`Registry latest for Keenko major ${parsedInstalled.major} is older than installed ${installed}`);
+  if (semver.compare(target, installed) < 0) {
+    throw new Error(`Registry latest for Keenko major ${installedMajor} is older than installed ${installed}`);
   }
   return target;
 }
 
 function isExactVersion(value: string) {
-  return EXACT_VERSION.test(value);
-}
-
-function parseVersion(value: string) {
-  const match = EXACT_VERSION.exec(value);
-  if (match?.groups === undefined) {
-    throw new Error(`Expected an exact Keenko version, found ${value}`);
-  }
-  return {
-    major: Number(match.groups.major),
-    minor: Number(match.groups.minor),
-    patch: Number(match.groups.patch),
-    prerelease: match.groups.pre?.split(".") ?? [],
-  };
-}
-
-function compareVersions(left: string, right: string) {
-  const a = parseVersion(left);
-  const b = parseVersion(right);
-  for (const key of ["major", "minor", "patch"] as const) {
-    if (a[key] !== b[key]) {
-      return a[key] - b[key];
-    }
-  }
-  if (a.prerelease.length === 0 && b.prerelease.length === 0) {
-    return 0;
-  }
-  if (a.prerelease.length === 0) {
-    return 1;
-  }
-  if (b.prerelease.length === 0) {
-    return -1;
-  }
-  const length = Math.max(a.prerelease.length, b.prerelease.length);
-  for (let index = 0; index < length; index += 1) {
-    const leftIdentifier = a.prerelease[index];
-    const rightIdentifier = b.prerelease[index];
-    if (leftIdentifier === undefined) {
-      return -1;
-    }
-    if (rightIdentifier === undefined) {
-      return 1;
-    }
-    const comparison = comparePrereleaseIdentifiers(leftIdentifier, rightIdentifier);
-    if (comparison !== 0) {
-      return comparison;
-    }
-  }
-  return 0;
-}
-
-function comparePrereleaseIdentifiers(left: string, right: string) {
-  const leftNumeric = /^\d+$/u.test(left);
-  const rightNumeric = /^\d+$/u.test(right);
-  if (leftNumeric && rightNumeric) {
-    if (left.length !== right.length) {
-      return left.length - right.length;
-    }
-    return left.localeCompare(right);
-  }
-  if (leftNumeric !== rightNumeric) {
-    return leftNumeric ? -1 : 1;
-  }
-  return left.localeCompare(right);
+  return semver.valid(value) === value && !value.includes("+");
 }
 
 function requireCleanGit(root: string) {
@@ -306,43 +251,6 @@ async function verifyTopology(root: string) {
   const actual = [...apps.map((name) => `apps/${name}`), ...packages.map((name) => `packages/${name}`)].toSorted();
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`Unexpected Keenko workspace topology: ${actual.join(", ")}`);
-  }
-  await verifyPackageDirections(root);
-}
-
-async function verifyPackageDirections(root: string) {
-  const allowed: Record<string, Set<string>> = {
-    backend: new Set(["shared"]),
-    shared: new Set(),
-    ui: new Set(["shared"]),
-    web: new Set(["backend", "shared", "ui"]),
-  };
-  const packages = [
-    ["web", "apps/web/package.json"],
-    ["backend", "packages/backend/package.json"],
-    ["ui", "packages/ui/package.json"],
-    ["shared", "packages/shared/package.json"],
-  ] as const;
-  const names = new Map<string, string>();
-  const manifests = new Map<string, Record<string, unknown>>();
-  await Promise.all(
-    packages.map(async ([owner, file]) => {
-      const manifest = parseObject(await readFile(path.join(root, file), "utf-8"), file);
-      if (typeof manifest.name !== "string") {
-        throw new TypeError(`${file}.name must be a string`);
-      }
-      names.set(manifest.name, owner);
-      manifests.set(owner, manifest);
-    })
-  );
-  for (const [owner, manifest] of manifests) {
-    const dependencies = objectOrEmpty(manifest.dependencies, `${owner}.dependencies`);
-    for (const dependency of Object.keys(dependencies)) {
-      const target = names.get(dependency);
-      if (target !== undefined && !allowed[owner]?.has(target)) {
-        throw new Error(`Forbidden Keenko workspace dependency: ${owner} -> ${target}`);
-      }
-    }
   }
 }
 
