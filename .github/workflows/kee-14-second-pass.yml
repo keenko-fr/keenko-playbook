@@ -90,28 +90,8 @@ jobs:
 
           migrations = Path("tests/migrations.test.ts")
           source = migrations.read_text()
-          old = '''    const migrated = JSON.parse(tree.read("package.json", "utf-8") ?? "{}") as { devDependencies: Record<string, string>; projectNote: string; scripts: Record<string, string> };
-            expect(migrated.scripts.check).toBe(current);
-            expect(migrated.scripts["codegen:check"]).toBe("keenko check --guidance --codegen");
-            expect(migrated.scripts.test).toBe("bun test --pass-with-no-tests");
-            expect(migrated.scripts.custom).toBe("keep me");
-            expect(migrated.devDependencies.oxlint).toBe("1.81.0");
-            expect(migrated.projectNote).toBe("preserve me");'''
-          if old not in source:
-              old = '''    const migrated = JSON.parse(tree.read("package.json", "utf-8") ?? "{}") as { devDependencies: Record<string, string>; projectNote: string; scripts: Record<string, string> };
-    expect(migrated.scripts.check).toBe(current);
-    expect(migrated.scripts["codegen:check"]).toBe("keenko check --guidance --codegen");
-    expect(migrated.scripts.test).toBe("bun test --pass-with-no-tests");
-    expect(migrated.scripts.custom).toBe("keep me");
-    expect(migrated.devDependencies.oxlint).toBe("1.81.0");
-    expect(migrated.projectNote).toBe("preserve me");'''
-          new = '''    const migrated = tree.read("package.json", "utf-8") ?? "";
-    expect(migrated).toContain(current);
-    expect(migrated).toContain("keenko check --guidance --codegen");
-    expect(migrated).toContain("bun test --pass-with-no-tests");
-    expect(migrated).toContain('"custom": "keep me"');
-    expect(migrated).toContain('"oxlint": "1.81.0"');
-    expect(migrated).toContain('"projectNote": "preserve me"');'''
+          old = '    const migrated = JSON.parse(tree.read("package.json", "utf-8") ?? "{}") as { devDependencies: Record<string, string>; projectNote: string; scripts: Record<string, string> };\n    expect(migrated.scripts.check).toBe(current);\n    expect(migrated.scripts["codegen:check"]).toBe("keenko check --guidance --codegen");\n    expect(migrated.scripts.test).toBe("bun test --pass-with-no-tests");\n    expect(migrated.scripts.custom).toBe("keep me");\n    expect(migrated.devDependencies.oxlint).toBe("1.81.0");\n    expect(migrated.projectNote).toBe("preserve me");'
+          new = '    const migrated = tree.read("package.json", "utf-8") ?? "";\n    expect(migrated).toContain(current);\n    expect(migrated).toContain("keenko check --guidance --codegen");\n    expect(migrated).toContain("bun test --pass-with-no-tests");\n    expect(migrated).toContain(\'"custom": "keep me"\');\n    expect(migrated).toContain(\'"oxlint": "1.81.0"\');\n    expect(migrated).toContain(\'"projectNote": "preserve me"\');'
           if old not in source:
               raise SystemExit("migration assertion block not found")
           migrations.write_text(source.replace(old, new))
