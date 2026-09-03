@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("Nx release publication", () => {
-  test("pinned Nx prepares one reviewable commit and tags the exact reviewed commit", async () => {
+  test("pinned Nx prepares one reviewable commit and does not tag a no-diff changelog replay", async () => {
     const fixture = await nxReleaseFixture();
     const initial = git(fixture.root, "rev-parse", "HEAD");
 
@@ -52,19 +52,22 @@ describe("Nx release publication", () => {
       ])
     );
     expect(git(fixture.root, "rev-parse", "HEAD")).toBe(prepared);
-    expect(git(fixture.root, "rev-list", "-n", "1", "v0.1.1")).toBe(prepared);
-    expect(gitDir(fixture.remote, "rev-list", "-n", "1", "v0.1.1")).toBe(prepared);
+    expect(git(fixture.root, "tag", "--list", "v0.1.1")).toBe("");
+    expect(gitDir(fixture.remote, "tag", "--list", "v0.1.1")).toBe("");
     expect(git(fixture.root, "status", "--porcelain")).toBe("");
   }, 30_000);
 
-  test("the workflow keeps reviewed-SHA, attached-main, clean-tree, and exact-tag guards", async () => {
+  test("the workflow keeps reviewed-SHA guards and gives Nx a release task for exact tagging", async () => {
     const workflow = await readFile(path.join(ROOT, ".github/workflows/release.yml"), "utf-8");
     expect(workflow).toContain(`test "$(git rev-parse origin/main)" = "\${{ inputs.expected_sha }}"`);
     expect(workflow).toContain(`git checkout -B main "\${{ inputs.expected_sha }}"`);
     expect(workflow).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
     expect(workflow).toContain("bunx nx release version $first_release");
     expect(workflow).toContain('bunx nx release changelog "$version" $first_release');
-    expect(workflow).toContain("--git-commit=false --git-tag=true --stage-changes=false --git-push=true");
+    expect(workflow).toContain(
+      "--git-commit=false --git-tag=true --stage-changes=false --git-push=true --create-release=github"
+    );
+    expect(workflow).toContain("GITHUB_TOKEN: ${{ github.token }}");
     expect(workflow).toContain("git diff --cached --exit-code");
     expect(workflow).toContain(`test "$(git rev-list -n 1 "v\${version}")" = "\${{ inputs.expected_sha }}"`);
     expect(workflow).not.toContain("bunx nx release --skip-publish");
