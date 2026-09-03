@@ -185,7 +185,12 @@ function renderManagedBlock(current: string, template: string, file: string) {
     if (current.length === 0) {
       return `${block}\n`;
     }
-    const separator = current.endsWith("\n\n") ? "" : current.endsWith("\n") ? "\n" : "\n\n";
+    let separator = "\n\n";
+    if (current.endsWith("\n\n")) {
+      separator = "";
+    } else if (current.endsWith("\n")) {
+      separator = "\n";
+    }
     return `${current}${separator}${block}\n`;
   }
   return `${current.slice(0, range.start)}${block}${current.slice(range.end)}`;
