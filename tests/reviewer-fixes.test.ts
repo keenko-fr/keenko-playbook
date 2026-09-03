@@ -48,10 +48,10 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     const sharedManifestPath = path.join(project, "packages/shared/package.json");
     const originalShared = await readFile(sharedManifestPath, "utf-8");
     const webName = string(object(JSON.parse(await readFile(path.join(project, "apps/web/package.json"), "utf-8"))).name, "web name");
-    await expectManifestBoundary(project, sharedManifestPath, originalShared, webName, "dependencies");
-    await expectManifestBoundary(project, sharedManifestPath, originalShared, webName, "devDependencies");
-    await expectManifestBoundary(project, sharedManifestPath, originalShared, webName, "optionalDependencies");
-    await expectManifestBoundary(project, sharedManifestPath, originalShared, webName, "peerDependencies");
+    await expectManifestBoundary(project, projectCli, sharedManifestPath, originalShared, webName, "dependencies");
+    await expectManifestBoundary(project, projectCli, sharedManifestPath, originalShared, webName, "devDependencies");
+    await expectManifestBoundary(project, projectCli, sharedManifestPath, originalShared, webName, "optionalDependencies");
+    await expectManifestBoundary(project, projectCli, sharedManifestPath, originalShared, webName, "peerDependencies");
 
     const forbiddenImport = path.join(project, "packages/shared/src/forbidden.ts");
     await writeFile(forbiddenImport, `import "${webName}";\n`);
@@ -72,6 +72,7 @@ test("packed Keenko enforces release-reviewer contracts through the production C
 
 async function expectManifestBoundary(
   project: string,
+  cli: string,
   manifestPath: string,
   originalManifest: string,
   webName: string,
@@ -82,7 +83,9 @@ async function expectManifestBoundary(
   dependencies[webName] = "workspace:*";
   shared[field] = dependencies;
   await writeFile(manifestPath, `${JSON.stringify(shared, null, 2)}\n`);
-  expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain("enforce-module-boundaries");
+  expect(runFailure("node", [cli, "check", "--guidance"], project, { NX_DAEMON: "false" })).toContain(
+    "Forbidden Keenko project dependency"
+  );
   await writeFile(manifestPath, originalManifest);
 }
 
