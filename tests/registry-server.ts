@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-const statePath = process.argv[2];
+const [, , statePath] = process.argv;
 if (statePath === undefined) {
   throw new Error("Expected registry state path");
 }
@@ -12,23 +12,18 @@ type RegistryState = {
 
 async function readState(): Promise<RegistryState> {
   const value: unknown = JSON.parse(await readFile(statePath, "utf-8"));
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("Registry state must be an object");
-  }
-  const record = Object.fromEntries(Object.entries(value));
-  if (record.manifest === null || typeof record.manifest !== "object" || Array.isArray(record.manifest)) {
-    throw new TypeError("Registry state manifest must be an object");
-  }
-  if (record.packages === null || typeof record.packages !== "object" || Array.isArray(record.packages)) {
-    throw new TypeError("Registry state packages must be an object");
-  }
-  const packages = Object.fromEntries(Object.entries(record.packages).map(([version, target]) => {
-    if (typeof target !== "string") {
-      throw new TypeError(`Registry tarball path for ${version} must be a string`);
-    }
-    return [version, target];
-  }));
-  return { manifest: Object.fromEntries(Object.entries(record.manifest)), packages };
+  const record = object(value, "Registry state");
+  const manifest = object(record.manifest, "Registry state manifest");
+  const packageRecord = object(record.packages, "Registry state packages");
+  const packages = Object.fromEntries(
+    Object.entries(packageRecord).map(([version, target]) => {
+      if (typeof target !== "string") {
+        throw new TypeError(`Registry tarball path for ${version} must be a string`);
+      }
+      return [version, target];
+    })
+  );
+  return { manifest, packages };
 }
 
 let origin = "";
@@ -77,6 +72,13 @@ const server = Bun.serve({
 });
 origin = `http://127.0.0.1:${server.port}`;
 console.log(origin);
+
+function object(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} must be an object`);
+  }
+  return Object.fromEntries(Object.entries(value));
+}
 
 function versionManifest(state: RegistryState, version: string): Record<string, unknown> | null {
   if (state.packages[version] === undefined) {
