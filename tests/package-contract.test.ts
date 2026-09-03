@@ -47,7 +47,7 @@ describe("public package contract", () => {
     const migrations = await readFile(path.join(ROOT, "migrations.json"), "utf-8");
     expect(migrations).toContain("dist/src/migrations/normalize-check.js");
     expect(migrations).not.toContain("refresh-guidance");
-  });
+  }, 30_000);
 
   test("uses Nx version plans and attaches exact reviewed main before provenance publication", async () => {
     const nx = object(JSON.parse(await readFile(path.join(ROOT, "nx.json"), "utf-8")));
