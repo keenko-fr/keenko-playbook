@@ -95,6 +95,21 @@ if (!productTest.includes(upgradedAssertion)) {
 productTest = productTest.replace(upgradedAssertion, upgradedAssertionReplacement);
 await writeFile(productTestPath, productTest);
 
+const cliPath = "cli/keenko.ts";
+let cli = await readFile(cliPath, "utf-8");
+const pathImport = 'import path from "node:path";';
+if (!cli.includes(pathImport)) {
+  throw new Error("Expected CLI path import was not found");
+}
+cli = cli.replace(pathImport, 'import { createRequire } from "node:module";\nimport path from "node:path";');
+const nxRunner = 'async function nx(args: string[], cwd: string) {\n  await run(process.execPath, [path.join(cwd, "node_modules/nx/bin/nx.js"), ...args], cwd);\n}';
+const nxRunnerReplacement = 'async function nx(args: string[], cwd: string) {\n  const requireFromProject = createRequire(path.join(cwd, "package.json"));\n  const nxCli = requireFromProject.resolve("nx");\n  await run(process.execPath, [nxCli, ...args], cwd);\n}';
+if (!cli.includes(nxRunner)) {
+  throw new Error("Expected CLI Nx runner was not found");
+}
+cli = cli.replace(nxRunner, nxRunnerReplacement);
+await writeFile(cliPath, cli);
+
 const pkg = JSON.parse(await readFile(packagePath, "utf-8")) as { scripts: Record<string, string> };
 pkg.scripts.format = "oxfmt .";
 await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
