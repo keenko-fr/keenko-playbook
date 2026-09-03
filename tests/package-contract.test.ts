@@ -41,7 +41,9 @@ describe("public package contract", () => {
     expect(versions).not.toContain("keenko:");
     const generator = await readFile(path.join(ROOT, "src/generators/preset/generator.ts"), "utf-8");
     expect(generator).toContain("keenko: keenkoVersion()");
-    expect(await readFile(path.join(ROOT, "generators.json"), "utf-8")).toContain("dist/src/generators/preset/generator.js");
+    expect(await readFile(path.join(ROOT, "generators.json"), "utf-8")).toContain(
+      "dist/src/generators/preset/generator.js"
+    );
     const migrations = await readFile(path.join(ROOT, "migrations.json"), "utf-8");
     expect(migrations).toContain("dist/src/migrations/normalize-check.js");
     expect(migrations).not.toContain("refresh-guidance");
