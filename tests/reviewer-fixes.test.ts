@@ -27,18 +27,16 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     const project = path.join(temp, "project");
     run("node", [cli, "create", project], runner, { KEENKO_PACKAGE_SPEC: `file:${tarball}` });
     expect(runOut("git", ["branch", "--show-current"], project).trim()).toBe("main");
-    expect(
-      spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd: project, encoding: "utf-8" }).status
-    ).not.toBe(0);
+    expect(spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd: project, encoding: "utf-8" }).status).not.toBe(0);
     expect(object(JSON.parse(await readFile(path.join(project, "nx.json"), "utf-8"))).defaultBase).toBe("main");
     expect(await readFile(path.join(project, ".github/workflows/ci.yml"), "utf-8")).toContain("branches: [main]");
 
     const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
     const installedManifest = path.join(project, "node_modules/keenko/package.json");
     const originalInstalled = await readFile(installedManifest, "utf-8");
-    expect(
-      runOut("node", [projectCli, "upgrade", object(JSON.parse(originalInstalled)).version as string], project)
-    ).toContain("already installed");
+    expect(runOut("node", [projectCli, "upgrade", object(JSON.parse(originalInstalled)).version as string], project)).toContain(
+      "already installed"
+    );
     await expectForward(project, projectCli, installedManifest, "1.0.0", "1.0.1");
     await expectForward(project, projectCli, installedManifest, "1.0.0-beta.2", "1.0.0-beta.10");
     await expectForward(project, projectCli, installedManifest, "1.0.0-beta.2", "1.0.0-beta.alpha");
@@ -49,27 +47,20 @@ test("packed Keenko enforces release-reviewer contracts through the production C
 
     const sharedManifestPath = path.join(project, "packages/shared/package.json");
     const originalShared = await readFile(sharedManifestPath, "utf-8");
-    const webName = string(
-      object(JSON.parse(await readFile(path.join(project, "apps/web/package.json"), "utf-8"))).name,
-      "web name"
-    );
+    const webName = string(object(JSON.parse(await readFile(path.join(project, "apps/web/package.json"), "utf-8"))).name, "web name");
     for (const field of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const) {
       const shared = object(JSON.parse(originalShared));
       const dependencies = object(shared[field] ?? {});
       dependencies[webName] = "workspace:*";
       shared[field] = dependencies;
       await writeFile(sharedManifestPath, `${JSON.stringify(shared, null, 2)}\n`);
-      expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain(
-        "enforce-module-boundaries"
-      );
+      expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain("enforce-module-boundaries");
       await writeFile(sharedManifestPath, originalShared);
     }
 
     const forbiddenImport = path.join(project, "packages/shared/src/forbidden.ts");
     await writeFile(forbiddenImport, `import "${webName}";\n`);
-    expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain(
-      "enforce-module-boundaries"
-    );
+    expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain("enforce-module-boundaries");
     await unlink(forbiddenImport);
     run("bun", ["run", "lint"], project, { NX_DAEMON: "false" });
 
@@ -91,9 +82,7 @@ async function expectForward(project: string, cli: string, manifest: string, ins
 
 async function expectDowngrade(project: string, cli: string, manifest: string, installed: string, target: string) {
   await setInstalledVersion(manifest, installed);
-  expect(runFailure("node", [cli, "upgrade", target, "--dry-run"], project)).toContain(
-    "does not support automated downgrades"
-  );
+  expect(runFailure("node", [cli, "upgrade", target, "--dry-run"], project)).toContain("does not support automated downgrades");
 }
 
 async function setInstalledVersion(manifestPath: string, version: string) {
