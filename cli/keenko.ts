@@ -11,6 +11,7 @@ import presetGenerator from "../src/generators/preset/generator.ts";
 import { verifyGuidance } from "../src/guidance.ts";
 
 const PACKAGE_ROOT = packageRoot();
+const EXACT_VERSION = /^(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?:-(?<pre>(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/u;
 
 async function main() {
   const [command = "help", ...args] = process.argv.slice(2);
@@ -63,29 +64,24 @@ async function create(args: string[]) {
 async function upgrade(args: string[]) {
   rejectUnknownFlags(args, new Set(["--dry-run"]));
   preflightRuntime();
+  const requested = explicitUpgradeTarget(args);
   const root = process.cwd();
   const installed = await installedVersion(root);
-  const requested = args.find((arg) => !arg.startsWith("--"));
   const target = requested ?? registryVersionForMajor(installed);
-  if (isPlainVersion(target)) {
-    const comparison = compareVersions(target, installed);
-    if (comparison < 0) {
-      throw new Error(`Keenko does not support automated downgrades: ${installed} -> ${target}`);
-    }
-    if (comparison === 0) {
-      console.log(`Keenko ${installed} is already installed; no files changed.`);
-      return;
-    }
+  const comparison = compareVersions(target, installed);
+  if (comparison < 0) {
+    throw new Error(`Keenko does not support automated downgrades: ${installed} -> ${target}`);
+  }
+  if (comparison === 0) {
+    console.log(`Keenko ${installed} is already installed; no files changed.`);
+    return;
   }
   if (args.includes("--dry-run")) {
     console.log(`Would ask Nx to migrate keenko ${installed} -> ${target}; no files changed.`);
     return;
   }
   requireCleanGit(root);
-  let spec = target;
-  if (!target.startsWith("keenko@") && isPlainVersion(target)) {
-    spec = `keenko@${target}`;
-  }
+  const spec = `keenko@${target}`;
   await nx(["migrate", spec, `--from=keenko@${installed}`, "--interactive=false", "--no-agentic", "--skip-install"], root);
   await run("bun", ["install"], root);
   await nx(["migrate", "--run-migrations", "--if-exists", "--no-agentic"], root);
@@ -111,7 +107,7 @@ async function check(args: string[]) {
 
 function printHelp() {
   console.log(
-    "Keenko\n\n  keenko create <project> [--no-install]\n  keenko upgrade [target] [--dry-run]\n  keenko check [--guidance] [--codegen]"
+    "Keenko\n\n  keenko create <project> [--no-install]\n  keenko upgrade [exact-version] [--dry-run]\n  keenko check [--guidance] [--codegen]"
   );
 }
 
@@ -184,7 +180,23 @@ async function installedVersion(root: string) {
   if (typeof pkg.version !== "string") {
     throw new TypeError(`${packagePath}.version must be a string`);
   }
+  parseVersion(pkg.version);
   return pkg.version;
+}
+
+function explicitUpgradeTarget(args: string[]) {
+  const targets = args.filter((arg) => !arg.startsWith("--"));
+  if (targets.length > 1) {
+    throw new Error("keenko upgrade accepts at most one exact target version");
+  }
+  const [target] = targets;
+  if (target === undefined) {
+    return undefined;
+  }
+  if (!isExactVersion(target)) {
+    throw new Error(`Keenko upgrade target must be an exact version such as 0.3.0 or 1.1.0-beta.1; found ${target}`);
+  }
+  return target;
 }
 
 function registryVersionForMajor(installed: string) {
@@ -192,7 +204,7 @@ function registryVersionForMajor(installed: string) {
   const raw = execFileSync("npm", ["view", `keenko@${parsedInstalled.major}`, "version", "--json"], { encoding: "utf-8" }).trim();
   const value: unknown = JSON.parse(raw);
   const candidates = (Array.isArray(value) ? value : [value])
-    .filter((item): item is string => typeof item === "string" && isPlainVersion(item) && !item.includes("-"))
+    .filter((item): item is string => typeof item === "string" && isExactVersion(item) && !item.includes("-"))
     .filter((item) => parseVersion(item).major === parsedInstalled.major)
     .toSorted(compareVersions);
   const target = candidates.at(-1);
@@ -205,12 +217,12 @@ function registryVersionForMajor(installed: string) {
   return target;
 }
 
-function isPlainVersion(value: string) {
-  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(value);
+function isExactVersion(value: string) {
+  return EXACT_VERSION.test(value);
 }
 
 function parseVersion(value: string) {
-  const match = /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?<pre>-[0-9A-Za-z.-]+)?$/u.exec(value);
+  const match = EXACT_VERSION.exec(value);
   if (match?.groups === undefined) {
     throw new Error(`Expected an exact Keenko version, found ${value}`);
   }
@@ -218,7 +230,7 @@ function parseVersion(value: string) {
     major: Number(match.groups.major),
     minor: Number(match.groups.minor),
     patch: Number(match.groups.patch),
-    pre: match.groups.pre ?? "",
+    prerelease: match.groups.pre?.split(".") ?? [],
   };
 }
 
@@ -230,16 +242,46 @@ function compareVersions(left: string, right: string) {
       return a[key] - b[key];
     }
   }
-  if (a.pre === b.pre) {
+  if (a.prerelease.length === 0 && b.prerelease.length === 0) {
     return 0;
   }
-  if (a.pre.length === 0) {
+  if (a.prerelease.length === 0) {
     return 1;
   }
-  if (b.pre.length === 0) {
+  if (b.prerelease.length === 0) {
     return -1;
   }
-  return a.pre.localeCompare(b.pre);
+  const length = Math.max(a.prerelease.length, b.prerelease.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftIdentifier = a.prerelease[index];
+    const rightIdentifier = b.prerelease[index];
+    if (leftIdentifier === undefined) {
+      return -1;
+    }
+    if (rightIdentifier === undefined) {
+      return 1;
+    }
+    const comparison = comparePrereleaseIdentifiers(leftIdentifier, rightIdentifier);
+    if (comparison !== 0) {
+      return comparison;
+    }
+  }
+  return 0;
+}
+
+function comparePrereleaseIdentifiers(left: string, right: string) {
+  const leftNumeric = /^\d+$/u.test(left);
+  const rightNumeric = /^\d+$/u.test(right);
+  if (leftNumeric && rightNumeric) {
+    if (left.length !== right.length) {
+      return left.length - right.length;
+    }
+    return left.localeCompare(right);
+  }
+  if (leftNumeric !== rightNumeric) {
+    return leftNumeric ? -1 : 1;
+  }
+  return left.localeCompare(right);
 }
 
 function requireCleanGit(root: string) {

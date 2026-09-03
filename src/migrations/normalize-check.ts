@@ -3,8 +3,9 @@ import type { Tree } from "@nx/devkit";
 const PREVIOUS_CHECKS = new Set([
   "bun run format:check && bun run lint && bun run typecheck && bun run build",
   "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build",
+  "bun run codegen:check && bun run test && bun run format:check && bun run lint && bun run typecheck && bun run build",
 ]);
-const CURRENT_CHECK = "bun run codegen:check && bun run test && bun run format:check && bun run lint && bun run typecheck && bun run build";
+const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const PREVIOUS_CODEGEN_CHECK = "keenko check --guidance";
 const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
 const CURRENT_TEST = "bun test --pass-with-no-tests";

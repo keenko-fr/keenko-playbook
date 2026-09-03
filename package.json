@@ -4,6 +4,10 @@
   "private": false,
   "description": "Opinionated Nx-based Keenko TypeScript application distribution.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keenko-fr/keenko-playbook.git"
+  },
   "bin": {
     "keenko": "dist/cli/keenko.js"
   },

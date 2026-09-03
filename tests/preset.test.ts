@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import preset from "../src/generators/preset/generator.ts";
 import sync from "../src/generators/sync/generator.ts";
 
+const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+
 describe("Keenko Nx preset", () => {
   test("creates the fixed package-based workspace through first-party TanStack output", async () => {
     const tree = createTreeWithEmptyWorkspace();
@@ -17,9 +19,10 @@ describe("Keenko Nx preset", () => {
     expect(tree.read("packages/ui/components.json", "utf-8")).toContain('"style": "base-nova"');
     expect(tree.read("packages/ui/components.json", "utf-8")).not.toContain('"base":');
     expect(tree.read("packages/backend/package.json", "utf-8")).toContain('"@confect/server": "10.0.0-next.21"');
-    expect(tree.read("package.json", "utf-8")).not.toContain('"latest"');
-    expect(tree.read("package.json", "utf-8")).toContain('"codegen:check": "keenko check --guidance --codegen"');
-    expect(tree.read("package.json", "utf-8")).toContain("bun run test");
+    const rootPackage = tree.read("package.json", "utf-8") ?? "";
+    expect(rootPackage).not.toContain('"latest"');
+    expect(rootPackage).toContain('"codegen:check": "keenko check --guidance --codegen"');
+    expect(rootPackage).toContain(`"check": "${CURRENT_CHECK}"`);
     expect(tree.exists(".playbook/config.json")).toBe(false);
   });
 

@@ -4,7 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
-const CURRENT_CHECK = "bun run codegen:check && bun run test && bun run format:check && bun run lint && bun run typecheck && bun run build";
+const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const FIRST_PASS_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build";
 const OLDEST_CHECK = "bun run format:check && bun run lint && bun run typecheck && bun run build";
 
@@ -22,7 +22,9 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     const packageJson = json(await readFile(path.join(ROOT, "package.json"), "utf-8"));
     const currentVersion = string(packageJson.version, "package.json.version");
     const guidanceVersion = nextPatch(currentVersion);
-    registry = await startRegistry(temp, currentVersion, tarball, packageJson, guidanceVersion);
+    const prereleaseVersion = `${guidanceVersion}-beta.1`;
+    const nextMajorVersion = nextMajor(currentVersion);
+    registry = await startRegistry(temp, currentVersion, tarball, packageJson, [guidanceVersion, prereleaseVersion, nextMajorVersion]);
 
     const runner = path.join(temp, "runner");
     await mkdir(runner);
@@ -33,6 +35,10 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     run("bun", ["install"], runner);
     const packedPackage = json(await readFile(path.join(runner, "node_modules/keenko/package.json"), "utf-8"));
     expect(packedPackage.version).toBe(currentVersion);
+    expect(record(packedPackage.repository, "packed repository")).toEqual({
+      type: "git",
+      url: "git+https://github.com/keenko-fr/keenko-playbook.git",
+    });
     const cli = path.join(runner, "node_modules/keenko/dist/cli/keenko.js");
 
     const identity = path.join(temp, "identity");
@@ -85,9 +91,28 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     run("bun", ["run", "check"], project);
 
     gitCommitAll(project, "baseline");
+    const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
     const statusBeforeNoop = runOut("git", ["status", "--porcelain"], project);
-    run("node", [path.join(project, "node_modules/keenko/dist/cli/keenko.js"), "upgrade", currentVersion], project);
+    run("node", [projectCli, "upgrade", currentVersion], project);
     expect(runOut("git", ["status", "--porcelain"], project)).toBe(statusBeforeNoop);
+
+    expect(runFailure("node", [projectCli, "upgrade", "0.0.0", "--dry-run"], project)).toContain("does not support automated downgrades");
+    expect(runOut("node", [projectCli, "upgrade", guidanceVersion, "--dry-run"], project)).toContain(`-> ${guidanceVersion}`);
+    expect(runOut("node", [projectCli, "upgrade", prereleaseVersion, "--dry-run"], project)).toContain(`-> ${prereleaseVersion}`);
+    expect(runOut("node", [projectCli, "upgrade", nextMajorVersion, "--dry-run"], project)).toContain(`-> ${nextMajorVersion}`);
+    for (const invalid of [
+      "keenko@0.0.0",
+      "latest",
+      "next",
+      `^${guidanceVersion}`,
+      `~${guidanceVersion}`,
+      "file:../keenko.tgz",
+      "../keenko.tgz",
+      "github:keenko-fr/keenko-playbook",
+    ]) {
+      expect(runFailure("node", [projectCli, "upgrade", invalid, "--dry-run"], project)).toContain("must be an exact version");
+    }
+    expect(runOut("node", [projectCli, "upgrade", "--dry-run"], project, registry.env)).toContain(`-> ${guidanceVersion}`);
 
     const baselineA = path.join(temp, "baseline-a");
     await makeBaseline(project, baselineA, "0.0.1", OLDEST_CHECK, "1.80.0");
@@ -193,10 +218,13 @@ async function startRegistry(
   version: string,
   tarball: string,
   manifest: Record<string, unknown>,
-  futureVersion: string
+  futureVersions: string[]
 ): Promise<TestRegistry> {
   const statePath = path.join(root, "registry-state.json");
-  const packages: Record<string, string> = { [futureVersion]: tarball, [version]: tarball };
+  const packages: Record<string, string> = { [version]: tarball };
+  for (const futureVersion of futureVersions) {
+    packages[futureVersion] = tarball;
+  }
   const writeState = async () => {
     await writeFile(statePath, JSON.stringify({ manifest, packages }));
   };
@@ -238,6 +266,14 @@ function nextPatch(version: string) {
   return `${match.groups.major}.${match.groups.minor}.${Number(match.groups.patch) + 1}`;
 }
 
+function nextMajor(version: string) {
+  const match = /^(?<major>\d+)\.\d+\.\d+$/u.exec(version);
+  if (match?.groups === undefined) {
+    throw new Error(`Expected stable package version, found ${version}`);
+  }
+  return `${Number(match.groups.major) + 1}.0.0`;
+}
+
 function gitCommitAll(cwd: string, message: string) {
   if (!existsSyncSync(path.join(cwd, ".git"))) {
     run("git", ["init", "--quiet"], cwd);
@@ -252,8 +288,8 @@ function run(command: string, args: string[], cwd: string, extraEnv: Record<stri
   execFileSync(command, args, { cwd, env: { ...process.env, ...extraEnv }, stdio: "inherit" });
 }
 
-function runOut(command: string, args: string[], cwd: string) {
-  return execFileSync(command, args, { cwd, encoding: "utf-8" });
+function runOut(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
+  return execFileSync(command, args, { cwd, encoding: "utf-8", env: { ...process.env, ...extraEnv } });
 }
 
 function runFailure(command: string, args: string[], cwd: string) {
