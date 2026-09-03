@@ -49,7 +49,7 @@ jobs:
         run: |
           bun cli/kee14-second-pass.ts
           bun cli/kee14-second-pass.ts --finalize
-      - name: Reconcile semantic lint patterns
+      - name: Reconcile final implementation
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -145,6 +145,18 @@ jobs:
               'function withoutUndefined(value: Record<string, unknown>) {\n  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));\n}'
           )
           product.write_text(source)
+
+          generator = Path("src/generators/preset/generator.ts")
+          source = generator.read_text()
+          source = source.replace(
+              'codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate",',
+              'codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate",'
+          )
+          source = source.replace(
+              '  tree.delete("apps/web/README.md");',
+              '  tree.delete("apps/web/src/paraglide/README.md");\n  tree.delete("apps/web/README.md");'
+          )
+          generator.write_text(source)
           PY
       - run: bun run format
       - run: bun run lint:fix || true
