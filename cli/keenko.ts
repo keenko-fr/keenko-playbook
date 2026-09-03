@@ -192,7 +192,7 @@ function explicitUpgradeTarget(args: string[]) {
   }
   const [target] = targets;
   if (target === undefined) {
-    return undefined;
+    return;
   }
   if (!isExactVersion(target)) {
     throw new Error(`Keenko upgrade target must be an exact version such as 0.3.0 or 1.1.0-beta.1; found ${target}`);
