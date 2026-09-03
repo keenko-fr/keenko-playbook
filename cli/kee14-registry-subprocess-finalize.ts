@@ -8,7 +8,11 @@ source = source.replace(
 );
 source = source.replace(
   'registry = startRegistry(currentVersion, tarball, packageJson);',
-  'registry = await startRegistry(temp, currentVersion, tarball, packageJson);'
+  'const guidanceVersion = nextPatch(currentVersion);\n    registry = await startRegistry(temp, currentVersion, tarball, packageJson, guidanceVersion);'
+);
+source = source.replace(
+  '    const guidanceVersion = nextPatch(currentVersion);\n    const guidanceTarget = await versionedTarball(',
+  '    const guidanceTarget = await versionedTarball('
 );
 source = source.replace('registry.add(guidanceVersion, guidanceTarget);', 'await registry.add(guidanceVersion, guidanceTarget);');
 
@@ -24,9 +28,15 @@ const helper = `type TestRegistry = {
   stop: () => void;
 };
 
-async function startRegistry(root: string, version: string, tarball: string, manifest: Record<string, unknown>): Promise<TestRegistry> {
+async function startRegistry(
+  root: string,
+  version: string,
+  tarball: string,
+  manifest: Record<string, unknown>,
+  futureVersion: string
+): Promise<TestRegistry> {
   const statePath = path.join(root, "registry-state.json");
-  const packages: Record<string, string> = { [version]: tarball };
+  const packages: Record<string, string> = { [futureVersion]: tarball, [version]: tarball };
   const writeState = async () => await writeFile(statePath, JSON.stringify({ manifest, packages }));
   await writeState();
 
