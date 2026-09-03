@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 
-const [, , statePath] = process.argv;
-if (statePath === undefined) {
-  throw new Error("Expected registry state path");
+const [runtimePath, scriptPath, statePath] = process.argv;
+if (runtimePath === undefined || scriptPath === undefined || statePath === undefined) {
+  throw new Error("Expected Bun runtime, registry script path, and registry state path");
 }
 
 type RegistryState = {
