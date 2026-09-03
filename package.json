@@ -64,7 +64,7 @@
   "scripts": {
     "keenko": "bun cli/keenko.ts",
     "format": "oxfmt .",
-    "format:check": "oxfmt . && git diff --exit-code -- src/generators/preset/generator.ts",
+    "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "typecheck": "tsc --noEmit",
