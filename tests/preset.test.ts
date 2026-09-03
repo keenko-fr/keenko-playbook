@@ -22,6 +22,8 @@ describe("Keenko Nx preset", () => {
     const rootPackage = tree.read("package.json", "utf-8") ?? "";
     expect(rootPackage).not.toContain('"latest"');
     expect(rootPackage).toContain('"@nx/oxlint": "23.2.0"');
+    expect(rootPackage).toContain('"@typescript/native": "npm:typescript@7.0.2"');
+    expect(rootPackage).toContain('"typescript": "npm:@typescript/typescript6@6.0.2"');
     expect(rootPackage).toContain('"codegen:check": "keenko check --guidance --codegen"');
     expect(rootPackage).toContain(`"check": "${CURRENT_CHECK}"`);
     const oxlint = tree.read("oxlint.config.ts", "utf-8") ?? "";

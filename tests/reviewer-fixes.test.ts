@@ -85,7 +85,7 @@ async function expectManifestBoundary(
   shared[field] = dependencies;
   await writeFile(manifestPath, `${JSON.stringify(shared, null, 2)}\n`);
   expect(runFailure("node", [cli, "check", "--guidance"], project, { NX_DAEMON: "false" })).toContain(
-    "Forbidden Keenko project dependency"
+    "Forbidden Keenko manifest dependency"
   );
   await writeFile(manifestPath, originalManifest);
 }

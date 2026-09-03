@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { format } from "oxfmt";
 
+import { KEENKO_BOUNDARY_CONSTRAINTS } from "../../boundaries.ts";
 import { syncGuidance } from "../../guidance.ts";
 import { versions } from "../../versions.ts";
 
@@ -120,6 +121,10 @@ async function generateWeb(tree: Tree, projectName: string) {
 }
 
 function writeWorkspaceFiles(tree: Tree, projectName: string) {
+  const boundaryConstraints = KEENKO_BOUNDARY_CONSTRAINTS.map(
+    ({ onlyDependOnLibsWithTags, sourceTag }) =>
+      `          { onlyDependOnLibsWithTags: [${onlyDependOnLibsWithTags.map((tag) => `"${tag}"`).join(", ")}], sourceTag: "${sourceTag}" },`
+  ).join("\n");
   tree.write(
     "package.json",
     json({
@@ -205,7 +210,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
   );
   tree.write(
     "oxlint.config.ts",
-    `import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";\nimport { defineConfig } from "oxlint";\nimport { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";\nimport core from "ultracite/oxlint/core";\n\nexport default defineConfig({\n  extends: [core],\n  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  jsPlugins: ["@nx/oxlint/boundaries-plugin", "oxlint-plugin-effect/plugin"],\n  options: { typeAware: true },\n  overrides: [\n    {\n      files: ["apps/web/**/*"],\n      rules: {\n        "eslint/no-empty-function": "off",\n        "eslint/no-use-before-define": "off",\n        "eslint/require-await": "off",\n        "eslint/sort-keys": "off",\n      },\n    },\n    {\n      files: ["packages/ui/**/*"],\n      rules: { "eslint/sort-keys": "off" },\n    },\n    {\n      files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectTsgoRecommended.rules,\n        ...effectRecommended,\n        "effect/noTernary": "off",\n      },\n    },\n  ],\n  plugins: ["effecttsgo"],\n  rules: {\n    "@nx/enforce-module-boundaries": [\n      "error",\n      {\n        allow: [],\n        allowCircularSelfDependency: true,\n        depConstraints: [\n          { onlyDependOnLibsWithTags: ["scope:backend", "scope:ui", "scope:shared"], sourceTag: "scope:web" },\n          { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:backend" },\n          { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:ui" },\n          { onlyDependOnLibsWithTags: [], sourceTag: "scope:shared" },\n        ],\n      },\n    ],\n    "eslint/no-plusplus": "off",\n    "func-style": "off",\n    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],\n  },\n});\n`
+    `import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";\nimport { defineConfig } from "oxlint";\nimport { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";\nimport core from "ultracite/oxlint/core";\n\nexport default defineConfig({\n  extends: [core],\n  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  jsPlugins: ["@nx/oxlint/boundaries-plugin", "oxlint-plugin-effect/plugin"],\n  options: { typeAware: true },\n  overrides: [\n    {\n      files: ["apps/web/**/*"],\n      rules: {\n        "eslint/no-empty-function": "off",\n        "eslint/no-use-before-define": "off",\n        "eslint/require-await": "off",\n        "eslint/sort-keys": "off",\n      },\n    },\n    {\n      files: ["packages/ui/**/*"],\n      rules: { "eslint/sort-keys": "off" },\n    },\n    {\n      files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectTsgoRecommended.rules,\n        ...effectRecommended,\n        "effect/noTernary": "off",\n      },\n    },\n  ],\n  plugins: ["effecttsgo"],\n  rules: {\n    "@nx/enforce-module-boundaries": [\n      "error",\n      {\n        allow: [],\n        allowCircularSelfDependency: true,\n        depConstraints: [\n${boundaryConstraints}\n        ],\n      },\n    ],\n    "eslint/no-plusplus": "off",\n    "func-style": "off",\n    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],\n  },\n});\n`
   );
   tree.write(
     ".github/workflows/ci.yml",

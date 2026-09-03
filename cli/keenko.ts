@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { createProjectGraphAsync } from "@nx/devkit";
 import { FsTree } from "@nx/devkit/internal";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -7,7 +6,9 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { format } from "oxfmt";
 
+import { allowedProjectScopes, type ProjectScope } from "../src/boundaries.ts";
 import presetGenerator from "../src/generators/preset/generator.ts";
 import { verifyGuidance } from "../src/guidance.ts";
 
@@ -17,8 +18,6 @@ interface SemverApi {
   prerelease: (version: string) => (number | string)[] | null;
   valid: (version: string) => string | null;
 }
-
-type ProjectScope = "scope:web" | "scope:backend" | "scope:ui" | "scope:shared";
 
 const PACKAGE_ROOT = packageRoot();
 const loadedSemver: unknown = createRequire(import.meta.url)("semver");
@@ -97,13 +96,28 @@ async function upgrade(args: string[]) {
   requireCleanGit(root);
   const spec = `keenko@${target}`;
   await nx(["migrate", spec, `--from=keenko@${installed}`, "--interactive=false", "--no-agentic", "--skip-install"], root);
-  await run("bun", ["install"], root);
+  await run("bun", ["install", "--ignore-scripts"], root);
   await nx(["migrate", "--run-migrations", "--if-exists", "--no-agentic"], root);
   await run("bun", ["install"], root);
+  await formatUpgradeOwnedFiles(root);
   await nx(["generate", "keenko:sync", "--no-interactive"], root);
   await run("bun", ["run", "codegen"], root);
   await rm(path.join(root, "migrations.json"), { force: true });
   console.log(`Upgraded Keenko to ${target}. Review the Git diff before committing.`);
+}
+
+async function formatUpgradeOwnedFiles(root: string) {
+  for (const relative of ["package.json", "oxlint.config.ts"]) {
+    const target = path.join(root, relative);
+    const source = await readFile(target, "utf-8");
+    const result = await format(relative, source, { printWidth: 140, sortImports: true, sortPackageJson: true });
+    if (result.errors.length > 0) {
+      throw new Error(`Cannot format upgraded ${relative}: ${result.errors.map(({ message }) => message).join(", ")}`);
+    }
+    if (result.code !== source) {
+      await writeFile(target, result.code);
+    }
+  }
 }
 
 async function check(args: string[]) {
@@ -113,7 +127,7 @@ async function check(args: string[]) {
   const tree = new FsTree(root, false);
   verifyGuidance(tree);
   await verifyTopology(root);
-  await verifyProjectDependencies();
+  await verifyManifestDependencies(root);
   if (args.includes("--codegen")) {
     await verifyGeneratedCode(root);
   }
@@ -277,43 +291,46 @@ async function verifyTopology(root: string) {
   }
 }
 
-async function verifyProjectDependencies() {
-  const graph = await createProjectGraphAsync({ exitOnError: true });
-  for (const [source, dependencies] of Object.entries(graph.dependencies)) {
-    const sourceScope = projectScope(graph.nodes[source]?.data.tags);
-    if (sourceScope === null) {
-      continue;
-    }
-    const allowed = allowedProjectScopes(sourceScope);
-    for (const dependency of dependencies) {
-      if (dependency.target === source) {
-        continue;
+async function verifyManifestDependencies(root: string) {
+  const workspacePaths = ["apps/web", "packages/backend", "packages/ui", "packages/shared"];
+  const workspaces = await Promise.all(
+    workspacePaths.map(async (workspacePath) => {
+      const manifestPath = path.join(root, workspacePath, "package.json");
+      const manifest = parseObject(await readFile(manifestPath, "utf-8"), manifestPath);
+      const name = stringValue(manifest.name, `${workspacePath}/package.json.name`);
+      const nx = objectOrEmpty(manifest.nx, `${workspacePath}/package.json.nx`);
+      const tags = stringArray(nx.tags, `${workspacePath}/package.json.nx.tags`);
+      const scope = projectScope(tags);
+      if (scope === null) {
+        throw new Error(`Missing Keenko scope tag in ${workspacePath}/package.json`);
       }
-      const targetScope = projectScope(graph.nodes[dependency.target]?.data.tags);
-      if (targetScope !== null && !allowed.includes(targetScope)) {
-        throw new Error(`Forbidden Keenko project dependency: ${source} (${sourceScope}) -> ${dependency.target} (${targetScope})`);
+      return { manifest, name, scope, workspacePath };
+    })
+  );
+  const scopesByName = new Map(workspaces.map(({ name, scope }) => [name, scope]));
+  for (const { manifest, name, scope, workspacePath } of workspaces) {
+    const allowed = allowedProjectScopes(scope);
+    for (const field of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const) {
+      const dependencies = objectOrEmpty(manifest[field], `${workspacePath}/package.json.${field}`);
+      for (const dependencyName of Object.keys(dependencies)) {
+        const targetScope = scopesByName.get(dependencyName);
+        if (dependencyName !== name && targetScope !== undefined && !allowed.includes(targetScope)) {
+          throw new Error(
+            `Forbidden Keenko manifest dependency: ${workspacePath} (${scope}) ${field} -> ${dependencyName} (${targetScope})`
+          );
+        }
       }
     }
   }
 }
 
-function projectScope(tags: string[] | undefined): ProjectScope | null {
+function projectScope(tags: readonly string[]): ProjectScope | null {
   for (const scope of ["scope:web", "scope:backend", "scope:ui", "scope:shared"] as const) {
-    if (tags?.includes(scope) === true) {
+    if (tags.includes(scope)) {
       return scope;
     }
   }
   return null;
-}
-
-function allowedProjectScopes(scope: ProjectScope): readonly ProjectScope[] {
-  const allowed: Record<ProjectScope, readonly ProjectScope[]> = {
-    "scope:backend": ["scope:shared"],
-    "scope:shared": [],
-    "scope:ui": ["scope:shared"],
-    "scope:web": ["scope:backend", "scope:ui", "scope:shared"],
-  };
-  return allowed[scope];
 }
 
 async function verifyGeneratedCode(root: string) {
@@ -335,7 +352,7 @@ async function verifyGeneratedCode(root: string) {
       recursive: true,
     });
     await symlink(path.join(root, "node_modules"), path.join(stage, "node_modules"), process.platform === "win32" ? "junction" : "dir");
-    await run("bun", ["run", "codegen"], stage);
+    await run("bun", ["run", "codegen"], stage, { NX_DAEMON: "false" });
     const [expected, actual] = await Promise.all([generatedHashes(root), generatedHashes(stage)]);
     if (JSON.stringify(expected) !== JSON.stringify(actual)) {
       const paths = new Set([...Object.keys(expected), ...Object.keys(actual)]);
@@ -414,6 +431,20 @@ function objectOrEmpty(value: unknown, label: string) {
   return value === undefined ? {} : parseObject(JSON.stringify(value), label);
 }
 
+function stringValue(value: unknown, label: string) {
+  if (typeof value !== "string") {
+    throw new TypeError(`${label} must be a string`);
+  }
+  return value;
+}
+
+function stringArray(value: unknown, label: string): string[] {
+  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
+    throw new TypeError(`${label} must be an array of strings`);
+  }
+  return value;
+}
+
 async function workspaceDirectories(root: string) {
   const entries = await readdir(root, { withFileTypes: true });
   return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
@@ -425,8 +456,8 @@ async function nx(args: string[], cwd: string) {
   await run(process.execPath, [nxCli, ...args], cwd);
 }
 
-async function run(command: string, args: string[], cwd: string) {
-  const child = spawn(command, args, { cwd, stdio: "inherit" });
+async function run(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
+  const child = spawn(command, args, { cwd, env: { ...process.env, ...extraEnv }, stdio: "inherit" });
   // oxlint-disable-next-line promise/avoid-new -- Node child processes expose completion through events.
   const code = await new Promise<number>((resolve, reject) => {
     child.once("error", reject);

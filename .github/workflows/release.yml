@@ -68,7 +68,7 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           first_release=""
           if ! git tag --list 'v*' | grep -q .; then first_release="--first-release"; fi
-          bunx nx release changelog "$version" --git-commit=false --git-tag=true --git-push=true $first_release
+          bunx nx release changelog "$version" --git-commit=false --git-tag=true --stage-changes=false --git-push=true $first_release
           git diff --exit-code
           test "$(git rev-list -n 1 "v${version}")" = "${{ inputs.expected_sha }}"
       - name: Publish exact tagged release

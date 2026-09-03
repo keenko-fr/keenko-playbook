@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 const [runtimePath, scriptPath, statePath] = process.argv;
@@ -33,7 +34,9 @@ const server = Bun.serve({
     const state = await readState();
 
     if (url.pathname === "/keenko" || url.pathname === "/keenko/") {
-      const versions = Object.fromEntries(Object.keys(state.packages).map((version) => [version, versionManifest(state, version)]));
+      const versions = Object.fromEntries(
+        await Promise.all(Object.keys(state.packages).map(async (version) => [version, await versionManifest(state, version)] as const))
+      );
       return Response.json({ "dist-tags": { latest: Object.keys(state.packages).at(-1) }, name: "keenko", versions });
     }
 
@@ -48,24 +51,14 @@ const server = Bun.serve({
 
     if (url.pathname.startsWith("/keenko/")) {
       const version = decodeURIComponent(url.pathname.slice("/keenko/".length));
-      const entry = versionManifest(state, version);
+      const entry = await versionManifest(state, version);
       if (entry !== null) {
         return Response.json(entry);
       }
     }
 
     const upstream = new URL(url.pathname + url.search, "https://registry.npmjs.org");
-    const headers = new Headers();
-    const accept = request.headers.get("accept");
-    if (accept !== null) {
-      headers.set("accept", accept);
-    }
-    const response = await fetch(upstream, { headers, method: request.method });
-    const responseHeaders = new Headers(response.headers);
-    responseHeaders.delete("content-encoding");
-    responseHeaders.delete("content-length");
-    const body = request.method === "HEAD" ? null : await response.arrayBuffer();
-    return new Response(body, { headers: responseHeaders, status: response.status, statusText: response.statusText });
+    return Response.redirect(upstream, 307);
   },
   hostname: "127.0.0.1",
   port: 0,
@@ -80,13 +73,19 @@ function object(value: unknown, label: string): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value));
 }
 
-function versionManifest(state: RegistryState, version: string): Record<string, unknown> | null {
-  if (state.packages[version] === undefined) {
+async function versionManifest(state: RegistryState, version: string): Promise<Record<string, unknown> | null> {
+  const tarballPath = state.packages[version];
+  if (tarballPath === undefined) {
     return null;
   }
+  const tarball = await readFile(tarballPath);
   return {
     ...state.manifest,
-    dist: { tarball: `${origin}/keenko/-/keenko-${version}.tgz` },
+    dist: {
+      integrity: `sha512-${createHash("sha512").update(tarball).digest("base64")}`,
+      shasum: createHash("sha1").update(tarball).digest("hex"),
+      tarball: `${origin}/keenko/-/keenko-${version}.tgz`,
+    },
     name: "keenko",
     version,
   };

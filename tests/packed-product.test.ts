@@ -24,7 +24,23 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     const guidanceVersion = nextPatch(currentVersion);
     const prereleaseVersion = `${guidanceVersion}-beta.1`;
     const nextMajorVersion = nextMajor(currentVersion);
-    registry = await startRegistry(temp, currentVersion, tarball, packageJson, [guidanceVersion, prereleaseVersion, nextMajorVersion]);
+    const baselineATarball = await versionedTarball(tarball, path.join(temp, "baseline-a.tgz"), "0.0.1");
+    const baselineBTarball = await versionedTarball(tarball, path.join(temp, "baseline-b.tgz"), "0.0.2");
+    const guidanceTarget = await versionedTarball(tarball, path.join(temp, "guidance-target.tgz"), guidanceVersion);
+    const targetExtract = path.join(temp, "target-extract");
+    await mkdir(targetExtract);
+    run("tar", ["-xzf", guidanceTarget, "-C", targetExtract], temp);
+    const guidanceFile = path.join(targetExtract, "package/docs/core/verification.md");
+    await writeFile(guidanceFile, `${await readFile(guidanceFile, "utf-8")}\nGuidance-only packed fixture marker.\n`);
+    run("tar", ["-czf", guidanceTarget, "-C", targetExtract, "package"], temp);
+    registry = await startRegistry(temp, packageJson, {
+      "0.0.1": baselineATarball,
+      "0.0.2": baselineBTarball,
+      [currentVersion]: tarball,
+      [guidanceVersion]: guidanceTarget,
+      [prereleaseVersion]: await versionedTarball(tarball, path.join(temp, "prerelease.tgz"), prereleaseVersion),
+      [nextMajorVersion]: await versionedTarball(tarball, path.join(temp, "next-major.tgz"), nextMajorVersion),
+    });
 
     const runner = path.join(temp, "runner");
     await mkdir(runner);
@@ -115,27 +131,36 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     expect(runOut("node", [projectCli, "upgrade", "--dry-run"], project, registry.env)).toContain(`-> ${guidanceVersion}`);
 
     const baselineA = path.join(temp, "baseline-a");
-    await makeBaseline(project, baselineA, "0.0.1", OLDEST_CHECK, "1.80.0");
+    await makeBaseline(project, baselineA, "baseline-a", "0.0.1", baselineATarball);
+    await assertHistoricalBaseline(baselineA, "0.0.1", OLDEST_CHECK, "1.80.0", false);
     const lockBefore = await readFile(path.join(baselineA, "bun.lock"));
     run("node", [cli, "upgrade", currentVersion], baselineA, registry.env);
     expect(await readFile(path.join(baselineA, "bun.lock"))).not.toEqual(lockBefore);
     await assertUpgraded(baselineA, registry.env);
 
     const baselineB = path.join(temp, "baseline-b");
-    await makeBaseline(project, baselineB, "0.0.2", FIRST_PASS_CHECK, "1.81.0");
+    await makeBaseline(project, baselineB, "baseline-b", "0.0.2", baselineBTarball);
+    await assertHistoricalBaseline(baselineB, "0.0.2", FIRST_PASS_CHECK, "1.81.0", true);
     run("node", [cli, "upgrade", currentVersion], baselineB, registry.env);
     await assertUpgraded(baselineB, registry.env);
     gitCommitAll(baselineB, "upgrade to current");
 
-    const guidanceTarget = await versionedTarball(tarball, path.join(temp, "guidance-target.tgz"), guidanceVersion);
-    const targetExtract = path.join(temp, "target-extract");
-    await mkdir(targetExtract);
-    run("tar", ["-xzf", guidanceTarget, "-C", targetExtract], temp);
-    const guidanceFile = path.join(targetExtract, "package/docs/core/verification.md");
-    await writeFile(guidanceFile, `${await readFile(guidanceFile, "utf-8")}\nGuidance-only packed fixture marker.\n`);
-    run("tar", ["-czf", guidanceTarget, "-C", targetExtract, "package"], temp);
+    const conflict = path.join(temp, "baseline-conflict");
+    await makeBaseline(project, conflict, "baseline-b", "0.0.2", baselineBTarball);
+    const conflictConfigPath = path.join(conflict, "oxlint.config.ts");
+    const conflictConfig = await readFile(conflictConfigPath, "utf-8");
+    await writeFile(
+      conflictConfigPath,
+      conflictConfig.replace(
+        '    "eslint/no-console": "off",',
+        '    "@nx/enforce-module-boundaries": ["error", { allow: ["custom/**"] }],\n    "eslint/no-console": "off",'
+      )
+    );
+    gitCommitAll(conflict, "customize owned boundary rule");
+    expect(runFailure("node", [cli, "upgrade", currentVersion], conflict, registry.env)).toContain("Keenko-owned rule was customized");
+    expect(await readFile(conflictConfigPath, "utf-8")).toContain('allow: ["custom/**"]');
+
     const contextBefore = await readFile(path.join(baselineB, "CONTEXT.md"), "utf-8");
-    await registry.add(guidanceVersion, guidanceTarget);
     run("node", [path.join(baselineB, "node_modules/keenko/dist/cli/keenko.js"), "upgrade", guidanceVersion], baselineB, registry.env);
     expect(await readFile(path.join(baselineB, ".keenko/docs/core/verification.md"), "utf-8")).toContain(
       "Guidance-only packed fixture marker."
@@ -148,9 +173,15 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     registry?.stop();
     await rm(temp, { force: true, recursive: true });
   }
-}, 240_000);
+}, 480_000);
 
-async function makeBaseline(source: string, target: string, installedVersion: string, check: string, oxlint: string) {
+async function makeBaseline(
+  source: string,
+  target: string,
+  fixture: "baseline-a" | "baseline-b",
+  installedVersion: string,
+  packageTarball: string
+) {
   await cp(source, target, {
     filter: (entry) => {
       const relative = path.relative(source, entry).replaceAll("\\", "/");
@@ -159,27 +190,41 @@ async function makeBaseline(source: string, target: string, installedVersion: st
     },
     recursive: true,
   });
+  const fixtureRoot = path.join(ROOT, "tests/fixtures/pre-v1", fixture);
+  await Promise.all([
+    cp(path.join(fixtureRoot, "package.json"), path.join(target, "package.json")),
+    cp(path.join(fixtureRoot, "oxlint.config.ts.fixture"), path.join(target, "oxlint.config.ts")),
+  ]);
   const pkgPath = path.join(target, "package.json");
   const pkg = json(await readFile(pkgPath, "utf-8"));
-  const scripts = record(pkg.scripts, "baseline scripts");
-  scripts.check = check;
-  scripts["codegen:check"] = check === FIRST_PASS_CHECK ? "keenko check --guidance" : undefined;
-  pkg.scripts = withoutUndefined(scripts);
-  const devDependencies = record(pkg.devDependencies, "baseline devDependencies");
-  devDependencies.oxlint = oxlint;
+  const devDependencies = record(pkg.devDependencies, "historical devDependencies");
+  expect(devDependencies.keenko).toBe(installedVersion);
+  devDependencies.keenko = `file:${packageTarball}`;
   pkg.devDependencies = devDependencies;
-  if (oxlint === "1.80.0") {
-    devDependencies["@effect/tsgo"] = "0.38.0";
-    devDependencies["oxlint-plugin-effect"] = "0.11.0";
-  }
   await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
   await writeFile(path.join(target, "CONTEXT.md"), "# Project context\n\nPreserve this project-owned baseline customization.\n");
-  run("bun", ["install"], target);
-  const installedPath = path.join(target, "node_modules/keenko/package.json");
-  const installed = json(await readFile(installedPath, "utf-8"));
-  installed.version = installedVersion;
-  await writeFile(installedPath, `${JSON.stringify(installed, null, 2)}\n`);
+  run("bun", ["install", "--ignore-scripts"], target);
+  const installed = json(await readFile(path.join(target, "node_modules/keenko/package.json"), "utf-8"));
+  expect(string(installed.version, "installed version")).toBe(installedVersion);
   gitCommitAll(target, `fixture ${installedVersion}`);
+}
+
+async function assertHistoricalBaseline(project: string, version: string, check: string, oxlintVersion: string, hasUiOverride: boolean) {
+  const pkg = json(await readFile(path.join(project, "package.json"), "utf-8"));
+  const scripts = record(pkg.scripts, "historical scripts");
+  const devDependencies = record(pkg.devDependencies, "historical devDependencies");
+  const oxlint = await readFile(path.join(project, "oxlint.config.ts"), "utf-8");
+  expect(devDependencies.keenko).toContain(`${version === "0.0.1" ? "baseline-a" : "baseline-b"}.tgz`);
+  expect(scripts.check).toBe(check);
+  expect(scripts.custom).toBe("node -e \"console.log('preserved')\"");
+  expect(devDependencies.oxlint).toBe(oxlintVersion);
+  expect(devDependencies.typescript).toBe("7.0.2");
+  expect(devDependencies["@nx/oxlint"]).toBeUndefined();
+  expect(devDependencies["@typescript/native"]).toBeUndefined();
+  expect(oxlint).not.toContain("@nx/oxlint/boundaries-plugin");
+  expect(oxlint).not.toContain("@nx/enforce-module-boundaries");
+  expect(oxlint).toContain('"eslint/no-console": "off"');
+  expect(oxlint.includes('files: ["packages/ui/**/*"]')).toBe(hasUiOverride);
 }
 
 async function assertUpgraded(project: string, registryEnv: Record<string, string>) {
@@ -189,9 +234,20 @@ async function assertUpgraded(project: string, registryEnv: Record<string, strin
   expect(devDependencies.oxlint).toBe("1.81.0");
   expect(devDependencies["@effect/tsgo"]).toBe("0.39.1");
   expect(devDependencies["oxlint-plugin-effect"]).toBe("0.12.0");
+  expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
+  expect(devDependencies["@typescript/native"]).toBe("npm:typescript@7.0.2");
+  expect(devDependencies.typescript).toBe("npm:@typescript/typescript6@6.0.2");
+  expect(record(pkg.scripts, "upgraded scripts").custom).toBe("node -e \"console.log('preserved')\"");
+  const oxlint = await readFile(path.join(project, "oxlint.config.ts"), "utf-8");
+  expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
+  expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
+  expect(oxlint).toContain('files: ["packages/ui/**/*"]');
+  expect(oxlint).toContain('"eslint/sort-keys": "off"');
+  expect(oxlint).toContain('"eslint/no-console": "off"');
   expect(await readFile(path.join(project, "CONTEXT.md"), "utf-8")).toContain("Preserve this project-owned baseline customization.");
   expect(await exists(path.join(project, "packages/ui/src/components/button.tsx"))).toBe(true);
   run("bun", ["install", "--frozen-lockfile"], project, registryEnv);
+  expect(runOut("bun", ["x", "tsc", "--version"], path.join(project, "packages/shared"))).toContain("7.0.2");
   run("bun", ["run", "check"], project);
 }
 
@@ -208,27 +264,13 @@ async function versionedTarball(source: string, target: string, version: string)
 }
 
 interface TestRegistry {
-  add: (version: string, tarball: string) => Promise<void>;
   env: Record<string, string>;
   stop: () => void;
 }
 
-async function startRegistry(
-  root: string,
-  version: string,
-  tarball: string,
-  manifest: Record<string, unknown>,
-  futureVersions: string[]
-): Promise<TestRegistry> {
+async function startRegistry(root: string, manifest: Record<string, unknown>, packages: Record<string, string>): Promise<TestRegistry> {
   const statePath = path.join(root, "registry-state.json");
-  const packages: Record<string, string> = { [version]: tarball };
-  for (const futureVersion of futureVersions) {
-    packages[futureVersion] = tarball;
-  }
-  const writeState = async () => {
-    await writeFile(statePath, JSON.stringify({ manifest, packages }));
-  };
-  await writeState();
+  await writeFile(statePath, JSON.stringify({ manifest, packages }));
 
   const child = spawn("bun", [path.join(ROOT, "tests/registry-server.ts"), statePath], {
     stdio: ["ignore", "pipe", "inherit"],
@@ -247,11 +289,11 @@ async function startRegistry(
   });
 
   return {
-    async add(packageVersion, packageTarball) {
-      packages[packageVersion] = packageTarball;
-      await writeState();
+    env: {
+      BUN_CONFIG_REGISTRY: origin,
+      BUN_INSTALL_CACHE_DIR: path.join(root, "bun-cache"),
+      NPM_CONFIG_REGISTRY: origin,
     },
-    env: { BUN_CONFIG_REGISTRY: origin, NPM_CONFIG_REGISTRY: origin },
     stop() {
       child.kill();
     },
@@ -292,8 +334,8 @@ function runOut(command: string, args: string[], cwd: string, extraEnv: Record<s
   return execFileSync(command, args, { cwd, encoding: "utf-8", env: { ...process.env, ...extraEnv } });
 }
 
-function runFailure(command: string, args: string[], cwd: string) {
-  const result = spawnSync(command, args, { cwd, encoding: "utf-8" });
+function runFailure(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
+  const result = spawnSync(command, args, { cwd, encoding: "utf-8", env: { ...process.env, ...extraEnv } });
   if (result.status === 0) {
     throw new Error(`Expected ${command} ${args.join(" ")} to fail`);
   }
@@ -330,8 +372,4 @@ function string(value: unknown, label: string) {
     throw new TypeError(`${label} must be a string`);
   }
   return value;
-}
-
-function withoutUndefined(value: Record<string, unknown>) {
-  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }

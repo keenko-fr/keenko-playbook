@@ -1,0 +1,37 @@
+import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";
+import { defineConfig } from "oxlint";
+import { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";
+import core from "ultracite/oxlint/core";
+
+export default defineConfig({
+  extends: [core],
+  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts"],
+  jsPlugins: ["oxlint-plugin-effect/plugin"],
+  options: { typeAware: true },
+  overrides: [
+    {
+      files: ["apps/web/**/*"],
+      rules: {
+        "eslint/no-empty-function": "off",
+        "eslint/no-use-before-define": "off",
+        "eslint/require-await": "off",
+        "eslint/sort-keys": "off",
+      },
+    },
+    {
+      files: ["packages/backend/**/*.ts"],
+      rules: {
+        ...effectTsgoRecommended.rules,
+        ...effectRecommended,
+        "effect/noTernary": "off",
+      },
+    },
+  ],
+  plugins: ["effecttsgo"],
+  rules: {
+    "eslint/no-console": "off",
+    "eslint/no-plusplus": "off",
+    "func-style": "off",
+    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],
+  },
+});

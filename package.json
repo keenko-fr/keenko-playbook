@@ -88,11 +88,13 @@
     "semver": "^7.6.3"
   },
   "devDependencies": {
+    "@nx/js": "23.2.0",
     "@types/bun": "1.4.0",
+    "@typescript/native": "npm:typescript@7.0.2",
     "nx": "23.2.0",
     "oxlint": "1.81.0",
     "oxlint-tsgolint": "7.0.2001",
-    "typescript": "7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "ultracite": "7.10.7"
   },
   "engines": {
@@ -100,5 +102,6 @@
   },
   "packageManager": "bun@1.4.0",
   "generators": "./generators.json",
+  "nx": {},
   "nx-migrations": "./migrations.json"
 }

@@ -1,0 +1,42 @@
+{
+  "name": "project",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "nx run-many -t build",
+    "check": "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build",
+    "codegen": "nx run-many -t codegen",
+    "codegen:check": "keenko check --guidance",
+    "custom": "node -e \"console.log('preserved')\"",
+    "dev": "nx run @project/web:dev",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "postinstall": "effect-tsgo patch --oxlint",
+    "typecheck": "nx run-many -t typecheck",
+    "ui": "bun tools/keenko-ui.ts"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "0.39.1",
+    "@types/bun": "1.4.0",
+    "keenko": "0.0.2",
+    "nx": "23.2.0",
+    "oxfmt": "0.65.0",
+    "oxlint": "1.81.0",
+    "oxlint-plugin-effect": "0.12.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "7.0.2",
+    "ultracite": "7.10.7"
+  },
+  "engines": {
+    "bun": ">=1.4.0 <2",
+    "node": ">=24 <25"
+  },
+  "packageManager": "bun@1.4.0"
+}
