@@ -4,8 +4,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
-const EXPECTED_SHA = "$" + "{{ inputs.expected_sha }}";
-const VERSION = "$" + "{version}";
+const EXPECTED_SHA = `\${{ inputs.expected_sha }}`;
+const VERSION = `\${version}`;
 const REPOSITORY = {
   type: "git",
   url: "git+https://github.com/keenko-fr/keenko-playbook.git",
