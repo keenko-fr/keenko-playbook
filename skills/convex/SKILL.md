@@ -9,8 +9,8 @@ Keenko does not redistribute the upstream `get-convex/agent-skills` repository w
 
 ## Procedure
 
-1. Read `.playbook/docs/stacks/convex/README.md` and the relevant Keenko conventions/project overrides.
-2. Read `.playbook/external-sources.json` for the reviewed upstream Convex skills repository revision and provenance record.
+1. Read `.keenko/docs/stacks/convex/README.md` and the relevant Keenko conventions/project overrides.
+2. Inspect this skill's packaged adapter and repository vendor metadata when provenance for an upstream source matters.
 3. Inspect the consuming project's installed `convex` and `@convex-dev/*` versions.
 4. Prefer installed package source/types and current Convex documentation for version-sensitive APIs. Do not write an unfamiliar Convex API from memory.
 5. If the user explicitly wants the official Convex skill suite installed, use the current official installation instructions from Convex documentation and treat that installation as an external project mutation requiring explicit approval. It is not managed or attested by Keenko Playbook.

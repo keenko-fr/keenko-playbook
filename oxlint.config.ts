@@ -6,7 +6,7 @@ export default defineConfig({
   ignorePatterns: [
     ".agents/skills/**",
     ".claude/skills/**",
-    ".playbook/**",
+    ".keenko/**",
     ".tmp/**",
     ".output/**",
     "build/**",

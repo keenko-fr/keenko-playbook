@@ -1,43 +1,40 @@
 # Contributing
 
-## Change model
+Work on a dedicated branch and keep one coherent Linear deliverable per PR. Convention changes require another maintainer's review; merge and publication remain human-owned.
 
-All changes go through a branch and PR. Keep a PR coherent and reviewable; prefer one issue/deliverable where practical.
+## Repository ownership
 
-Convention/policy changes require another maintainer's review because they affect downstream projects and agents.
+- `src/generators/`: Nx preset and generated-guidance synchronization.
+- `src/migrations/`: focused Nx repository migrations.
+- `docs/`: canonical Keenko engineering guidance.
+- `skills/`: Keenko-owned workflows.
+- `vendor/`: immutable pinned upstream skill sources and provenance.
+- `templates/`: project-owned document seeds and managed harness routing.
 
-## Where changes belong
-
-- `docs/core/`: always-on cross-stack engineering policy.
-- `docs/conventions/`: reusable cross-module conventions such as representations, frontend ownership, validation, and migrations.
-- `docs/stacks/`: rules that apply only when that module is enabled.
-- `skills/`: procedural Keenko-owned workflows.
-- `vendor/`: pinned immutable upstream snapshots/provenance; do not edit vendor content in place.
-- `templates/`: project-owned scaffold/managed-block templates.
-- `presets/`: explicit module/skill selections.
-
-Do not duplicate the same canonical rule into harness-specific manuals. `AGENTS.md`/`CLAUDE.md` route to shared sources.
+Do not add stack selection, another package manager, `project.json` ceremony, a custom migration engine, or a parallel release mechanism.
 
 ## Verification
 
-Run the repository's canonical source checks before PR review:
+During implementation, run focused tests and type checks. Before review, run:
 
-```bash
+```sh
 bun run check
 ```
 
-For a release candidate, run the stronger self-contained release check:
+Release-affecting changes also run:
 
-```bash
+```sh
 bun run check:release
 ```
 
-Use the release workflow to prepare a release PR. Publishing is a separate explicit action after that PR is human-reviewed/merged and the machine-readable release gate is satisfied.
+When creation, migrations, or packaging changes, verify a clean project from the packed artifact, its generated lockfile, `bun run check`, and the relevant upgrade baseline. Report only commands actually run.
 
-When materialization behavior changes, also install/update/check a clean fixture consumer and verify both `.agents/skills` and `.claude/skills` match the canonical `.playbook/skills` snapshot.
+## Version plans
 
-Report checks exactly as run; do not claim unavailable/unrun checks passed.
+If a change alters anything a Keenko user or generated project sees or follows, add an Nx version plan:
 
-## Documentation and history
+```sh
+bun run release:plan
+```
 
-Update affected canonical docs in the same PR. Use ADRs for expensive-to-reverse governance/architecture decisions or rationale likely to be lost, not ordinary implementation choices. Supersede historical ADRs instead of rewriting their decision history.
+Use a patch for compatible pre-v1 corrections and a minor for meaningful pre-v1 evolution. `1.0.0` is always a deliberate human release decision. Nx Release consumes the plans and owns changelog, tag, and publication behavior.

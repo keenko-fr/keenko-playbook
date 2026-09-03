@@ -1,6 +1,0 @@
-{
-  "name": "tanstack-query",
-  "requires": ["react"],
-  "skills": [],
-  "incompatibleWith": []
-}

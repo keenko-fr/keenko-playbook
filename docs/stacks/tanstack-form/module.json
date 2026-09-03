@@ -1,6 +1,0 @@
-{
-  "name": "tanstack-form",
-  "requires": ["react", "effect"],
-  "skills": [],
-  "incompatibleWith": []
-}

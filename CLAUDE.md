@@ -7,7 +7,7 @@ Read in this order when relevant:
 1. `docs/core/agent-behavior.md`;
 2. the relevant `docs/core/` policy;
 3. the relevant `docs/conventions/` convention;
-4. the relevant enabled module under `docs/stacks/`;
+4. the relevant fixed-stack guidance under `docs/stacks/`;
 5. playbook ADRs under `docs/adr/` when changing playbook architecture;
 6. the relevant owned/upstream skill.
 

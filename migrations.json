@@ -1,0 +1,14 @@
+{
+  "generators": {
+    "0.1.1-normalize-check": {
+      "version": "0.1.1",
+      "description": "Move generated workspaces onto the canonical Keenko check pipeline.",
+      "factory": "./dist/src/migrations/normalize-check.js"
+    },
+    "0.2.0-refresh-guidance": {
+      "version": "0.2.0",
+      "description": "Refresh the generated Keenko guidance snapshot.",
+      "factory": "./dist/src/migrations/refresh-guidance.js"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "neverConnectToCloud": true,
+  "release": {
+    "projects": ["keenko"],
+    "versionPlans": true,
+    "version": {
+      "preVersionCommand": "bun run check:release"
+    }
+  },
+  "targetDefaults": {
+    "check": {
+      "cache": true,
+      "dependsOn": ["^check"]
+    }
+  }
+}

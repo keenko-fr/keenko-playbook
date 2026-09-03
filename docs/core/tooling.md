@@ -32,10 +32,10 @@ Tooling that can change accepted source or diagnostics is exact-pinned and upgra
 | TypeScript    | `typescript`           | `7.0.2`    |
 | Universal     | `ultracite`            | `7.10.7`   |
 | Universal     | `oxfmt`                | `0.65.0`   |
-| Universal     | `oxlint`               | `1.80.0`   |
+| Universal     | `oxlint`               | `1.81.0`   |
 | Universal     | `oxlint-tsgolint`      | `7.0.2001` |
-| Effect module | `@effect/tsgo`         | `0.38.0`   |
-| Effect module | `oxlint-plugin-effect` | `0.11.0`   |
+| Effect module | `@effect/tsgo`         | `0.39.1`   |
+| Effect module | `oxlint-plugin-effect` | `0.12.0`   |
 
 The Effect tooling is a compatibility unit: before upgrading `@effect/tsgo`, verify its current first-party supported TypeScript, Oxlint, and `oxlint-tsgolint` versions and move the coupled pins together. Re-check `oxlint-plugin-effect` at the same time because its preset and overlap with Effect tsgo are versioned compatibility data.
 
@@ -52,7 +52,7 @@ Oxfmt owns mechanical import sorting. Keep external and workspace packages befor
 Formatter/linter ownership stops at generator or manager boundaries by default. Exclude generated or immutable output from direct formatting and linting, then validate it with the owning generator/materializer/drift contract instead. Typical exclusions include:
 
 - `vendor/**`;
-- `.playbook/**`;
+- `.keenko/**`;
 - Playbook-generated `.agents/skills/**` and `.claude/skills/**`;
 - `confect/_generated/**` and `convex/_generated/**`;
 - Paraglide compiler output;
@@ -87,6 +87,8 @@ CI consumes the canonical package scripts and never auto-fixes, persists rewritt
 
 During implementation, agents format/fix the touched scope and run focused lint, type, and tests as appropriate. Safe autofixes are encouraged only when their resulting diff is inspected. Never manually fight Oxfmt output and never autofix generated/vendored sources. Before review handoff, run the applicable complete `bun run check` and report exactly what passed, failed, was not run, or was unavailable.
 
-## Consumer boundary
+## Generated workspace boundary
 
-The Playbook defines this dependency/config/script/CI shape, but `playbook install` and `playbook update` do not manage a consumer's `package.json`, root Oxc/Ultracite configs, hooks, or editor settings. Consumer repositories own those project files. Extending materialization to manage them is a separate architecture decision.
+The Keenko Nx preset owns the initial package manifests, root Oxc/Ultracite configuration, scripts, CI contract, and generated guidance. Forward changes to those owned surfaces ship as explicit Nx migrations. Migrations must preserve project-owned files and reject ambiguous customized values with an actionable conflict instead of silently overwriting them.
+
+The experimental `@nx/oxlint` dependency-boundary bridge is excluded from this baseline because the verified Nx 23.2.0 integration crashes against the pinned TypeScript 7 API. Nx still owns project discovery and the task graph; `keenko check` enforces the fixed workspace topology and allowed manifest dependency directions until that upstream combination is compatible.

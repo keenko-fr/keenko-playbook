@@ -25,7 +25,7 @@ Generated Confect services/context are used directly; do not wrap them merely to
 
 Persisted resource schema modules start from application-controlled `sFooFields` and derive the complete `sFooDoc` with Confect's installed system-field facility. Do not manually recreate Convex `_id` or `_creationTime`.
 
-For Confect `10.0.0-next.13`, the verified API is:
+For Confect `10.0.0-next.21`, the verified API is:
 
 ```ts
 export const sFooDoc = SystemFields.extendWithSystemFields("foo", sFooFields);
@@ -38,7 +38,7 @@ The table name is the first argument and the schema is the second. Inspect the i
 
 ## File organization
 
-Confect specs and implementations live under the backend `confect/` owner and follow `.playbook/docs/conventions/backend-file-topology.md` for canonical section grammar.
+Confect specs and implementations live under the backend `confect/` owner and follow `.keenko/docs/conventions/backend-file-topology.md` for canonical section grammar.
 
 That topology is authoritative for:
 
@@ -106,7 +106,7 @@ Focused persistence-only Patch schemas stay with the data owner; shared Patch re
 
 ## Versions and generated code
 
-For Confect `10.0.0-next.13`, treat both `confect/_generated/` and the sibling `convex/` directory as generator-owned targets. Do not edit generated root Convex entrypoints such as `convex/schema.ts` or generated function modules manually. The supported authored exceptions inside `convex/` are `tsconfig.json` and `convex.config.ts`; keep those under normal authored-source ownership and typecheck the Convex runtime through `convex/tsconfig.json`.
+For Confect `10.0.0-next.21`, treat both `confect/_generated/` and the sibling `convex/` directory as generator-owned targets. Do not edit generated root Convex entrypoints such as `convex/schema.ts` or generated function modules manually. The supported authored exceptions inside `convex/` are `tsconfig.json` and `convex.config.ts`; keep those under normal authored-source ownership and typecheck the Convex runtime through `convex/tsconfig.json`.
 
 Confect-generated deployment/runtime modules are source-required generated artifacts for the checked-in application shape. Track them when the repository deploys/tests from source, regenerate them through the repository's canonical codegen command after Confect inputs change, and make CI detect drift across the generated targets while excluding the authored `convex/` exceptions from generator-byte comparison.
 

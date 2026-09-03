@@ -10,5 +10,5 @@
     "verbatimModuleSyntax": true,
     "types": ["bun"]
   },
-  "include": ["cli/**/*.ts", "tests/**/*.ts", "oxfmt.config.ts", "oxlint.config.ts"]
+  "include": ["cli/**/*.ts", "src/**/*.ts", "tests/**/*.ts", "oxfmt.config.ts", "oxlint.config.ts"]
 }

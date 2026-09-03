@@ -121,7 +121,7 @@ export const sWatchlistInsert = sWatchlistFields;
 export type WatchlistInsert = typeof sWatchlistInsert.Type;
 ```
 
-For Confect `10.0.0-next.13`, `SystemFields.extendWithSystemFields(tableName, schema)` takes the table name first and the schema second. Inspect the installed Confect source before documenting exact syntax for another version. Do not manually recreate `_id` or `_creationTime`.
+For Confect `10.0.0-next.21`, `SystemFields.extendWithSystemFields(tableName, schema)` takes the table name first and the schema second. Inspect the installed Confect source before documenting exact syntax for another version. Do not manually recreate `_id` or `_creationTime`.
 
 Non-persisted, provider, and other schema owners are not forced into this persisted-resource grammar. Organize them only by relevant semantics while still following the universal adjacency, derivation, narrowest-owner, and no-duplicate-declaration rules.
 

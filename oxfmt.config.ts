@@ -10,7 +10,7 @@ export default defineConfig({
     ...(ultraciteFormatting.ignorePatterns ?? []),
     ".agents/skills/**",
     ".claude/skills/**",
-    ".playbook/**",
+    ".keenko/**",
     ".tmp/**",
     ".output/**",
     "build/**",

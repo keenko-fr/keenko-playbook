@@ -1,6 +1,0 @@
-{
-  "name": "effect",
-  "requires": ["typescript"],
-  "skills": ["effect-ts"],
-  "incompatibleWith": []
-}

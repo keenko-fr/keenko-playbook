@@ -21,7 +21,7 @@ The decision is cross-repository and expensive to reverse, so the engine, preset
 - Generator-, manager-, and vendor-owned output is excluded from direct formatter/linter ownership by default and verified through its owner.
 - Canonical TypeScript scripts expose formatting, linting, typecheck, and a non-remediating merge-ready `check`; CI consumes those scripts and never fixes/pushes source.
 - Tooling versions are exact-pinned and upgrades are reviewed as convention changes. Effect's TypeScript/Oxlint/`oxlint-tsgolint` compatibility is verified from current first-party sources on every upgrade.
-- The Playbook documents this consumer contract but does not expand `playbook install/update` to manage consumer `package.json`, root tooling config, hooks, or editor settings.
+- The Keenko Nx preset owns the initial consumer package, root tooling, scripts, and CI contract; later changes use reviewed Nx migrations that preserve project-owned customizations or fail explicitly on ambiguity.
 
 ## Alternatives considered
 
@@ -32,4 +32,4 @@ The decision is cross-repository and expensive to reverse, so the engine, preset
 
 ## Consequences
 
-Consumers gain one predictable local/CI contract and agents can rely on stable script names. Upstream preset and engine upgrades can change accepted source, so exact pins and reviewed upgrades are intentional maintenance cost. TypeScript repositories must migrate to TypeScript 7+. Effect repositories carry an additional coupled toolchain. Existing consumer root config remains project-owned rather than becoming generated Playbook state.
+Consumers gain one predictable local/CI contract and agents can rely on stable script names. Upstream preset and engine upgrades can change accepted source, so exact pins and reviewed upgrades are intentional maintenance cost. TypeScript repositories must migrate to TypeScript 7+. Effect repositories carry an additional coupled toolchain. Generated defaults are distribution-owned while deliberate project deviations remain project-owned and must be migration-safe.
