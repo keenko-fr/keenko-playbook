@@ -49,6 +49,95 @@ jobs:
         run: |
           bun cli/kee14-second-pass.ts
           bun cli/kee14-second-pass.ts --finalize
+      - name: Reconcile semantic lint patterns
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          cli = Path("cli/keenko.ts")
+          source = cli.read_text()
+          source = source.replace(
+              '  const spec = target.startsWith("keenko@") ? target : isPlainVersion(target) ? `keenko@${target}` : target;',
+              '  let spec = target;\n  if (!target.startsWith("keenko@") && isPlainVersion(target)) {\n    spec = `keenko@${target}`;\n  }'
+          )
+          source = source.replace(
+              '  const pkg = JSON.parse(await readFile(pkgPath, "utf-8")) as { devDependencies: Record<string, string> };',
+              '  const pkg = parseObject(await readFile(pkgPath, "utf-8"), pkgPath);\n  const devDependencies = objectOrEmpty(pkg.devDependencies, "package.json.devDependencies");\n  pkg.devDependencies = devDependencies;'
+          )
+          source = source.replace('pkg.devDependencies.keenko', 'devDependencies.keenko')
+          source = source.replace(
+              '  const pkg = JSON.parse(await readFile(path.join(root, "node_modules/keenko/package.json"), "utf-8")) as { version: string };\n  return pkg.version;',
+              '  const packagePath = path.join(root, "node_modules/keenko/package.json");\n  const pkg = parseObject(await readFile(packagePath, "utf-8"), packagePath);\n  if (typeof pkg.version !== "string") {\n    throw new TypeError(`${packagePath}.version must be a string`);\n  }\n  return pkg.version;'
+          )
+          source = source.replace('const first = relative.split("/")[0];', 'const [first] = relative.split("/");')
+          source = source.replace(
+              'async function generatedHashes(root: string) {',
+              '// oxlint-disable eslint/no-await-in-loop -- Generated paths are read in stable order before hashing.\nasync function generatedHashes(root: string) {'
+          )
+          source = source.replace(
+              '  return Object.fromEntries(entries.toSorted(([left], [right]) => left.localeCompare(right)));\n}\n\nasync function walkFiles',
+              '  return Object.fromEntries(entries.toSorted(([left], [right]) => left.localeCompare(right)));\n}\n// oxlint-enable eslint/no-await-in-loop\n\nasync function walkFiles'
+          )
+          source = source.replace(
+              '    return entry.isDirectory() ? await walkFiles(target) : entry.isFile() ? [target] : [];',
+              '    if (entry.isDirectory()) {\n      return await walkFiles(target);\n    }\n    return entry.isFile() ? [target] : [];'
+          )
+          source = source.replace(
+              '  const code = await new Promise<number>((resolve, reject) => {',
+              '  // oxlint-disable-next-line promise/avoid-new -- Node child processes expose completion through events.\n  const code = await new Promise<number>((resolve, reject) => {'
+          )
+          cli.write_text(source)
+
+          migrations = Path("tests/migrations.test.ts")
+          source = migrations.read_text()
+          old = '''    const migrated = JSON.parse(tree.read("package.json", "utf-8") ?? "{}") as { devDependencies: Record<string, string>; projectNote: string; scripts: Record<string, string> };
+            expect(migrated.scripts.check).toBe(current);
+            expect(migrated.scripts["codegen:check"]).toBe("keenko check --guidance --codegen");
+            expect(migrated.scripts.test).toBe("bun test --pass-with-no-tests");
+            expect(migrated.scripts.custom).toBe("keep me");
+            expect(migrated.devDependencies.oxlint).toBe("1.81.0");
+            expect(migrated.projectNote).toBe("preserve me");'''
+          if old not in source:
+              old = '''    const migrated = JSON.parse(tree.read("package.json", "utf-8") ?? "{}") as { devDependencies: Record<string, string>; projectNote: string; scripts: Record<string, string> };
+    expect(migrated.scripts.check).toBe(current);
+    expect(migrated.scripts["codegen:check"]).toBe("keenko check --guidance --codegen");
+    expect(migrated.scripts.test).toBe("bun test --pass-with-no-tests");
+    expect(migrated.scripts.custom).toBe("keep me");
+    expect(migrated.devDependencies.oxlint).toBe("1.81.0");
+    expect(migrated.projectNote).toBe("preserve me");'''
+          new = '''    const migrated = tree.read("package.json", "utf-8") ?? "";
+    expect(migrated).toContain(current);
+    expect(migrated).toContain("keenko check --guidance --codegen");
+    expect(migrated).toContain("bun test --pass-with-no-tests");
+    expect(migrated).toContain('"custom": "keep me"');
+    expect(migrated).toContain('"oxlint": "1.81.0"');
+    expect(migrated).toContain('"projectNote": "preserve me"');'''
+          if old not in source:
+              raise SystemExit("migration assertion block not found")
+          migrations.write_text(source.replace(old, new))
+
+          product = Path("tests/packed-product.test.ts")
+          source = product.read_text()
+          source = source.replace(
+              'import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";',
+              'import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";'
+          )
+          source = source.replace(
+              '    expect((await import("node:fs/promises")).readdir(occupied).then((entries) => entries.toSorted())).resolves.toEqual(["sentinel.txt"]);',
+              '    const occupiedEntries = await readdir(occupied);\n    expect(occupiedEntries.toSorted()).toEqual(["sentinel.txt"]);'
+          )
+          source = source.replace('const first = relative.split("/")[0];', 'const [first] = relative.split("/");')
+          source = source.replace('  deleteUndefined(scripts);\n  pkg.scripts = scripts;', '  pkg.scripts = withoutUndefined(scripts);')
+          source = source.replace(
+              'function record(value: unknown, label: string): Record<string, any> {\n  if (value === null || typeof value !== "object" || Array.isArray(value)) {\n    throw new TypeError(`${label} must be an object`);\n  }\n  return value as Record<string, any>;\n}',
+              'function record(value: unknown, label: string): Record<string, unknown> {\n  if (value === null || typeof value !== "object" || Array.isArray(value)) {\n    throw new TypeError(`${label} must be an object`);\n  }\n  return Object.fromEntries(Object.entries(value));\n}'
+          )
+          source = source.replace(
+              'function deleteUndefined(value: Record<string, any>) {\n  for (const [key, entry] of Object.entries(value)) {\n    if (entry === undefined) delete value[key];\n  }\n}',
+              'function withoutUndefined(value: Record<string, unknown>) {\n  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));\n}'
+          )
+          product.write_text(source)
+          PY
       - run: bun run format
       - run: bun run lint:fix
       - run: bun run format
