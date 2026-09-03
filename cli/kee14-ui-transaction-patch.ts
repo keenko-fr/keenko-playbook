@@ -93,6 +93,65 @@ if (!productTest.includes(upgradedAssertion)) {
   throw new Error("Expected packed upgrade dependency assertion was not found");
 }
 productTest = productTest.replace(upgradedAssertion, upgradedAssertionReplacement);
+
+const tempNeedle = '  const temp = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? "/tmp", "keenko-packed-"));\n  try {';
+const tempReplacement = '  const temp = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? "/tmp", "keenko-packed-"));\n  let registry: TestRegistry | undefined;\n  try {';
+if (!productTest.includes(tempNeedle)) {
+  throw new Error("Expected packed test temp setup was not found");
+}
+productTest = productTest.replace(tempNeedle, tempReplacement);
+const versionNeedle = '    const currentVersion = string(packageJson.version, "package.json.version");';
+const versionReplacement = `${versionNeedle}\n    registry = startRegistry(currentVersion, tarball, packageJson);`;
+if (!productTest.includes(versionNeedle)) {
+  throw new Error("Expected packed test current version setup was not found");
+}
+productTest = productTest.replace(versionNeedle, versionReplacement);
+productTest = productTest.replace('run("node", [cli, "upgrade", `keenko@file:${tarball}`], baselineA);', 'run("node", [cli, "upgrade", currentVersion], baselineA, registry.env);');
+productTest = productTest.replace('await assertUpgraded(baselineA);', 'await assertUpgraded(baselineA, registry.env);');
+productTest = productTest.replace('run("node", [cli, "upgrade", `keenko@file:${tarball}`], baselineB);', 'run("node", [cli, "upgrade", currentVersion], baselineB, registry.env);');
+productTest = productTest.replace('await assertUpgraded(baselineB);', 'await assertUpgraded(baselineB, registry.env);');
+const guidanceNeedle = '    const guidanceTarget = await versionedTarball(tarball, path.join(temp, "guidance-target.tgz"), nextPatch(currentVersion));';
+const guidanceReplacement = '    const guidanceVersion = nextPatch(currentVersion);\n    const guidanceTarget = await versionedTarball(tarball, path.join(temp, "guidance-target.tgz"), guidanceVersion);';
+if (!productTest.includes(guidanceNeedle)) {
+  throw new Error("Expected guidance tarball setup was not found");
+}
+productTest = productTest.replace(guidanceNeedle, guidanceReplacement);
+const guidanceUpgradeNeedle = '    run("node", [path.join(baselineB, "node_modules/keenko/dist/cli/keenko.js"), "upgrade", `keenko@file:${guidanceTarget}`], baselineB);';
+const guidanceUpgradeReplacement = '    registry.add(guidanceVersion, guidanceTarget);\n    run("node", [path.join(baselineB, "node_modules/keenko/dist/cli/keenko.js"), "upgrade", guidanceVersion], baselineB, registry.env);';
+if (!productTest.includes(guidanceUpgradeNeedle)) {
+  throw new Error("Expected guidance upgrade invocation was not found");
+}
+productTest = productTest.replace(guidanceUpgradeNeedle, guidanceUpgradeReplacement);
+const finalInstallNeedle = '    run("bun", ["install", "--frozen-lockfile"], baselineB);\n    run("bun", ["run", "check"], baselineB);';
+const finalInstallReplacement = '    run("bun", ["install", "--frozen-lockfile"], baselineB, registry.env);\n    run("bun", ["run", "check"], baselineB);';
+if (!productTest.includes(finalInstallNeedle)) {
+  throw new Error("Expected final packed install was not found");
+}
+productTest = productTest.replace(finalInstallNeedle, finalInstallReplacement);
+const finallyNeedle = '  } finally {\n    await rm(temp, { force: true, recursive: true });';
+const finallyReplacement = '  } finally {\n    registry?.stop();\n    await rm(temp, { force: true, recursive: true });';
+if (!productTest.includes(finallyNeedle)) {
+  throw new Error("Expected packed test cleanup was not found");
+}
+productTest = productTest.replace(finallyNeedle, finallyReplacement);
+const assertSignature = 'async function assertUpgraded(project: string) {';
+if (!productTest.includes(assertSignature)) {
+  throw new Error("Expected assertUpgraded helper was not found");
+}
+productTest = productTest.replace(assertSignature, 'async function assertUpgraded(project: string, registryEnv: Record<string, string>) {');
+const assertInstallNeedle = '  run("bun", ["install", "--frozen-lockfile"], project);\n  run("bun", ["run", "check"], project);';
+const assertInstallReplacement = '  run("bun", ["install", "--frozen-lockfile"], project, registryEnv);\n  run("bun", ["run", "check"], project);';
+if (!productTest.includes(assertInstallNeedle)) {
+  throw new Error("Expected assertUpgraded install was not found");
+}
+productTest = productTest.replace(assertInstallNeedle, assertInstallReplacement);
+
+const registryInsertionNeedle = 'function nextPatch(version: string) {';
+const registryHelper = `type TestRegistry = {\n  add: (version: string, tarball: string) => void;\n  env: Record<string, string>;\n  stop: () => void;\n};\n\nfunction startRegistry(version: string, tarball: string, manifest: Record<string, unknown>): TestRegistry {\n  const packages = new Map<string, string>([[version, tarball]]);\n  let origin = "";\n  const server = Bun.serve({\n    hostname: "127.0.0.1",\n    port: 0,\n    async fetch(request) {\n      const url = new URL(request.url);\n      if (url.pathname === "/keenko" || url.pathname === "/keenko/") {\n        return Response.json(packument());\n      }\n\n      const tarballMatch = /^\\/keenko\\/-\\/keenko-(?<version>\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?)\\.tgz$/u.exec(url.pathname);\n      if (tarballMatch?.groups?.version !== undefined) {\n        const packageTarball = packages.get(tarballMatch.groups.version);\n        return packageTarball === undefined\n          ? new Response("Not found", { status: 404 })\n          : new Response(await readFile(packageTarball), { headers: { "content-type": "application/octet-stream" } });\n      }\n\n      if (url.pathname.startsWith("/keenko/")) {\n        const requestedVersion = decodeURIComponent(url.pathname.slice("/keenko/".length));\n        const versionEntry = versionManifest(requestedVersion);\n        if (versionEntry !== undefined) {\n          return Response.json(versionEntry);\n        }\n      }\n\n      const upstream = new URL(\`\\${url.pathname}\\${url.search}\`, "https://registry.npmjs.org");\n      const headers = new Headers();\n      const accept = request.headers.get("accept");\n      if (accept !== null) {\n        headers.set("accept", accept);\n      }\n      const response = await fetch(upstream, { headers, method: request.method });\n      const responseHeaders = new Headers(response.headers);\n      responseHeaders.delete("content-encoding");\n      responseHeaders.delete("content-length");\n      const body = request.method === "HEAD" ? null : await response.arrayBuffer();\n      return new Response(body, { headers: responseHeaders, status: response.status, statusText: response.statusText });\n    },\n  });\n  origin = \`http://127.0.0.1:\\${server.port}\`;\n\n  function versionManifest(packageVersion: string) {\n    if (!packages.has(packageVersion)) {\n      return undefined;\n    }\n    return {\n      ...manifest,\n      dist: { tarball: \`\\${origin}/keenko/-/keenko-\\${packageVersion}.tgz\` },\n      name: "keenko",\n      version: packageVersion,\n    };\n  }\n\n  function packument() {\n    const versions = Object.fromEntries(\n      [...packages.keys()].map((packageVersion) => [packageVersion, versionManifest(packageVersion)])\n    );\n    return {\n      "dist-tags": { latest: [...packages.keys()].at(-1) },\n      name: "keenko",\n      versions,\n    };\n  }\n\n  return {\n    add(packageVersion, packageTarball) {\n      packages.set(packageVersion, packageTarball);\n    },\n    env: { BUN_CONFIG_REGISTRY: origin, NPM_CONFIG_REGISTRY: origin },\n    stop() {\n      void server.stop(true);\n    },\n  };\n}\n\n${registryInsertionNeedle}`;
+if (!productTest.includes(registryInsertionNeedle)) {
+  throw new Error("Expected packed registry helper insertion point was not found");
+}
+productTest = productTest.replace(registryInsertionNeedle, registryHelper);
 await writeFile(productTestPath, productTest);
 
 const cliPath = "cli/keenko.ts";
