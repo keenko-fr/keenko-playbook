@@ -3,11 +3,15 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      publish:
-        description: Publish the Nx release after verification
+      mode:
+        description: Prepare a reviewable release commit, or publish an already-reviewed release commit
         required: true
-        default: false
-        type: boolean
+        type: choice
+        options: [prepare, publish]
+      expected_sha:
+        description: Exact main commit reviewed for this release step
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -20,6 +24,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_sha }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -27,16 +32,47 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.4.0
+      - name: Verify exact reviewed main commit
+        run: |
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          test "$(git rev-parse origin/main)" = "${{ inputs.expected_sha }}"
       - run: bun install --frozen-lockfile
       - name: Release-grade verification
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: bun run check:release
-      - name: Version and changelog from version plans
-        if: ${{ !inputs.publish }}
-        run: bunx nx release --skip-publish
-      - name: Publish reviewed release
-        if: ${{ inputs.publish }}
+      - name: Configure release identity
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - name: Prepare reviewable Nx release commit
+        if: ${{ inputs.mode == 'prepare' }}
+        run: |
+          first_release=""
+          if ! git tag --list 'v*' | grep -q .; then first_release="--first-release"; fi
+          bunx nx release --skip-publish --git-tag=false --git-push=false $first_release
+          version="$(node -p "require('./package.json').version")"
+          branch="release/keenko-v${version}"
+          test "$(git rev-parse HEAD)" != "${{ inputs.expected_sha }}"
+          git push origin "HEAD:refs/heads/${branch}"
+          echo "Review and merge ${branch} before running publish from its exact main SHA."
+      - name: Tag exact reviewed release commit with Nx
+        if: ${{ inputs.mode == 'publish' }}
+        run: |
+          test -z "$(find .nx/version-plans -type f -name '*.md' -print -quit 2>/dev/null)"
+          version="$(node -p "require('./package.json').version")"
+          first_release=""
+          if ! git tag --list 'v*' | grep -q .; then first_release="--first-release"; fi
+          bunx nx release changelog "$version" --git-commit=false --git-tag=true --git-push=true $first_release
+          git diff --exit-code
+          test "$(git rev-list -n 1 "v${version}")" = "${{ inputs.expected_sha }}"
+      - name: Publish exact tagged release
+        if: ${{ inputs.mode == 'publish' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: bunx nx release
+          NPM_CONFIG_PROVENANCE: true
+        run: |
+          first_release=""
+          if [ "$(git tag --list 'v*' | wc -l)" -eq 1 ]; then first_release="--first-release"; fi
+          bunx nx release publish $first_release
