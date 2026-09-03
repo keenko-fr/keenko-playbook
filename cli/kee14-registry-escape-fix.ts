@@ -12,6 +12,14 @@ const replacements = [
     'dist: { tarball: \\`\\\\${origin}/keenko/-/keenko-\\\\${packageVersion}.tgz\\` },',
     'dist: { tarball: origin + "/keenko/-/keenko-" + packageVersion + ".tgz" },',
   ],
+  [
+    'if (versionEntry !== undefined) {\\n          return Response.json(versionEntry);',
+    'if (versionEntry !== null) {\\n          return Response.json(versionEntry);',
+  ],
+  [
+    'function versionManifest(packageVersion: string) {\\n    if (!packages.has(packageVersion)) {\\n      return undefined;',
+    'function versionManifest(packageVersion: string): Record<string, unknown> | null {\\n    if (!packages.has(packageVersion)) {\\n      return null;',
+  ],
 ] as const;
 
 for (const [before, after] of replacements) {
