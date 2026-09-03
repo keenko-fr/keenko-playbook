@@ -35,6 +35,10 @@ jobs:
               r'return \`${JSON.stringify(value, null, 2)}\\n\`;',
               r'return \`\${JSON.stringify(value, null, 2)}\\n\`;'
           )
+          source = source.replace('branch="release/keenko-v${version}"', r'branch="release/keenko-v\${version}"')
+          source = source.replace('"HEAD:refs/heads/${branch}"', r'"HEAD:refs/heads/\${branch}"')
+          source = source.replace('"Review and merge ${branch} before running publish from its exact main SHA."', r'"Review and merge \${branch} before running publish from its exact main SHA."')
+          source = source.replace('"v${version}"', r'"v\${version}"')
           source = source.replace(
               '    await writeFile(\n      path.join(project, "tests/merge-gate.test.ts"),',
               '    await mkdir(path.join(project, "tests"), { recursive: true });\n    await writeFile(\n      path.join(project, "tests/merge-gate.test.ts"),'
