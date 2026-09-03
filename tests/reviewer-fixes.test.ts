@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promise
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
+type DependencyField = "dependencies" | "devDependencies" | "optionalDependencies" | "peerDependencies";
 
 test("packed Keenko enforces release-reviewer contracts through the production CLI", async () => {
   const temp = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? "/tmp", "keenko-reviewer-fixes-"));
@@ -34,9 +35,8 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
     const installedManifest = path.join(project, "node_modules/keenko/package.json");
     const originalInstalled = await readFile(installedManifest, "utf-8");
-    expect(runOut("node", [projectCli, "upgrade", object(JSON.parse(originalInstalled)).version as string], project)).toContain(
-      "already installed"
-    );
+    const installedVersion = string(object(JSON.parse(originalInstalled)).version, "installed version");
+    expect(runOut("node", [projectCli, "upgrade", installedVersion], project)).toContain("already installed");
     await expectForward(project, projectCli, installedManifest, "1.0.0", "1.0.1");
     await expectForward(project, projectCli, installedManifest, "1.0.0-beta.2", "1.0.0-beta.10");
     await expectForward(project, projectCli, installedManifest, "1.0.0-beta.2", "1.0.0-beta.alpha");
@@ -48,15 +48,10 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     const sharedManifestPath = path.join(project, "packages/shared/package.json");
     const originalShared = await readFile(sharedManifestPath, "utf-8");
     const webName = string(object(JSON.parse(await readFile(path.join(project, "apps/web/package.json"), "utf-8"))).name, "web name");
-    for (const field of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const) {
-      const shared = object(JSON.parse(originalShared));
-      const dependencies = object(shared[field] ?? {});
-      dependencies[webName] = "workspace:*";
-      shared[field] = dependencies;
-      await writeFile(sharedManifestPath, `${JSON.stringify(shared, null, 2)}\n`);
-      expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain("enforce-module-boundaries");
-      await writeFile(sharedManifestPath, originalShared);
-    }
+    await expectManifestBoundary(project, sharedManifestPath, originalShared, webName, "dependencies");
+    await expectManifestBoundary(project, sharedManifestPath, originalShared, webName, "devDependencies");
+    await expectManifestBoundary(project, sharedManifestPath, originalShared, webName, "optionalDependencies");
+    await expectManifestBoundary(project, sharedManifestPath, originalShared, webName, "peerDependencies");
 
     const forbiddenImport = path.join(project, "packages/shared/src/forbidden.ts");
     await writeFile(forbiddenImport, `import "${webName}";\n`);
@@ -74,6 +69,22 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     await rm(temp, { force: true, recursive: true });
   }
 }, 240_000);
+
+async function expectManifestBoundary(
+  project: string,
+  manifestPath: string,
+  originalManifest: string,
+  webName: string,
+  field: DependencyField
+) {
+  const shared = object(JSON.parse(originalManifest));
+  const dependencies = object(shared[field] ?? {});
+  dependencies[webName] = "workspace:*";
+  shared[field] = dependencies;
+  await writeFile(manifestPath, `${JSON.stringify(shared, null, 2)}\n`);
+  expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain("enforce-module-boundaries");
+  await writeFile(manifestPath, originalManifest);
+}
 
 async function expectForward(project: string, cli: string, manifest: string, installed: string, target: string) {
   await setInstalledVersion(manifest, installed);
