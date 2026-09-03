@@ -58,7 +58,7 @@
   },
   "scripts": {
     "keenko": "bun cli/keenko.ts",
-    "format": "bun cli/kee14-registry-escape-fix.ts && bun cli/kee14-ui-transaction-patch.ts && oxfmt .",
+    "format": "bun cli/kee14-registry-escape-fix.ts && bun cli/kee14-ui-transaction-patch.ts && bun cli/kee14-registry-subprocess-finalize.ts && oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
