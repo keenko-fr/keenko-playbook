@@ -181,8 +181,6 @@ jobs:
           generator.write_text(source)
           PY
       - run: bun run format
-      - run: bun run lint:fix || true
-      - run: bun run format
       - run: bun run lint
       - run: bun run check:release
         env:
