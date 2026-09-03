@@ -31,6 +31,14 @@ jobs:
           path = Path("cli/kee14-second-pass.ts")
           source = path.read_text()
           source = source.replace(r"Read \\`references/upstream/SKILL.md\\`", "Read references/upstream/SKILL.md")
+          source = source.replace(
+              r'return \`${JSON.stringify(value, null, 2)}\\n\`;',
+              r'return \`\${JSON.stringify(value, null, 2)}\\n\`;'
+          )
+          source = source.replace(
+              '    await writeFile(\n      path.join(project, "tests/merge-gate.test.ts"),',
+              '    await mkdir(path.join(project, "tests"), { recursive: true });\n    await writeFile(\n      path.join(project, "tests/merge-gate.test.ts"),'
+          )
           path.write_text(source)
           PY
       - name: Apply KEE-14 second pass
