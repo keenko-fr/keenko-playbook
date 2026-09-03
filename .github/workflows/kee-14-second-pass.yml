@@ -87,6 +87,10 @@ jobs:
               '        if ([".git", ".nx", "node_modules", "coverage", "dist"].includes(first ?? "")) {\n          return false;\n        }'
           )
           source = source.replace(
+              '      throw new Error("Generated source has drifted. Run \'bun run codegen\' and review the generated diff.");',
+              '      const paths = new Set([...Object.keys(expected), ...Object.keys(actual)]);\n      const changed = [...paths].filter((entry) => expected[entry] !== actual[entry]).toSorted();\n      throw new Error(`Generated source has drifted at: ${changed.join(", ")}. Run \'bun run codegen\' and review the generated diff.`);'
+          )
+          source = source.replace(
               '  if (relative === "apps/web/src/routeTree.gen.ts" || relative.startsWith("apps/web/src/paraglide/")) return true;',
               '  if (relative === "apps/web/src/routeTree.gen.ts" || relative.startsWith("apps/web/src/paraglide/")) {\n    return true;\n  }'
           )
