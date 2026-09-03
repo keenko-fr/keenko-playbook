@@ -64,14 +64,16 @@ jobs:
           git diff --cached --exit-code
           git push origin "HEAD:refs/heads/${branch}"
           echo "Review and merge ${branch} before running publish from its exact main SHA."
-      - name: Tag exact reviewed release commit with Nx
+      - name: Tag and release exact reviewed commit with Nx
         if: ${{ inputs.mode == 'publish' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           test -z "$(find .nx/version-plans -type f -name '*.md' -print -quit 2>/dev/null)"
           version="$(node -p "require('./package.json').version")"
           first_release=""
           if ! git tag --list 'v*' | grep -q .; then first_release="--first-release"; fi
-          bunx nx release changelog "$version" --git-commit=false --git-tag=true --stage-changes=false --git-push=true $first_release
+          bunx nx release changelog "$version" --git-commit=false --git-tag=true --stage-changes=false --git-push=true --create-release=github $first_release
           git diff --exit-code
           git diff --cached --exit-code
           test "$(git rev-list -n 1 "v${version}")" = "${{ inputs.expected_sha }}"
