@@ -166,8 +166,13 @@ jobs:
           )
           source = source.replace(
               'ui: `bunx --bun shadcn@${versions.shadcn} add -c apps/web`,',
-              'ui: `bunx --bun shadcn@${versions.shadcn} add -c apps/web && bun run codegen`,'
+              'ui: "bun tools/keenko-ui.ts",'
           )
+          marker = '  tree.write(\n    "nx.json",'
+          wrapper = '  tree.write(\n    "tools/keenko-ui.ts",\n    `const args = process.argv.slice(2);\\n\\nif (args.length === 0) {\\n  throw new Error("Pass at least one shadcn component name.");\\n}\\n\\nconst options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;\\nconst add = Bun.spawnSync(["bunx", "--bun", "shadcn@${versions.shadcn}", "add", "-c", "apps/web", ...args], options);\\nif (add.exitCode !== 0) {\\n  throw new Error("shadcn failed");\\n}\\n\\nconst codegen = Bun.spawnSync(["bun", "run", "codegen"], options);\\nif (codegen.exitCode !== 0) {\\n  throw new Error("Keenko codegen failed after shadcn updated dependencies");\\n}\\n`\n  );\n' + marker
+          if marker not in source:
+              raise SystemExit("nx.json insertion point not found")
+          source = source.replace(marker, wrapper, 1)
           source = source.replace('    base: "base",\n', '')
           source = source.replace(
               '  tree.delete("apps/web/README.md");',
