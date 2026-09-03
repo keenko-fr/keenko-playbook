@@ -134,7 +134,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
         oxlint: "1.81.0",
         "oxlint-plugin-effect": "0.12.0",
         "oxlint-tsgolint": "7.0.2001",
-        typescript: "npm:@typescript/typescript6@6.0.3",
+        typescript: "npm:@typescript/typescript6@6.0.2",
         ultracite: "7.10.7",
       },
       engines: { bun: ">=1.4.0 <2", node: ">=24 <25" },
