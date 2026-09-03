@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { FsTree } from "@nx/devkit/internal";
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 import presetGenerator from "../src/generators/preset/generator.ts";
@@ -61,40 +63,56 @@ async function create(args: string[]) {
 async function upgrade(args: string[]) {
   rejectUnknownFlags(args, new Set(["--dry-run"]));
   preflightRuntime();
-  const requested = args.find((arg) => !arg.startsWith("--"));
-  const target = requested ?? registryVersion();
   const root = process.cwd();
   const installed = await installedVersion(root);
-  if (target === installed) {
-    console.log(`Keenko ${installed} is already installed; no files changed.`);
-    return;
+  const requested = args.find((arg) => !arg.startsWith("--"));
+  const target = requested ?? registryVersionForMajor(installed);
+  if (isPlainVersion(target)) {
+    const comparison = compareVersions(target, installed);
+    if (comparison < 0) {
+      throw new Error(`Keenko does not support automated downgrades: ${installed} -> ${target}`);
+    }
+    if (comparison === 0) {
+      console.log(`Keenko ${installed} is already installed; no files changed.`);
+      return;
+    }
   }
   if (args.includes("--dry-run")) {
     console.log(`Would ask Nx to migrate keenko ${installed} -> ${target}; no files changed.`);
     return;
   }
   requireCleanGit(root);
-  const spec = target.includes(":") || target.includes("/") ? target : `keenko@${target}`;
-  await nx(["migrate", spec, "--interactive=false"], root);
+  let spec = target;
+  if (!target.startsWith("keenko@") && isPlainVersion(target)) {
+    spec = `keenko@${target}`;
+  }
+  await nx(["migrate", spec, `--from=keenko@${installed}`, "--interactive=false", "--no-agentic", "--skip-install"], root);
   await run("bun", ["install"], root);
-  await nx(["migrate", "--run-migrations", "--if-exists"], root);
+  await nx(["migrate", "--run-migrations", "--if-exists", "--no-agentic"], root);
+  await run("bun", ["install"], root);
   await nx(["generate", "keenko:sync", "--no-interactive"], root);
+  await run("bun", ["run", "codegen"], root);
   await rm(path.join(root, "migrations.json"), { force: true });
   console.log(`Upgraded Keenko to ${target}. Review the Git diff before committing.`);
 }
 
 async function check(args: string[]) {
-  rejectUnknownFlags(args, new Set(["--guidance"]));
+  rejectUnknownFlags(args, new Set(["--guidance", "--codegen"]));
   preflightRuntime();
   const root = process.cwd();
   const tree = new FsTree(root, false);
   verifyGuidance(tree);
   await verifyTopology(root);
-  console.log("Keenko generated guidance and workspace topology are valid.");
+  if (args.includes("--codegen")) {
+    await verifyGeneratedCode(root);
+  }
+  console.log("Keenko generated guidance, generated code, and workspace topology are valid.");
 }
 
 function printHelp() {
-  console.log(`Keenko\n\n  keenko create <project> [--no-install]\n  keenko upgrade [target] [--dry-run]\n  keenko check --guidance`);
+  console.log(
+    "Keenko\n\n  keenko create <project> [--no-install]\n  keenko upgrade [target] [--dry-run]\n  keenko check [--guidance] [--codegen]"
+  );
 }
 
 function preflightRuntime() {
@@ -142,25 +160,86 @@ async function applyChanges(root: string, tree: FsTree) {
 
 async function useLocalPackageWhenUnpublished(root: string) {
   const pkgPath = path.join(root, "package.json");
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The generated package shape is owned by this package.
-  const pkg = JSON.parse(await readFile(pkgPath, "utf-8")) as { devDependencies: Record<string, string> };
+  const pkg = parseObject(await readFile(pkgPath, "utf-8"), pkgPath);
+  const devDependencies = objectOrEmpty(pkg.devDependencies, "package.json.devDependencies");
+  pkg.devDependencies = devDependencies;
+  const override = process.env.KEENKO_PACKAGE_SPEC;
+  if (override !== undefined && override.length > 0) {
+    devDependencies.keenko = override;
+    await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+    return;
+  }
   const current = packageVersion();
   try {
     execFileSync("npm", ["view", `keenko@${current}`, "version"], { stdio: "ignore" });
   } catch {
-    pkg.devDependencies.keenko = `file:${PACKAGE_ROOT}`;
+    devDependencies.keenko = `file:${PACKAGE_ROOT}`;
     await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
   }
 }
 
 async function installedVersion(root: string) {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- package.json is the installed package boundary.
-  const pkg = JSON.parse(await readFile(path.join(root, "node_modules/keenko/package.json"), "utf-8")) as { version: string };
+  const packagePath = path.join(root, "node_modules/keenko/package.json");
+  const pkg = parseObject(await readFile(packagePath, "utf-8"), packagePath);
+  if (typeof pkg.version !== "string") {
+    throw new TypeError(`${packagePath}.version must be a string`);
+  }
   return pkg.version;
 }
 
-function registryVersion() {
-  return execFileSync("npm", ["view", "keenko", "version"], { encoding: "utf-8" }).trim();
+function registryVersionForMajor(installed: string) {
+  const parsedInstalled = parseVersion(installed);
+  const raw = execFileSync("npm", ["view", `keenko@${parsedInstalled.major}`, "version", "--json"], { encoding: "utf-8" }).trim();
+  const value: unknown = JSON.parse(raw);
+  const candidates = (Array.isArray(value) ? value : [value])
+    .filter((item): item is string => typeof item === "string" && isPlainVersion(item) && !item.includes("-"))
+    .filter((item) => parseVersion(item).major === parsedInstalled.major)
+    .toSorted(compareVersions);
+  const target = candidates.at(-1);
+  if (target === undefined) {
+    throw new Error(`No stable Keenko release is available on supported major ${parsedInstalled.major}`);
+  }
+  if (compareVersions(target, installed) < 0) {
+    throw new Error(`Registry latest for Keenko major ${parsedInstalled.major} is older than installed ${installed}`);
+  }
+  return target;
+}
+
+function isPlainVersion(value: string) {
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(value);
+}
+
+function parseVersion(value: string) {
+  const match = /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?<pre>-[0-9A-Za-z.-]+)?$/u.exec(value);
+  if (match?.groups === undefined) {
+    throw new Error(`Expected an exact Keenko version, found ${value}`);
+  }
+  return {
+    major: Number(match.groups.major),
+    minor: Number(match.groups.minor),
+    patch: Number(match.groups.patch),
+    pre: match.groups.pre ?? "",
+  };
+}
+
+function compareVersions(left: string, right: string) {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  for (const key of ["major", "minor", "patch"] as const) {
+    if (a[key] !== b[key]) {
+      return a[key] - b[key];
+    }
+  }
+  if (a.pre === b.pre) {
+    return 0;
+  }
+  if (a.pre.length === 0) {
+    return 1;
+  }
+  if (b.pre.length === 0) {
+    return -1;
+  }
+  return a.pre.localeCompare(b.pre);
 }
 
 function requireCleanGit(root: string) {
@@ -209,11 +288,10 @@ async function verifyPackageDirections(root: string) {
   await Promise.all(
     packages.map(async ([owner, file]) => {
       const manifest = parseObject(await readFile(path.join(root, file), "utf-8"), file);
-      const { name } = manifest;
-      if (typeof name !== "string") {
+      if (typeof manifest.name !== "string") {
         throw new TypeError(`${file}.name must be a string`);
       }
-      names.set(name, owner);
+      names.set(manifest.name, owner);
       manifests.set(owner, manifest);
     })
   );
@@ -226,6 +304,92 @@ async function verifyPackageDirections(root: string) {
       }
     }
   }
+}
+
+async function verifyGeneratedCode(root: string) {
+  const tempRoot = await mkdtemp(path.join(path.dirname(root), ".keenko-codegen-check-"));
+  const stage = path.join(tempRoot, "project");
+  try {
+    await cp(root, stage, {
+      filter: (source) => {
+        const relative = path.relative(root, source).replaceAll("\\", "/");
+        if (relative === "") {
+          return true;
+        }
+        const [first] = relative.split("/");
+        if ([".git", ".nx", "node_modules", "coverage", "dist"].includes(first ?? "")) {
+          return false;
+        }
+        return !isGeneratedOwned(relative);
+      },
+      recursive: true,
+    });
+    await symlink(path.join(root, "node_modules"), path.join(stage, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+    await run("bun", ["run", "codegen"], stage);
+    const [expected, actual] = await Promise.all([generatedHashes(root), generatedHashes(stage)]);
+    if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+      const paths = new Set([...Object.keys(expected), ...Object.keys(actual)]);
+      const changed = [...paths].filter((entry) => expected[entry] !== actual[entry]).toSorted();
+      throw new Error(`Generated source has drifted at: ${changed.join(", ")}. Run 'bun run codegen' and review the generated diff.`);
+    }
+  } finally {
+    await rm(tempRoot, { force: true, recursive: true });
+  }
+}
+
+function isGeneratedOwned(relative: string) {
+  if (relative === "apps/web/src/routeTree.gen.ts" || relative.startsWith("apps/web/src/paraglide/")) {
+    return true;
+  }
+  if (relative.startsWith("packages/backend/confect/") && relative !== "packages/backend/confect/.gitkeep") {
+    return true;
+  }
+  if (relative.startsWith("packages/backend/convex/")) {
+    return !["packages/backend/convex/tsconfig.json", "packages/backend/convex/convex.config.ts"].includes(relative);
+  }
+  return false;
+}
+
+// oxlint-disable eslint/no-await-in-loop -- Generated paths are read in stable order before hashing.
+async function generatedHashes(root: string) {
+  const roots = ["apps/web/src/paraglide", "apps/web/src/routeTree.gen.ts", "packages/backend/confect", "packages/backend/convex"];
+  const entries: (readonly [string, string])[] = [];
+  for (const relative of roots) {
+    const target = path.join(root, relative);
+    const info = await stat(target).catch(() => null);
+    if (info === null) {
+      continue;
+    }
+    const files = info.isDirectory() ? await walkFiles(target) : [target];
+    for (const file of files) {
+      const rel = path.relative(root, file).replaceAll("\\", "/");
+      if (!isGeneratedOwned(rel)) {
+        continue;
+      }
+      entries.push([
+        rel,
+        createHash("sha256")
+          .update(await readFile(file))
+          .digest("hex"),
+      ]);
+    }
+  }
+  return Object.fromEntries(entries.toSorted(([left], [right]) => left.localeCompare(right)));
+}
+// oxlint-enable eslint/no-await-in-loop
+
+async function walkFiles(root: string): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true });
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const target = path.join(root, entry.name);
+      if (entry.isDirectory()) {
+        return await walkFiles(target);
+      }
+      return entry.isFile() ? [target] : [];
+    })
+  );
+  return nested.flat();
 }
 
 function parseObject(text: string, label: string) {
@@ -246,7 +410,9 @@ async function workspaceDirectories(root: string) {
 }
 
 async function nx(args: string[], cwd: string) {
-  await run(process.execPath, [path.join(cwd, "node_modules/nx/bin/nx.js"), ...args], cwd);
+  const requireFromProject = createRequire(path.join(cwd, "package.json"));
+  const nxCli = requireFromProject.resolve("nx");
+  await run(process.execPath, [nxCli, ...args], cwd);
 }
 
 async function run(command: string, args: string[], cwd: string) {
@@ -264,8 +430,7 @@ async function run(command: string, args: string[], cwd: string) {
 }
 
 function positional(args: string[], index: number, label: string) {
-  const values = args.filter((arg) => !arg.startsWith("--"));
-  const value = values[index];
+  const value = args.filter((arg) => !arg.startsWith("--"))[index];
   if (value === undefined) {
     throw new Error(`Missing ${label}`);
   }
@@ -283,9 +448,7 @@ function packageVersion() {
   return execFileSync(
     process.execPath,
     ["-e", `console.log(require(${JSON.stringify(path.join(PACKAGE_ROOT, "package.json"))}).version)`],
-    {
-      encoding: "utf-8",
-    }
+    { encoding: "utf-8" }
   ).trim();
 }
 

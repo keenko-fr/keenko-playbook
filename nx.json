@@ -4,6 +4,13 @@
   "neverConnectToCloud": true,
   "release": {
     "projects": ["keenko"],
+    "releaseTag": {
+      "pattern": "v{version}"
+    },
+    "git": {
+      "commit": true,
+      "tag": true
+    },
     "versionPlans": true,
     "version": {
       "preVersionCommand": "bun run check:release"

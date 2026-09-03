@@ -30,6 +30,7 @@ describe("vendor policy", () => {
     const sources = asArray(manifest.sources, "vendor/sources.json.sources").map(asVendorSource);
     const convex = sources.find((source) => source.id === "convex");
     expect(convex?.mode).toBe("external");
+    expect(convex?.license).toBe("Apache-2.0");
     expect(await readFile(`${ROOT}/skills/convex/SKILL.md`, "utf-8")).toContain("name: convex");
   });
 });

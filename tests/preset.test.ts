@@ -14,9 +14,12 @@ describe("Keenko Nx preset", () => {
     expect(tree.exists("project.json")).toBe(false);
     expect(tree.exists("apps/web/vite.config.ts")).toBe(true);
     expect(tree.read("apps/web/package.json", "utf-8")).toContain('"@tanstack/react-start"');
-    expect(tree.read("packages/ui/components.json", "utf-8")).toContain('"base": "base"');
+    expect(tree.read("packages/ui/components.json", "utf-8")).toContain('"style": "base-nova"');
+    expect(tree.read("packages/ui/components.json", "utf-8")).not.toContain('"base":');
     expect(tree.read("packages/backend/package.json", "utf-8")).toContain('"@confect/server": "10.0.0-next.21"');
     expect(tree.read("package.json", "utf-8")).not.toContain('"latest"');
+    expect(tree.read("package.json", "utf-8")).toContain('"codegen:check": "keenko check --guidance --codegen"');
+    expect(tree.read("package.json", "utf-8")).toContain("bun run test");
     expect(tree.exists(".playbook/config.json")).toBe(false);
   });
 

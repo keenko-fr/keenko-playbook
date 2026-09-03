@@ -28,7 +28,9 @@ Do not use it for transcripts, implementation logs, ticket status, large specifi
 
 Use an ADR for expensive-to-reverse architecture/governance choices or rationale likely to be lost. Ordinary implementation decisions do not need one.
 
-Once an ADR has materially informed implementation, preserve its history. If the decision changes, add a superseding ADR and link both; only minor factual/typo corrections rewrite the original. Current architecture docs must reflect the new state.
+Before the first stable supported Keenko baseline, an explicit Linear architecture decision may replace an abandoned pre-v1 model without preserving ADR archaeology for that model. Delete ADRs whose decisions are no longer supported. Keep ADRs that still describe a live expensive-to-reverse decision, and correct stale pre-v1 implementation details in place when the decision itself has not changed.
+
+From the first stable supported baseline onward, preserve an ADR once it materially informs supported implementation. If that decision later changes, add a superseding ADR and link both. Only minor factual or typo corrections rewrite the original. Current architecture docs must always describe the supported state.
 
 ## Change discipline
 

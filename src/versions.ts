@@ -4,7 +4,6 @@ export const versions = {
   confect: "10.0.0-next.21",
   convex: "1.45.0",
   effect: "4.0.0-rc.112",
-  keenko: "0.1.0",
   nx: "23.2.0",
   paraglide: "2.25.0",
   react: "19.2.8",

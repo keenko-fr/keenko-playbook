@@ -1,5 +1,7 @@
 import type { Tree } from "@nx/devkit";
 import { createApp, createMemoryEnvironment, finalizeAddOns, getFrameworkById, populateAddOnOptionsDefaults } from "@tanstack/create";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { format } from "oxfmt";
 
 import { syncGuidance } from "../../guidance.ts";
@@ -90,7 +92,7 @@ async function generateWeb(tree: Tree, projectName: string) {
   delete pkg.pnpm;
   pkg.scripts = {
     ...stringRecord(pkg.scripts, "apps/web/package.json.scripts"),
-    codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate",
+    codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate",
     typecheck: "tsc --noEmit",
   };
   pkg.dependencies = {
@@ -111,6 +113,7 @@ async function generateWeb(tree: Tree, projectName: string) {
       localeSwitcher.replace("onClick={() => setLocale(locale)}", "onClick={() => { void setLocale(locale); }}")
     );
   }
+  tree.delete("apps/web/src/paraglide/README.md");
   tree.delete("apps/web/README.md");
   tree.delete("apps/web/.cursorrules");
   tree.delete("apps/web/.cta.json");
@@ -123,7 +126,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
       devDependencies: {
         "@effect/tsgo": "0.39.1",
         "@types/bun": versions.bun,
-        keenko: versions.keenko,
+        keenko: keenkoVersion(),
         nx: versions.nx,
         oxfmt: "0.65.0",
         oxlint: "1.81.0",
@@ -138,22 +141,27 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
       private: true,
       scripts: {
         build: "nx run-many -t build",
-        check: "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build",
+        check: "bun run codegen:check && bun run test && bun run format:check && bun run lint && bun run typecheck && bun run build",
         codegen: "nx run-many -t codegen",
-        "codegen:check": "keenko check --guidance",
-        dev: "nx run web:dev",
+        "codegen:check": "keenko check --guidance --codegen",
+        dev: `nx run @${projectName}/web:dev`,
         format: "oxfmt .",
         "format:check": "oxfmt --check .",
         lint: "oxlint .",
         "lint:fix": "oxlint --fix .",
         postinstall: "effect-tsgo patch --oxlint",
+        test: "bun test --pass-with-no-tests",
         typecheck: "nx run-many -t typecheck",
-        ui: `bunx --bun shadcn@${versions.shadcn} add -c apps/web`,
+        ui: "bun tools/keenko-ui.ts",
       },
       type: "module",
       version: "0.0.0",
       workspaces: ["apps/*", "packages/*"],
     })
+  );
+  tree.write(
+    "tools/keenko-ui.ts",
+    `const args = process.argv.slice(2);\n\nif (args.length === 0) {\n  throw new Error("Pass at least one shadcn component name.");\n}\n\nconst options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;\nconst add = Bun.spawnSync(["bunx", "--bun", "shadcn@${versions.shadcn}", "add", "-c", "apps/web", ...args], options);\nif (add.exitCode !== 0) {\n  throw new Error("shadcn failed");\n}\n\nconst install = Bun.spawnSync(["bun", "install"], options);\nif (install.exitCode !== 0) {\n  throw new Error("bun install failed after shadcn updated workspace dependencies");\n}\n\nconst codegen = Bun.spawnSync(["bun", "run", "codegen"], options);\nif (codegen.exitCode !== 0) {\n  throw new Error("Keenko codegen failed after shadcn updated dependencies");\n}\n\nconst format = Bun.spawnSync(["bun", "run", "format"], options);\nif (format.exitCode !== 0) {\n  throw new Error("Keenko format failed after shadcn generated components");\n}\n\nconst lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], options);\nif (lintFix.exitCode !== 0) {\n  throw new Error("Keenko lint fixes failed after shadcn generated components");\n}\n\nconst reformat = Bun.spawnSync(["bun", "run", "format"], options);\nif (reformat.exitCode !== 0) {\n  throw new Error("Keenko format failed after lint fixes");\n}\n`
   );
   tree.write(
     "nx.json",
@@ -191,11 +199,11 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
   tree.write(".gitignore", "node_modules/\n.nx/cache/\n.nx/workspace-data/\n.env\n.env.local\ndist/\ncoverage/\n");
   tree.write(
     "oxfmt.config.ts",
-    `import { defineConfig } from "oxfmt";\nimport ultracite from "ultracite/oxfmt";\n\nconst { endOfLine: _endOfLine, tabWidth: _tabWidth, useTabs: _useTabs, ...formatting } = ultracite;\n\nexport default defineConfig({\n  ...formatting,\n  ignorePatterns: [...(formatting.ignorePatterns ?? []), ".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts"],\n  printWidth: 140,\n});\n`
+    `import { defineConfig } from "oxfmt";\nimport ultracite from "ultracite/oxfmt";\n\nconst { endOfLine: _endOfLine, tabWidth: _tabWidth, useTabs: _useTabs, ...formatting } = ultracite;\n\nexport default defineConfig({\n  ...formatting,\n  ignorePatterns: [...(formatting.ignorePatterns ?? []), ".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  printWidth: 140,\n});\n`
   );
   tree.write(
     "oxlint.config.ts",
-    `import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";\nimport { defineConfig } from "oxlint";\nimport { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";\nimport core from "ultracite/oxlint/core";\n\nexport default defineConfig({\n  extends: [core],\n  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts"],\n  jsPlugins: ["oxlint-plugin-effect/plugin"],\n  options: { typeAware: true },\n  overrides: [\n    {\n      files: ["apps/web/**/*"],\n      rules: {\n        "eslint/no-empty-function": "off",\n        "eslint/no-use-before-define": "off",\n        "eslint/require-await": "off",\n        "eslint/sort-keys": "off",\n      },\n    },\n    {\n      files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectTsgoRecommended.rules,\n        ...effectRecommended,\n        "effect/noTernary": "off",\n      },\n    },\n  ],\n  plugins: ["effecttsgo"],\n  rules: {\n    "eslint/no-plusplus": "off",\n    "func-style": "off",\n    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],\n  },\n});\n`
+    `import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";\nimport { defineConfig } from "oxlint";\nimport { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";\nimport core from "ultracite/oxlint/core";\n\nexport default defineConfig({\n  extends: [core],\n  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  jsPlugins: ["oxlint-plugin-effect/plugin"],\n  options: { typeAware: true },\n  overrides: [\n    {\n      files: ["apps/web/**/*"],\n      rules: {\n        "eslint/no-empty-function": "off",\n        "eslint/no-use-before-define": "off",\n        "eslint/require-await": "off",\n        "eslint/sort-keys": "off",\n      },\n    },\n    {\n      files: ["packages/ui/**/*"],\n      rules: { "eslint/sort-keys": "off" },\n    },\n    {\n      files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectTsgoRecommended.rules,\n        ...effectRecommended,\n        "effect/noTernary": "off",\n      },\n    },\n  ],\n  plugins: ["effecttsgo"],\n  rules: {\n    "eslint/no-plusplus": "off",\n    "func-style": "off",\n    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],\n  },\n});\n`
   );
   tree.write(
     ".github/workflows/ci.yml",
@@ -243,6 +251,7 @@ function writeUi(tree: Tree, projectName: string) {
     json({
       dependencies: {
         "@base-ui/react": versions.baseUi,
+        "class-variance-authority": "0.7.1",
         [`@${projectName}/shared`]: "workspace:*",
         clsx: "2.1.1",
         "tailwind-merge": "3.3.1",
@@ -273,7 +282,14 @@ function writeUi(tree: Tree, projectName: string) {
     "packages/ui/src/styles/globals.css",
     '@import "tailwindcss";\n@source "../../../apps/**/*.{ts,tsx}";\n@source "../**/*.{ts,tsx}";\n'
   );
-  tree.write("packages/ui/tsconfig.json", packageTsconfig("src/**/*.ts", "src/**/*.tsx"));
+  tree.write(
+    "packages/ui/tsconfig.json",
+    json({
+      compilerOptions: { composite: false, jsx: "react-jsx" },
+      extends: "../../tsconfig.json",
+      include: ["src/**/*.ts", "src/**/*.tsx"],
+    })
+  );
 }
 
 function writeShared(tree: Tree, projectName: string) {
@@ -308,7 +324,6 @@ function componentsConfig(projectName: string, owner: "web" | "ui") {
           ui: `@${projectName}/ui/components`,
           utils: `@${projectName}/ui/lib/utils`,
         },
-    base: "base",
     iconLibrary: "lucide",
     rsc: false,
     style: "base-nova",
@@ -399,6 +414,27 @@ async function formatAuthoredFiles(tree: Tree) {
       tree.write(change.path, result.code);
     })
   );
+}
+
+function keenkoVersion() {
+  let current = path.resolve(import.meta.dirname);
+  for (let depth = 0; depth < 8; depth += 1) {
+    const packagePath = path.join(current, "package.json");
+    try {
+      const pkg = object(JSON.parse(readFileSync(packagePath, "utf-8")), packagePath);
+      if (pkg.name === "keenko" && typeof pkg.version === "string") {
+        return pkg.version;
+      }
+    } catch {
+      // Keep walking until the packaged Keenko root is found.
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  throw new Error("Could not resolve the running Keenko package version");
 }
 
 function json(value: unknown) {

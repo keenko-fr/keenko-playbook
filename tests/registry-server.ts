@@ -5,10 +5,10 @@ if (runtimePath === undefined || scriptPath === undefined || statePath === undef
   throw new Error("Expected Bun runtime, registry script path, and registry state path");
 }
 
-type RegistryState = {
+interface RegistryState {
   manifest: Record<string, unknown>;
   packages: Record<string, string>;
-};
+}
 
 async function readState(): Promise<RegistryState> {
   const value: unknown = JSON.parse(await readFile(statePath, "utf-8"));
