@@ -71,6 +71,14 @@ jobs:
           )
           source = source.replace('const first = relative.split("/")[0];', 'const [first] = relative.split("/");')
           source = source.replace(
+              '    if (typeof manifest.name !== "string") throw new TypeError(`${file}.name must be a string`);',
+              '    if (typeof manifest.name !== "string") {\n      throw new TypeError(`${file}.name must be a string`);\n    }'
+          )
+          source = source.replace(
+              '      if (target !== undefined && !allowed[owner]?.has(target)) throw new Error(`Forbidden Keenko workspace dependency: ${owner} -> ${target}`);',
+              '      if (target !== undefined && !allowed[owner]?.has(target)) {\n        throw new Error(`Forbidden Keenko workspace dependency: ${owner} -> ${target}`);\n      }'
+          )
+          source = source.replace(
               '  if (relative === "apps/web/src/routeTree.gen.ts" || relative.startsWith("apps/web/src/paraglide/")) return true;',
               '  if (relative === "apps/web/src/routeTree.gen.ts" || relative.startsWith("apps/web/src/paraglide/")) {\n    return true;\n  }'
           )
@@ -131,7 +139,7 @@ jobs:
       - run: bun run format
       - name: Inspect remaining lint context
         run: |
-          nl -ba cli/keenko.ts | sed -n '250,280p'
+          nl -ba cli/keenko.ts | sed -n '250,340p'
           nl -ba tests/packed-product.test.ts | sed -n '120,140p;205,235p'
       - run: bun run lint
       - run: bun run check:release
