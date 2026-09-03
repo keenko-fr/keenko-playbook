@@ -12,23 +12,21 @@ const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run 
 const PREVIOUS_CODEGEN_CHECK = "keenko check --guidance";
 const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
 const CURRENT_TEST = "bun test --pass-with-no-tests";
-const PREVIOUS_OXLINT = "1.80.0";
-const CURRENT_OXLINT = "1.81.0";
-const PREVIOUS_EFFECT_TSGO = "0.38.0";
-const CURRENT_EFFECT_TSGO = "0.39.1";
-const PREVIOUS_EFFECT_PLUGIN = "0.11.0";
-const CURRENT_EFFECT_PLUGIN = "0.12.0";
 const PREVIOUS_TYPESCRIPT = "7.0.2";
 const CURRENT_TYPESCRIPT = "npm:@typescript/typescript6@6.0.2";
 const CURRENT_TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const CURRENT_NX_OXLINT = "23.2.0";
-const NX_BOUNDARY_PLUGIN = '"@nx/oxlint/boundaries-plugin"';
+const PREVIOUS_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate";
+const CURRENT_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate";
+const PREVIOUS_UI = "bunx --bun shadcn@4.19.0 add -c apps/web";
+const CURRENT_UI = "bun tools/keenko-ui.ts";
+const CURRENT_UI_CVA = "0.7.1";
 const CURRENT_GENERATED_IGNORES = [
   "packages/backend/confect/**",
   "packages/backend/convex/**",
   "!packages/backend/convex/tsconfig.json",
   "!packages/backend/convex/convex.config.ts",
-];
+] as const;
 const UI_OVERRIDE = `    {
       files: ["packages/ui/**/*"],
       rules: { "eslint/sort-keys": "off" },
@@ -49,195 +47,268 @@ ${NX_BOUNDARY_CONSTRAINTS}
       },
     ],
 `;
+const UI_TOOL = `const args = process.argv.slice(2);
+
+if (args.length === 0) {
+  throw new Error("Pass at least one shadcn component name.");
+}
+
+const options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;
+const add = Bun.spawnSync(["bunx", "--bun", "shadcn@4.19.0", "add", "-c", "apps/web", ...args], options);
+if (add.exitCode !== 0) {
+  throw new Error("shadcn failed");
+}
+
+const install = Bun.spawnSync(["bun", "install"], options);
+if (install.exitCode !== 0) {
+  throw new Error("bun install failed after shadcn updated workspace dependencies");
+}
+
+const codegen = Bun.spawnSync(["bun", "run", "codegen"], options);
+if (codegen.exitCode !== 0) {
+  throw new Error("Keenko codegen failed after shadcn updated dependencies");
+}
+
+const formatResult = Bun.spawnSync(["bun", "run", "format"], options);
+if (formatResult.exitCode !== 0) {
+  throw new Error("Keenko format failed after shadcn generated components");
+}
+
+const lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], options);
+if (lintFix.exitCode !== 0) {
+  throw new Error("Keenko lint fixes failed after shadcn generated components");
+}
+
+const reformat = Bun.spawnSync(["bun", "run", "format"], options);
+if (reformat.exitCode !== 0) {
+  throw new Error("Keenko format failed after lint fixes");
+}
+`;
 
 export default async function normalizeCheck(tree: Tree) {
-  const source = tree.read("package.json", "utf-8");
-  if (source === null) {
-    throw new Error("Cannot migrate: package.json is missing");
-  }
-  const pkg = object(JSON.parse(source), "package.json");
+  migrateRootPackage(tree);
+  migrateWebPackage(tree);
+  migrateUiPackage(tree);
+  migrateComponentsConfig(tree, "apps/web/components.json");
+  migrateComponentsConfig(tree, "packages/ui/components.json");
+  migrateUiTsconfig(tree);
+  migrateUiTool(tree);
+  migrateGeneratedConfig(tree, "oxfmt.config.ts");
+  migrateOxlintConfig(tree);
+  tree.delete("apps/web/src/paraglide/README.md");
+  await formatMigratedFiles(tree);
+}
+
+function migrateRootPackage(tree: Tree) {
+  const pkg = readJson(tree, "package.json");
+  const name = stringValue(pkg.name, "package.json.name");
   const scripts = stringRecord(pkg.scripts, "package.json.scripts");
   if (scripts === undefined) {
     throw new Error("Cannot migrate package.json scripts because the Keenko baseline is missing");
   }
 
-  if (scripts.check !== CURRENT_CHECK) {
-    if (scripts.check === undefined || !PREVIOUS_CHECKS.has(scripts.check)) {
-      throw new Error(
-        "Cannot migrate package.json scripts.check because it was customized; reconcile it with the Keenko check pipeline first"
-      );
-    }
-    scripts.check = CURRENT_CHECK;
-  }
-  if (scripts["codegen:check"] === undefined || scripts["codegen:check"] === PREVIOUS_CODEGEN_CHECK) {
-    scripts["codegen:check"] = CURRENT_CODEGEN_CHECK;
-  } else if (scripts["codegen:check"] !== CURRENT_CODEGEN_CHECK) {
-    throw new Error(
-      "Cannot migrate package.json scripts.codegen:check because it was customized; reconcile it with Keenko generated-code verification first"
-    );
-  }
-  scripts.test ??= CURRENT_TEST;
+  migrateKnownString(scripts, "check", [...PREVIOUS_CHECKS], CURRENT_CHECK, "package.json scripts.check");
+  migrateKnownString(scripts, "codegen:check", [undefined, PREVIOUS_CODEGEN_CHECK], CURRENT_CODEGEN_CHECK, "package.json scripts.codegen:check");
+  migrateKnownString(scripts, "test", [undefined], CURRENT_TEST, "package.json scripts.test");
+  migrateKnownString(scripts, "dev", ["nx run web:dev"], `nx run @${name}/web:dev`, "package.json scripts.dev");
+  migrateKnownString(scripts, "ui", [PREVIOUS_UI], CURRENT_UI, "package.json scripts.ui");
 
   const devDependencies = stringRecord(pkg.devDependencies, "package.json.devDependencies");
   if (devDependencies === undefined) {
     throw new Error("Cannot migrate package.json devDependencies because the Keenko baseline is missing");
   }
-  if (devDependencies.oxlint === PREVIOUS_OXLINT) {
-    devDependencies.oxlint = CURRENT_OXLINT;
-  } else if (devDependencies.oxlint !== CURRENT_OXLINT) {
-    throw new Error("Cannot migrate devDependencies.oxlint because it was customized; reconcile it with the Keenko tooling baseline first");
-  }
-  migrateTool(devDependencies, "@effect/tsgo", PREVIOUS_EFFECT_TSGO, CURRENT_EFFECT_TSGO);
-  migrateTool(devDependencies, "oxlint-plugin-effect", PREVIOUS_EFFECT_PLUGIN, CURRENT_EFFECT_PLUGIN);
   migrateIntroducedTool(devDependencies, "@nx/oxlint", CURRENT_NX_OXLINT);
   migrateIntroducedTool(devDependencies, "@typescript/native", CURRENT_TYPESCRIPT_NATIVE);
-  migrateTool(devDependencies, "typescript", PREVIOUS_TYPESCRIPT, CURRENT_TYPESCRIPT);
+  migrateKnownString(devDependencies, "typescript", [PREVIOUS_TYPESCRIPT], CURRENT_TYPESCRIPT, "package.json devDependencies.typescript");
 
   pkg.scripts = scripts;
   pkg.devDependencies = devDependencies;
-  tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
-  migrateOxlintConfig(tree);
-  await formatMigratedFiles(tree);
+  writeJson(tree, "package.json", pkg);
 }
 
-function migrateTool(devDependencies: Record<string, string>, name: string, previous: string, current: string) {
-  if (devDependencies[name] === previous) {
-    devDependencies[name] = current;
+function migrateWebPackage(tree: Tree) {
+  const pkg = readJson(tree, "apps/web/package.json");
+  const scripts = stringRecord(pkg.scripts, "apps/web/package.json.scripts");
+  if (scripts === undefined) {
+    throw new Error("Cannot migrate apps/web/package.json scripts because the Keenko baseline is missing");
+  }
+  migrateKnownString(scripts, "codegen", [PREVIOUS_WEB_CODEGEN], CURRENT_WEB_CODEGEN, "apps/web package.json scripts.codegen");
+  pkg.scripts = scripts;
+  writeJson(tree, "apps/web/package.json", pkg);
+}
+
+function migrateUiPackage(tree: Tree) {
+  const pkg = readJson(tree, "packages/ui/package.json");
+  const dependencies = stringRecord(pkg.dependencies, "packages/ui/package.json.dependencies");
+  if (dependencies === undefined) {
+    throw new Error("Cannot migrate packages/ui/package.json dependencies because the Keenko baseline is missing");
+  }
+  migrateKnownString(dependencies, "class-variance-authority", [undefined], CURRENT_UI_CVA, "packages/ui class-variance-authority");
+  pkg.dependencies = dependencies;
+  writeJson(tree, "packages/ui/package.json", pkg);
+}
+
+function migrateComponentsConfig(tree: Tree, file: string) {
+  const config = readJson(tree, file);
+  if (config.base === "base") {
+    delete config.base;
+  } else if (config.base !== undefined) {
+    throw new Error(`Cannot migrate ${file} base because the Keenko-owned shadcn setting was customized; reconcile it manually`);
+  }
+  writeJson(tree, file, config);
+}
+
+function migrateUiTsconfig(tree: Tree) {
+  const config = readJson(tree, "packages/ui/tsconfig.json");
+  const compilerOptions = object(config.compilerOptions, "packages/ui/tsconfig.json compilerOptions");
+  if (compilerOptions.jsx === undefined) {
+    compilerOptions.jsx = "react-jsx";
+  } else if (compilerOptions.jsx !== "react-jsx") {
+    throw new Error("Cannot migrate packages/ui/tsconfig.json compilerOptions.jsx because it was customized; reconcile it manually");
+  }
+  config.compilerOptions = compilerOptions;
+  writeJson(tree, "packages/ui/tsconfig.json", config);
+}
+
+function migrateUiTool(tree: Tree) {
+  const existing = tree.read("tools/keenko-ui.ts", "utf-8");
+  if (existing === null) {
+    tree.write("tools/keenko-ui.ts", UI_TOOL);
     return;
   }
-  if (devDependencies[name] !== current) {
-    throw new Error(
-      `Cannot migrate devDependencies.${name} because it was customized; reconcile it with the Keenko tooling baseline first`
-    );
+  if (existing.trim() !== UI_TOOL.trim()) {
+    throw new Error("Cannot migrate tools/keenko-ui.ts because the Keenko-owned shadcn wrapper was customized; reconcile it manually");
   }
 }
 
-async function formatMigratedFiles(tree: Tree) {
-  for (const path of ["package.json", "oxlint.config.ts"]) {
-    const source = tree.read(path, "utf-8");
-    if (source === null) {
-      continue;
-    }
-    const result = await format(path, source, { printWidth: 140, sortImports: true, sortPackageJson: true });
-    if (result.errors.length > 0) {
-      throw new Error(`Cannot format migrated ${path}: ${result.errors.map(({ message }) => message).join(", ")}`);
-    }
-    tree.write(path, result.code);
-  }
-}
-
-function migrateIntroducedTool(devDependencies: Record<string, string>, name: string, current: string) {
-  if (devDependencies[name] === undefined) {
-    devDependencies[name] = current;
+function migrateGeneratedConfig(tree: Tree, file: string) {
+  const source = readText(tree, file);
+  const present = CURRENT_GENERATED_IGNORES.filter((pattern) => source.includes(`"${pattern}"`));
+  if (present.length === CURRENT_GENERATED_IGNORES.length) {
     return;
   }
-  if (devDependencies[name] !== current) {
-    throw new Error(
-      `Cannot migrate devDependencies.${name} because it was customized; reconcile it with the Keenko tooling baseline first`
-    );
+  if (present.length > 0) {
+    throw new Error(`Cannot migrate ${file} generated-code exclusions because the Keenko-owned block was partially customized; reconcile it manually`);
   }
+  const anchor = '"**/routeTree.gen.ts"';
+  if (!source.includes(anchor)) {
+    throw new Error(`Cannot migrate ${file} generated-code exclusions because the known Keenko anchor is missing; reconcile it manually`);
+  }
+  const additions = CURRENT_GENERATED_IGNORES.map((pattern) => `"${pattern}"`).join(", ");
+  tree.write(file, source.replace(anchor, `${anchor}, ${additions}`));
 }
 
 function migrateOxlintConfig(tree: Tree) {
-  const source = tree.read("oxlint.config.ts", "utf-8");
+  migrateGeneratedConfig(tree, "oxlint.config.ts");
+  let source = readText(tree, "oxlint.config.ts");
+
+  const nxPlugin = '"@nx/oxlint/boundaries-plugin"';
+  if (!source.includes(nxPlugin)) {
+    const effectPlugin = '"oxlint-plugin-effect/plugin"';
+    if (!source.includes(effectPlugin)) {
+      throw new Error("Cannot migrate oxlint.config.ts jsPlugins because the known Keenko Effect plugin is missing; reconcile it manually");
+    }
+    source = source.replace(effectPlugin, `${nxPlugin}, ${effectPlugin}`);
+  }
+
+  if (source.includes('files: ["packages/ui/**/*"]')) {
+    if (!source.includes(UI_OVERRIDE.trim())) {
+      throw new Error("Cannot migrate oxlint.config.ts packages/ui override because the Keenko-owned override was customized; reconcile it manually");
+    }
+  } else {
+    const backendOverride = '    {\n      files: ["packages/backend/**/*.ts"],';
+    if (!source.includes(backendOverride)) {
+      throw new Error("Cannot migrate oxlint.config.ts overrides because the known Keenko backend override is missing; reconcile it manually");
+    }
+    source = source.replace(backendOverride, `${UI_OVERRIDE}${backendOverride}`);
+  }
+
+  const boundaryRuleName = '"@nx/enforce-module-boundaries"';
+  if (source.includes(boundaryRuleName)) {
+    if (!source.includes(NX_BOUNDARY_RULE.trim())) {
+      throw new Error("Cannot migrate oxlint.config.ts @nx/enforce-module-boundaries because the Keenko-owned rule was customized; reconcile it manually");
+    }
+  } else {
+    const rootRulesAnchor = '  plugins: ["effecttsgo"],\n  rules: {\n';
+    if (!source.includes(rootRulesAnchor)) {
+      throw new Error("Cannot migrate oxlint.config.ts rules because the known Keenko root rules anchor is missing; reconcile it manually");
+    }
+    source = source.replace(rootRulesAnchor, `${rootRulesAnchor}${NX_BOUNDARY_RULE}`);
+  }
+
+  tree.write("oxlint.config.ts", source);
+}
+
+async function formatMigratedFiles(tree: Tree) {
+  const paths = [
+    "package.json",
+    "apps/web/package.json",
+    "packages/ui/package.json",
+    "apps/web/components.json",
+    "packages/ui/components.json",
+    "packages/ui/tsconfig.json",
+    "tools/keenko-ui.ts",
+    "oxfmt.config.ts",
+    "oxlint.config.ts",
+  ];
+  await Promise.all(
+    paths.map(async (file) => {
+      const source = tree.read(file, "utf-8");
+      if (source === null) {
+        return;
+      }
+      const result = await format(file, source, { printWidth: 140, sortImports: true, sortPackageJson: true });
+      if (result.errors.length > 0) {
+        throw new Error(`Cannot format migrated ${file}: ${result.errors.map(({ message }) => message).join(", ")}`);
+      }
+      tree.write(file, result.code);
+    })
+  );
+}
+
+function migrateIntroducedTool(devDependencies: Record<string, string>, name: string, current: string) {
+  const value = devDependencies[name];
+  if (value === undefined) {
+    devDependencies[name] = current;
+    return;
+  }
+  if (value !== current) {
+    throw new Error(`Cannot migrate devDependencies.${name} because it was customized; reconcile it with the Keenko tooling baseline first`);
+  }
+}
+
+function migrateKnownString(
+  record: Record<string, string>,
+  key: string,
+  previousValues: Array<string | undefined>,
+  current: string,
+  label: string
+) {
+  const value = record[key];
+  if (value === current) {
+    return;
+  }
+  if (previousValues.includes(value)) {
+    record[key] = current;
+    return;
+  }
+  throw new Error(`Cannot migrate ${label} because it was customized; reconcile it with the Keenko baseline first`);
+}
+
+function readJson(tree: Tree, file: string) {
+  return object(JSON.parse(readText(tree, file)), file);
+}
+
+function writeJson(tree: Tree, file: string, value: Record<string, unknown>) {
+  tree.write(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function readText(tree: Tree, file: string) {
+  const source = tree.read(file, "utf-8");
   if (source === null) {
-    throw new Error("Cannot migrate oxlint.config.ts because the Keenko baseline is missing");
+    throw new Error(`Cannot migrate: ${file} is missing`);
   }
-  let migrated = migrateJsPlugins(source);
-  migrated = migrateGeneratedIgnores(migrated);
-  migrated = migrateUiOverride(migrated);
-  migrated = migrateBoundaryRule(migrated);
-  if (migrated !== source) {
-    tree.write("oxlint.config.ts", migrated);
-  }
-}
-
-function migrateGeneratedIgnores(source: string) {
-  const match = /(?<prefix>\n  ignorePatterns:\s*\[)(?<entries>[^\]]*)(?<suffix>\],)/u.exec(source);
-  if (match?.groups === undefined) {
-    throw new Error(
-      "Cannot migrate oxlint.config.ts ignorePatterns because the known Keenko-owned configuration was customized; reconcile it manually"
-    );
-  }
-  const entries = match.groups.entries
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-  if (!entries.every((entry) => /^"[^"]+"$/u.test(entry))) {
-    throw new Error(
-      "Cannot migrate oxlint.config.ts ignorePatterns because the known Keenko-owned configuration was customized; reconcile it manually"
-    );
-  }
-  const next = [...entries];
-  for (const pattern of CURRENT_GENERATED_IGNORES) {
-    const quoted = `"${pattern}"`;
-    if (!next.includes(quoted)) {
-      next.push(quoted);
-    }
-  }
-  return source.replace(match[0], `${match.groups.prefix}${next.join(", ")}${match.groups.suffix}`);
-}
-
-function migrateUiOverride(source: string) {
-  const uiMarker = 'files: ["packages/ui/**/*"]';
-  if (source.includes(uiMarker)) {
-    if (!source.includes(UI_OVERRIDE)) {
-      throw new Error(
-        "Cannot migrate oxlint.config.ts packages/ui override because the Keenko-owned override was customized; reconcile it manually"
-      );
-    }
-    return source;
-  }
-  const backendOverride = '    {\n      files: ["packages/backend/**/*.ts"],';
-  if (!source.includes(backendOverride)) {
-    throw new Error(
-      "Cannot migrate oxlint.config.ts overrides because the known Keenko-owned configuration was customized; reconcile it manually"
-    );
-  }
-  return source.replace(backendOverride, `${UI_OVERRIDE}${backendOverride}`);
-}
-
-function migrateJsPlugins(source: string) {
-  const match = /(?<prefix>\n  jsPlugins:\s*\[)(?<entries>[^\]]*)(?<suffix>\],)/u.exec(source);
-  if (match?.groups === undefined) {
-    throw new Error(
-      "Cannot migrate oxlint.config.ts jsPlugins because the known Keenko-owned configuration was customized; reconcile it manually"
-    );
-  }
-  const entries = match.groups.entries
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-  if (!entries.every((entry) => /^"[^"]+"$/u.test(entry))) {
-    throw new Error(
-      "Cannot migrate oxlint.config.ts jsPlugins because the known Keenko-owned configuration was customized; reconcile it manually"
-    );
-  }
-  if (entries.includes(NX_BOUNDARY_PLUGIN)) {
-    return source;
-  }
-  const nextEntries = [NX_BOUNDARY_PLUGIN, ...entries].join(", ");
-  return source.replace(match[0], `${match.groups.prefix}${nextEntries}${match.groups.suffix}`);
-}
-
-function migrateBoundaryRule(source: string) {
-  if (source.includes('"@nx/enforce-module-boundaries"')) {
-    if (!source.includes(NX_BOUNDARY_RULE)) {
-      throw new Error(
-        "Cannot migrate oxlint.config.ts @nx/enforce-module-boundaries because the Keenko-owned rule was customized; reconcile it manually"
-      );
-    }
-    return source;
-  }
-  const rootRules = "\n  rules: {\n";
-  const rootRulesIndex = source.lastIndexOf(rootRules);
-  if (rootRulesIndex === -1) {
-    throw new Error(
-      "Cannot migrate oxlint.config.ts rules because the known Keenko-owned configuration was customized; reconcile it manually"
-    );
-  }
-  const insertion = rootRulesIndex + rootRules.length;
-  return `${source.slice(0, insertion)}${NX_BOUNDARY_RULE}${source.slice(insertion)}`;
+  return source;
 }
 
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -256,4 +327,11 @@ function stringRecord(value: unknown, label: string): Record<string, string> | u
     throw new TypeError(`${label} must contain only strings`);
   }
   return Object.fromEntries(entries.map(([key, entry]) => [key, String(entry)]));
+}
+
+function stringValue(value: unknown, label: string) {
+  if (typeof value !== "string") {
+    throw new TypeError(`${label} must be a string`);
+  }
+  return value;
 }
