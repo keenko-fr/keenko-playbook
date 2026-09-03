@@ -9,7 +9,7 @@ if (!source.includes(hashBefore)) {
 }
 source = source.replace(hashBefore, hashAfter);
 
-const copyBefore = `function copyTreeDirectory(tree: Tree, source: string, target: string) {\n  for (const change of tree.listChanges()) {\n    if (change.path.startsWith(\`\${source}/\`) && change.content !== null) {\n      tree.write(change.path.replace(source, target), change.content);\n    }\n  }\n}`;
+const copyBefore = `function copyTreeDirectory(tree: Tree, source: string, target: string) {\n  for (const change of tree.listChanges()) {\n    if (change.path.startsWith(\`\${source}/\`) && change.content !== null) tree.write(change.path.replace(source, target), change.content);\n  }\n}`;
 const copyAfter = `function copyTreeDirectory(tree: Tree, source: string, target: string) {\n  for (const file of listTreeFiles(tree, source)) {\n    const content = tree.read(file);\n    if (content !== null) {\n      tree.write(file.replace(source, target), content);\n    }\n  }\n}`;
 if (!source.includes(copyBefore)) {
   throw new Error("Expected guidance native-copy block was not found");
