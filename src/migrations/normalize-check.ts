@@ -18,7 +18,7 @@ const CURRENT_TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const CURRENT_NX_OXLINT = "23.2.0";
 const PREVIOUS_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate";
 const CURRENT_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate";
-const PREVIOUS_UI = "bunx --bun shadcn@4.19.0 add -c apps/web";
+const PREVIOUS_UI = "bunx --bun shadcn@4.20.1 add -c apps/web";
 const CURRENT_UI = "bun tools/keenko-ui.ts";
 const CURRENT_UI_CVA = "0.7.1";
 const CURRENT_GENERATED_IGNORES = [
@@ -34,7 +34,7 @@ const UI_OVERRIDE = `    {
 `;
 const NX_BOUNDARY_CONSTRAINTS = KEENKO_BOUNDARY_CONSTRAINTS.map(
   ({ onlyDependOnLibsWithTags, sourceTag }) =>
-    `          { onlyDependOnLibsWithTags: [${onlyDependOnLibsWithTags.map((tag) => `"${tag}"`).join(", ")}], sourceTag: "${sourceTag}" },`
+    `          { onlyDependOnLibsWithTags: [${onlyDependOnLibsWithTags.map((tag) => `"${tag}"`).join(", ")}], sourceTag: "${sourceTag}" },`,
 ).join("\n");
 const NX_BOUNDARY_RULE = `    "@nx/enforce-module-boundaries": [
       "error",
@@ -54,7 +54,7 @@ if (args.length === 0) {
 }
 
 const options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;
-const add = Bun.spawnSync(["bunx", "--bun", "shadcn@4.19.0", "add", "-c", "apps/web", ...args], options);
+const add = Bun.spawnSync(["bunx", "--bun", "shadcn@4.20.1", "add", "-c", "apps/web", ...args], options);
 if (add.exitCode !== 0) {
   throw new Error("shadcn failed");
 }
@@ -69,8 +69,8 @@ if (codegen.exitCode !== 0) {
   throw new Error("Keenko codegen failed after shadcn updated dependencies");
 }
 
-const formatResult = Bun.spawnSync(["bun", "run", "format"], options);
-if (formatResult.exitCode !== 0) {
+const format = Bun.spawnSync(["bun", "run", "format"], options);
+if (format.exitCode !== 0) {
   throw new Error("Keenko format failed after shadcn generated components");
 }
 
@@ -262,7 +262,7 @@ async function formatMigratedFiles(tree: Tree) {
         throw new Error(`Cannot format migrated ${file}: ${result.errors.map(({ message }) => message).join(", ")}`);
       }
       tree.write(file, result.code);
-    })
+    }),
   );
 }
 
@@ -282,7 +282,7 @@ function migrateKnownString(
   key: string,
   previousValues: Array<string | undefined>,
   current: string,
-  label: string
+  label: string,
 ) {
   const value = record[key];
   if (value === current) {

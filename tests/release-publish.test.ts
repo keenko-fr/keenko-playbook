@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -13,22 +13,44 @@ afterEach(async () => {
 });
 
 describe("Nx release publication", () => {
-  test("the changelog subcommand resolves every top-level Git option before tagging", async () => {
+  test("pinned Nx prepares one reviewable commit and tags the exact reviewed commit", async () => {
     const fixture = await nxReleaseFixture();
-    const incomplete = nxChangelog(fixture, false);
-    expect(incomplete.status).not.toBe(0);
-    expect(output(incomplete)).toContain('The "release.git" property in nx.json may not be used');
-    expect(git(fixture, "tag", "--list", "v0.1.0")).toBe("");
+    const initial = git(fixture.root, "rev-parse", "HEAD");
 
-    const head = git(fixture, "rev-parse", "HEAD");
-    const corrected = nxChangelog(fixture, true);
-    expect(output(corrected)).not.toContain('The "release.git" property in nx.json may not be used');
-    if (corrected.status !== 0) {
-      throw new Error(output(corrected));
-    }
-    expect(git(fixture, "symbolic-ref", "--short", "HEAD")).toBe("main");
-    expect(git(fixture, "rev-list", "-n", "1", "v0.1.0")).toBe(head);
-    expect(git(fixture, "diff", "--cached", "--exit-code")).toBe("");
+    assertNxSuccess(nx(fixture.root, ["release", "version", "--first-release"]));
+    expect(json(await readFile(path.join(fixture.root, "package.json"), "utf-8")).version).toBe("0.1.1");
+    expect(git(fixture.root, "rev-parse", "HEAD")).toBe(initial);
+    expect(git(fixture.root, "diff", "--cached", "--name-only")).toContain("package.json");
+    expect(git(fixture.root, "tag", "--list", "v0.1.1")).toBe("");
+
+    assertNxSuccess(nx(fixture.root, ["release", "changelog", "0.1.1", "--first-release"]));
+    const prepared = git(fixture.root, "rev-parse", "HEAD");
+    expect(prepared).not.toBe(initial);
+    expect(git(fixture.root, "status", "--porcelain")).toBe("");
+    expect(await exists(path.join(fixture.root, ".nx/version-plans/fixture.md"))).toBe(false);
+    expect(await exists(path.join(fixture.root, "CHANGELOG.md"))).toBe(true);
+    expect(git(fixture.root, "tag", "--list", "v0.1.1")).toBe("");
+    expect(gitDir(fixture.remote, "rev-parse", "refs/heads/main")).toBe(initial);
+
+    git(fixture.root, "push", "origin", "HEAD:main");
+    expect(gitDir(fixture.remote, "rev-parse", "refs/heads/main")).toBe(prepared);
+
+    assertNxSuccess(
+      nx(fixture.root, [
+        "release",
+        "changelog",
+        "0.1.1",
+        "--git-commit=false",
+        "--git-tag=true",
+        "--stage-changes=false",
+        "--git-push=true",
+        "--first-release",
+      ])
+    );
+    expect(git(fixture.root, "rev-parse", "HEAD")).toBe(prepared);
+    expect(git(fixture.root, "rev-list", "-n", "1", "v0.1.1")).toBe(prepared);
+    expect(gitDir(fixture.remote, "rev-list", "-n", "1", "v0.1.1")).toBe(prepared);
+    expect(git(fixture.root, "status", "--porcelain")).toBe("");
   }, 30_000);
 
   test("the workflow keeps reviewed-SHA, attached-main, clean-tree, and exact-tag guards", async () => {
@@ -36,15 +58,20 @@ describe("Nx release publication", () => {
     expect(workflow).toContain('test "$(git rev-parse origin/main)" = "${{ inputs.expected_sha }}"');
     expect(workflow).toContain('git checkout -B main "${{ inputs.expected_sha }}"');
     expect(workflow).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
+    expect(workflow).toContain("bunx nx release version $first_release");
+    expect(workflow).toContain('bunx nx release changelog "$version" $first_release');
     expect(workflow).toContain("--git-commit=false --git-tag=true --stage-changes=false --git-push=true");
-    expect(workflow).toContain("git diff --exit-code");
+    expect(workflow).toContain("git diff --cached --exit-code");
     expect(workflow).toContain('test "$(git rev-list -n 1 "v${version}")" = "${{ inputs.expected_sha }}"');
+    expect(workflow).not.toContain("bunx nx release --skip-publish");
   });
 });
 
 async function nxReleaseFixture() {
   const root = await mkdtemp(path.join(tmpdir(), "keenko-nx-release-"));
-  tempRoots.push(root);
+  const remote = `${root}-remote.git`;
+  tempRoots.push(root, remote);
+
   await writeFile(
     path.join(root, "package.json"),
     `${JSON.stringify({ name: "fixture", nx: {}, private: false, version: "0.1.0" }, null, 2)}\n`
@@ -54,39 +81,68 @@ async function nxReleaseFixture() {
     `${JSON.stringify(
       {
         release: {
-          changelog: { workspaceChangelog: true },
-          git: { commit: true, tag: true },
+          changelog: {
+            git: { commit: true, push: false, stageChanges: true, tag: false },
+            workspaceChangelog: true,
+          },
           projects: ["fixture"],
           releaseTag: { pattern: "v{version}" },
+          version: {
+            git: { commit: false, push: false, stageChanges: true, tag: false },
+          },
+          versionPlans: true,
         },
       },
       null,
       2
     )}\n`
   );
-  await writeFile(path.join(root, ".gitignore"), ".nx/\nnode_modules\n");
+  await writeFile(path.join(root, ".gitignore"), ".nx/cache/\n.nx/workspace-data/\nnode_modules\n");
+  await mkdir(path.join(root, ".nx/version-plans"), { recursive: true });
+  await writeFile(path.join(root, ".nx/version-plans/fixture.md"), "---\nfixture: patch\n---\n\nPrepare fixture release.\n");
   await symlink(path.join(ROOT, "node_modules"), path.join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+
+  execFileSync("git", ["init", "--bare", "--quiet", remote]);
   execFileSync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: root });
   execFileSync("git", ["config", "user.name", "Keenko fixture"], { cwd: root });
   execFileSync("git", ["config", "user.email", "fixture@keenko.invalid"], { cwd: root });
-  execFileSync("git", ["add", ".gitignore", "package.json", "nx.json"], { cwd: root });
+  execFileSync("git", ["remote", "add", "origin", remote], { cwd: root });
+  execFileSync("git", ["add", ".gitignore", ".nx/version-plans/fixture.md", "package.json", "nx.json"], { cwd: root });
   execFileSync("git", ["commit", "--quiet", "-m", "reviewed release"], { cwd: root });
-  return root;
+  execFileSync("git", ["push", "--quiet", "-u", "origin", "main"], { cwd: root });
+  return { remote, root };
 }
 
-function nxChangelog(cwd: string, complete: boolean) {
-  const args = [NX, "release", "changelog", "0.1.0", "--git-commit=false", "--git-tag=true"];
-  if (complete) {
-    args.push("--stage-changes=false");
+function nx(cwd: string, args: string[]) {
+  return spawnSync("node", [NX, ...args], { cwd, encoding: "utf-8", env: { ...process.env, NX_DAEMON: "false" } });
+}
+
+function assertNxSuccess(result: ReturnType<typeof spawnSync>) {
+  if (result.status !== 0) {
+    throw new Error(output(result));
   }
-  args.push("--git-push=false", "--first-release");
-  return spawnSync("node", args, { cwd, encoding: "utf-8", env: { ...process.env, NX_DAEMON: "false" } });
 }
 
 function git(cwd: string, ...args: string[]) {
   return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
 }
 
+function gitDir(gitDirPath: string, ...args: string[]) {
+  return execFileSync("git", [`--git-dir=${gitDirPath}`, ...args], { encoding: "utf-8" }).trim();
+}
+
 function output(result: ReturnType<typeof spawnSync>) {
   return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+}
+
+async function exists(target: string) {
+  return (await stat(target).catch(() => null)) !== null;
+}
+
+function json(text: string): Record<string, unknown> {
+  const value: unknown = JSON.parse(text);
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Expected JSON object");
+  }
+  return Object.fromEntries(Object.entries(value));
 }

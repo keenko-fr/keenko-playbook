@@ -1,12 +1,23 @@
 import { expect, test } from "bun:test";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
+const BASELINE_A_COMMIT = "f983654297acb84c1e4005ef72a646c7b33ddcfe";
+const BASELINE_B_COMMIT = "6303870d1ad0e10a7ef9894ddf6f8e717f467ad3";
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const FIRST_PASS_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build";
-const OLDEST_CHECK = "bun run format:check && bun run lint && bun run typecheck && bun run build";
+const OLD_CODEGEN_CHECK = "keenko check --guidance";
+const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
+const OLD_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate";
+const CURRENT_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate";
+const CURRENT_GENERATED_IGNORES = [
+  "packages/backend/confect/**",
+  "packages/backend/convex/**",
+  "!packages/backend/convex/tsconfig.json",
+  "!packages/backend/convex/convex.config.ts",
+] as const;
 
 test("packed Keenko creates and upgrades real consumer fixtures", async () => {
   const temp = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? "/tmp", "keenko-packed-"));
@@ -24,8 +35,12 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     const guidanceVersion = nextPatch(currentVersion);
     const prereleaseVersion = `${guidanceVersion}-beta.1`;
     const nextMajorVersion = nextMajor(currentVersion);
-    const baselineATarball = await versionedTarball(tarball, path.join(temp, "baseline-a.tgz"), "0.0.1");
-    const baselineBTarball = await versionedTarball(tarball, path.join(temp, "baseline-b.tgz"), "0.0.2");
+
+    const baselineATarball = await historicalTarball(temp, BASELINE_A_COMMIT, "0.0.1", "baseline-a");
+    const baselineBTarball = await historicalTarball(temp, BASELINE_B_COMMIT, "0.0.2", "baseline-b");
+    const baselineACli = await installPackedCli(temp, baselineATarball, "baseline-a");
+    const baselineBCli = await installPackedCli(temp, baselineBTarball, "baseline-b");
+
     const guidanceTarget = await versionedTarball(tarball, path.join(temp, "guidance-target.tgz"), guidanceVersion);
     const targetExtract = path.join(temp, "target-extract");
     await mkdir(targetExtract);
@@ -131,29 +146,31 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     expect(runOut("node", [projectCli, "upgrade", "--dry-run"], project, registry.env)).toContain(`-> ${guidanceVersion}`);
 
     const baselineA = path.join(temp, "baseline-a");
-    await makeBaseline(project, baselineA, "baseline-a", "0.0.1", baselineATarball);
-    await assertHistoricalBaseline(baselineA, "0.0.1", OLDEST_CHECK, "1.80.0", false);
-    const lockBefore = await readFile(path.join(baselineA, "bun.lock"));
+    await makeBaseline(baselineACli, baselineA, "0.0.1", baselineATarball);
+    await assertHistoricalBaseline(baselineA, "a", "0.0.1");
+    const baselineALockBefore = await readFile(path.join(baselineA, "bun.lock"));
     run("node", [cli, "upgrade", currentVersion], baselineA, registry.env);
-    expect(await readFile(path.join(baselineA, "bun.lock"))).not.toEqual(lockBefore);
+    expect(await readFile(path.join(baselineA, "bun.lock"))).not.toEqual(baselineALockBefore);
     await assertUpgraded(baselineA, registry.env);
 
     const baselineB = path.join(temp, "baseline-b");
-    await makeBaseline(project, baselineB, "baseline-b", "0.0.2", baselineBTarball);
-    await assertHistoricalBaseline(baselineB, "0.0.2", FIRST_PASS_CHECK, "1.81.0", true);
+    await makeBaseline(baselineBCli, baselineB, "0.0.2", baselineBTarball);
+    await assertHistoricalBaseline(baselineB, "b", "0.0.2");
+    const baselineBLockBefore = await readFile(path.join(baselineB, "bun.lock"));
     run("node", [cli, "upgrade", currentVersion], baselineB, registry.env);
+    expect(await readFile(path.join(baselineB, "bun.lock"))).not.toEqual(baselineBLockBefore);
     await assertUpgraded(baselineB, registry.env);
     gitCommitAll(baselineB, "upgrade to current");
 
     const conflict = path.join(temp, "baseline-conflict");
-    await makeBaseline(project, conflict, "baseline-b", "0.0.2", baselineBTarball);
+    await makeBaseline(baselineBCli, conflict, "0.0.2", baselineBTarball);
     const conflictConfigPath = path.join(conflict, "oxlint.config.ts");
     const conflictConfig = await readFile(conflictConfigPath, "utf-8");
     await writeFile(
       conflictConfigPath,
       conflictConfig.replace(
-        '    "eslint/no-console": "off",',
-        '    "@nx/enforce-module-boundaries": ["error", { allow: ["custom/**"] }],\n    "eslint/no-console": "off",'
+        '    "eslint/no-plusplus": "off",',
+        '    "@nx/enforce-module-boundaries": ["error", { allow: ["custom/**"] }],\n    "eslint/no-plusplus": "off",'
       )
     );
     gitCommitAll(conflict, "customize owned boundary rule");
@@ -173,63 +190,128 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     registry?.stop();
     await rm(temp, { force: true, recursive: true });
   }
-}, 480_000);
+}, 600_000);
 
-async function makeBaseline(
-  source: string,
-  target: string,
-  fixture: "baseline-a" | "baseline-b",
-  installedVersion: string,
-  packageTarball: string
-) {
-  await cp(source, target, {
-    filter: (entry) => {
-      const relative = path.relative(source, entry).replaceAll("\\", "/");
-      const [first] = relative.split("/");
-      return ![".git", ".nx", "node_modules"].includes(first ?? "");
-    },
-    recursive: true,
-  });
-  const fixtureRoot = path.join(ROOT, "tests/fixtures/pre-v1", fixture);
-  await Promise.all([
-    cp(path.join(fixtureRoot, "package.json"), path.join(target, "package.json")),
-    cp(path.join(fixtureRoot, "oxlint.config.ts.fixture"), path.join(target, "oxlint.config.ts")),
-  ]);
+async function historicalTarball(root: string, commit: string, version: string, label: string) {
+  const worktree = path.join(root, `${label}-source`);
+  const packDir = path.join(root, `${label}-pack`);
+  const target = path.join(root, `${label}.tgz`);
+  await mkdir(packDir);
+  run("git", ["worktree", "add", "--detach", worktree, commit], ROOT);
+  try {
+    await symlink(path.join(ROOT, "node_modules"), path.join(worktree, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+    run("bun", ["run", "build"], worktree);
+    const packedName = runOut("npm", ["pack", "--ignore-scripts", "--pack-destination", packDir, "--silent"], worktree).trim().split("\n").at(-1);
+    if (packedName === undefined) {
+      throw new Error(`npm pack did not return a tarball name for ${commit}`);
+    }
+    return await versionedTarball(path.join(packDir, packedName), target, version);
+  } finally {
+    run("git", ["worktree", "remove", "--force", worktree], ROOT);
+  }
+}
+
+async function installPackedCli(root: string, tarball: string, label: string) {
+  const runner = path.join(root, `${label}-runner`);
+  await mkdir(runner);
+  await writeFile(path.join(runner, "package.json"), JSON.stringify({ dependencies: { keenko: `file:${tarball}` }, private: true }, null, 2));
+  run("bun", ["install"], runner);
+  return path.join(runner, "node_modules/keenko/dist/cli/keenko.js");
+}
+
+async function makeBaseline(cli: string, target: string, installedVersion: string, packageTarball: string) {
+  run("node", [cli, "create", target, "--no-install"], ROOT);
+
   const pkgPath = path.join(target, "package.json");
   const pkg = json(await readFile(pkgPath, "utf-8"));
+  const scripts = record(pkg.scripts, "historical scripts");
+  scripts.custom = "node -e \"console.log('preserved')\"";
+  pkg.scripts = scripts;
   const devDependencies = record(pkg.devDependencies, "historical devDependencies");
-  expect(devDependencies.keenko).toBe(installedVersion);
   devDependencies.keenko = `file:${packageTarball}`;
   pkg.devDependencies = devDependencies;
   await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
   await writeFile(path.join(target, "CONTEXT.md"), "# Project context\n\nPreserve this project-owned baseline customization.\n");
-  run("bun", ["install", "--ignore-scripts"], target);
+
+  run("bun", ["install"], target);
+  run("bun", ["run", "codegen"], target);
   const installed = json(await readFile(path.join(target, "node_modules/keenko/package.json"), "utf-8"));
   expect(string(installed.version, "installed version")).toBe(installedVersion);
   gitCommitAll(target, `fixture ${installedVersion}`);
 }
 
-async function assertHistoricalBaseline(project: string, version: string, check: string, oxlintVersion: string, hasUiOverride: boolean) {
+async function assertHistoricalBaseline(project: string, baseline: "a" | "b", version: string) {
   const pkg = json(await readFile(path.join(project, "package.json"), "utf-8"));
   const scripts = record(pkg.scripts, "historical scripts");
   const devDependencies = record(pkg.devDependencies, "historical devDependencies");
+  const webPackage = json(await readFile(path.join(project, "apps/web/package.json"), "utf-8"));
+  const webScripts = record(webPackage.scripts, "historical web scripts");
+  const uiPackage = json(await readFile(path.join(project, "packages/ui/package.json"), "utf-8"));
+  const uiDependencies = record(uiPackage.dependencies, "historical ui dependencies");
+  const uiTsconfig = json(await readFile(path.join(project, "packages/ui/tsconfig.json"), "utf-8"));
+  const uiCompilerOptions = record(uiTsconfig.compilerOptions, "historical ui compiler options");
+  const webComponents = json(await readFile(path.join(project, "apps/web/components.json"), "utf-8"));
+  const uiComponents = json(await readFile(path.join(project, "packages/ui/components.json"), "utf-8"));
+  const oxfmt = await readFile(path.join(project, "oxfmt.config.ts"), "utf-8");
   const oxlint = await readFile(path.join(project, "oxlint.config.ts"), "utf-8");
-  expect(devDependencies.keenko).toContain(`${version === "0.0.1" ? "baseline-a" : "baseline-b"}.tgz`);
-  expect(scripts.check).toBe(check);
+
+  expect(String(devDependencies.keenko)).toContain(`${version === "0.0.1" ? "baseline-a" : "baseline-b"}.tgz`);
   expect(scripts.custom).toBe("node -e \"console.log('preserved')\"");
-  expect(devDependencies.oxlint).toBe(oxlintVersion);
   expect(devDependencies.typescript).toBe("7.0.2");
   expect(devDependencies["@nx/oxlint"]).toBeUndefined();
   expect(devDependencies["@typescript/native"]).toBeUndefined();
   expect(oxlint).not.toContain("@nx/oxlint/boundaries-plugin");
   expect(oxlint).not.toContain("@nx/enforce-module-boundaries");
-  expect(oxlint).toContain('"eslint/no-console": "off"');
-  expect(oxlint.includes('files: ["packages/ui/**/*"]')).toBe(hasUiOverride);
+
+  if (baseline === "a") {
+    expect(scripts.check).toBe(FIRST_PASS_CHECK);
+    expect(scripts["codegen:check"]).toBe(OLD_CODEGEN_CHECK);
+    expect(scripts.test).toBeUndefined();
+    expect(scripts.dev).toBe("nx run web:dev");
+    expect(scripts.ui).toBe("bunx --bun shadcn@4.20.1 add -c apps/web");
+    expect(webScripts.codegen).toBe(OLD_WEB_CODEGEN);
+    expect(uiDependencies["class-variance-authority"]).toBeUndefined();
+    expect(uiCompilerOptions.jsx).toBeUndefined();
+    expect(webComponents.base).toBe("base");
+    expect(uiComponents.base).toBe("base");
+    expect(await exists(path.join(project, "tools/keenko-ui.ts"))).toBe(false);
+    expect(await exists(path.join(project, "apps/web/src/paraglide/README.md"))).toBe(true);
+    for (const pattern of CURRENT_GENERATED_IGNORES) {
+      expect(oxfmt).not.toContain(pattern);
+      expect(oxlint).not.toContain(pattern);
+    }
+    expect(oxlint).not.toContain('files: ["packages/ui/**/*"]');
+    return;
+  }
+
+  expect(scripts.check).toBe(CURRENT_CHECK);
+  expect(scripts["codegen:check"]).toBe(CURRENT_CODEGEN_CHECK);
+  expect(scripts.test).toBe("bun test --pass-with-no-tests");
+  expect(scripts.dev).toBe("nx run @baseline-b/web:dev");
+  expect(scripts.ui).toBe("bun tools/keenko-ui.ts");
+  expect(webScripts.codegen).toBe(CURRENT_WEB_CODEGEN);
+  expect(uiDependencies["class-variance-authority"]).toBe("0.7.1");
+  expect(uiCompilerOptions.jsx).toBe("react-jsx");
+  expect(webComponents.base).toBeUndefined();
+  expect(uiComponents.base).toBeUndefined();
+  expect(await readFile(path.join(project, "tools/keenko-ui.ts"), "utf-8")).toContain("shadcn@4.20.1");
+  expect(await exists(path.join(project, "apps/web/src/paraglide/README.md"))).toBe(false);
+  for (const pattern of CURRENT_GENERATED_IGNORES) {
+    expect(oxfmt).toContain(pattern);
+    expect(oxlint).toContain(pattern);
+  }
+  expect(oxlint).toContain('files: ["packages/ui/**/*"]');
 }
 
 async function assertUpgraded(project: string, registryEnv: Record<string, string>) {
   const pkg = json(await readFile(path.join(project, "package.json"), "utf-8"));
-  expect(record(pkg.scripts, "upgraded scripts").check).toBe(CURRENT_CHECK);
+  const scripts = record(pkg.scripts, "upgraded scripts");
+  expect(scripts.check).toBe(CURRENT_CHECK);
+  expect(scripts["codegen:check"]).toBe(CURRENT_CODEGEN_CHECK);
+  expect(scripts.test).toBe("bun test --pass-with-no-tests");
+  expect(scripts.ui).toBe("bun tools/keenko-ui.ts");
+  expect(scripts.custom).toBe("node -e \"console.log('preserved')\"");
+
   const devDependencies = record(pkg.devDependencies, "upgraded devDependencies");
   expect(devDependencies.oxlint).toBe("1.81.0");
   expect(devDependencies["@effect/tsgo"]).toBe("0.39.1");
@@ -237,15 +319,34 @@ async function assertUpgraded(project: string, registryEnv: Record<string, strin
   expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
   expect(devDependencies["@typescript/native"]).toBe("npm:typescript@7.0.2");
   expect(devDependencies.typescript).toBe("npm:@typescript/typescript6@6.0.2");
-  expect(record(pkg.scripts, "upgraded scripts").custom).toBe("node -e \"console.log('preserved')\"");
+
+  const webPackage = json(await readFile(path.join(project, "apps/web/package.json"), "utf-8"));
+  expect(record(webPackage.scripts, "upgraded web scripts").codegen).toBe(CURRENT_WEB_CODEGEN);
+  const uiPackage = json(await readFile(path.join(project, "packages/ui/package.json"), "utf-8"));
+  expect(record(uiPackage.dependencies, "upgraded ui dependencies")["class-variance-authority"]).toBe("0.7.1");
+  const uiTsconfig = json(await readFile(path.join(project, "packages/ui/tsconfig.json"), "utf-8"));
+  expect(record(uiTsconfig.compilerOptions, "upgraded ui compiler options").jsx).toBe("react-jsx");
+  expect(json(await readFile(path.join(project, "apps/web/components.json"), "utf-8")).base).toBeUndefined();
+  expect(json(await readFile(path.join(project, "packages/ui/components.json"), "utf-8")).base).toBeUndefined();
+  expect(await readFile(path.join(project, "tools/keenko-ui.ts"), "utf-8")).toContain("shadcn@4.20.1");
+  expect(await exists(path.join(project, "apps/web/src/paraglide/README.md"))).toBe(false);
+
+  const oxfmt = await readFile(path.join(project, "oxfmt.config.ts"), "utf-8");
   const oxlint = await readFile(path.join(project, "oxlint.config.ts"), "utf-8");
+  for (const pattern of CURRENT_GENERATED_IGNORES) {
+    expect(oxfmt).toContain(pattern);
+    expect(oxlint).toContain(pattern);
+  }
   expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
   expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
   expect(oxlint).toContain('files: ["packages/ui/**/*"]');
   expect(oxlint).toContain('"eslint/sort-keys": "off"');
-  expect(oxlint).toContain('"eslint/no-console": "off"');
+
   expect(await readFile(path.join(project, "CONTEXT.md"), "utf-8")).toContain("Preserve this project-owned baseline customization.");
-  expect(await exists(path.join(project, "packages/ui/src/components/button.tsx"))).toBe(true);
+  const tooling = await readFile(path.join(project, ".keenko/docs/core/tooling.md"), "utf-8");
+  expect(tooling).toContain("@nx/oxlint");
+  expect(tooling).toContain("manifest-declared workspace dependencies");
+
   run("bun", ["install", "--frozen-lockfile"], project, registryEnv);
   expect(runOut("bun", ["x", "tsc", "--version"], path.join(project, "packages/shared"))).toContain("7.0.2");
   run("bun", ["run", "check"], project);

@@ -7,13 +7,24 @@
     "releaseTag": {
       "pattern": "v{version}"
     },
-    "git": {
-      "commit": true,
-      "tag": true
-    },
     "versionPlans": true,
     "version": {
+      "git": {
+        "commit": false,
+        "tag": false,
+        "stageChanges": true,
+        "push": false
+      },
       "preVersionCommand": "bun run check:release"
+    },
+    "changelog": {
+      "git": {
+        "commit": true,
+        "tag": false,
+        "stageChanges": true,
+        "push": false
+      },
+      "workspaceChangelog": true
     }
   },
   "targetDefaults": {

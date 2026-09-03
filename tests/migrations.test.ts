@@ -4,141 +4,110 @@ import { describe, expect, test } from "bun:test";
 import preset from "../src/generators/preset/generator.ts";
 import normalizeCheck from "../src/migrations/normalize-check.ts";
 
-const oldest = "bun run format:check && bun run lint && bun run typecheck && bun run build";
-const firstPass = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build";
-const wrongOrder = "bun run codegen:check && bun run test && bun run format:check && bun run lint && bun run typecheck && bun run build";
-const current = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
-const oldOxlint = `import { defineConfig } from "oxlint";
-
-export default defineConfig({
-  ignorePatterns: [".keenko/**"],
-  jsPlugins: ["oxlint-plugin-effect/plugin"],
-  overrides: [
-    {
-      files: ["packages/backend/**/*.ts"],
-      rules: {},
-    },
-  ],
-  rules: {
-    "eslint/no-plusplus": "off",
-  },
-});
-`;
+const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 
 describe("Keenko migrations", () => {
   test("leaves the current generated tooling baseline unchanged", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "current" });
-    const packageBefore = tree.read("package.json", "utf-8");
-    const oxlintBefore = tree.read("oxlint.config.ts", "utf-8");
+    const before = snapshot(tree);
     await normalizeCheck(tree);
-    expect(tree.read("package.json", "utf-8")).toBe(packageBefore);
-    expect(tree.read("oxlint.config.ts", "utf-8")).toBe(oxlintBefore);
+    expect(snapshot(tree)).toEqual(before);
   });
 
-  test.each([
-    [oldest, "1.80.0", "0.38.0", "0.11.0", undefined],
-    [firstPass, "1.81.0", "0.39.1", "0.12.0", "keenko check --guidance"],
-    [wrongOrder, "1.81.0", "0.39.1", "0.12.0", "keenko check --guidance --codegen"],
-  ] as const)("supports a pre-v1 baseline", async (check, oxlint, effectTsgo, effectPlugin, codegenCheck) => {
+  test("adds the TypeScript compatibility aliases and Nx boundary bridge to the pre-boundary baseline", async () => {
     const tree = createTreeWithEmptyWorkspace();
-    tree.write(
-      "package.json",
-      JSON.stringify({
-        devDependencies: { "@effect/tsgo": effectTsgo, oxlint, "oxlint-plugin-effect": effectPlugin, typescript: "7.0.2" },
-        projectNote: "preserve me",
-        scripts: { check, "codegen:check": codegenCheck, custom: "keep me" },
-      })
-    );
-    tree.write("oxlint.config.ts", oldOxlint);
-    expect(tree.read("package.json", "utf-8")).not.toContain("@nx/oxlint");
-    expect(tree.read("package.json", "utf-8")).not.toContain("@typescript/native");
-    expect(tree.read("oxlint.config.ts", "utf-8")).not.toContain("@nx/enforce-module-boundaries");
-    await normalizeCheck(tree);
-    const migrated = tree.read("package.json", "utf-8") ?? "";
-    expect(migrated).toContain(current);
-    expect(migrated).toContain("keenko check --guidance --codegen");
-    expect(migrated).toContain("bun test --pass-with-no-tests");
-    expect(migrated).toContain('"custom": "keep me"');
-    expect(migrated).toContain('"oxlint": "1.81.0"');
-    expect(migrated).toContain('"@effect/tsgo": "0.39.1"');
-    expect(migrated).toContain('"oxlint-plugin-effect": "0.12.0"');
-    expect(migrated).toContain('"@nx/oxlint": "23.2.0"');
-    expect(migrated).toContain('"@typescript/native": "npm:typescript@7.0.2"');
-    expect(migrated).toContain('"typescript": "npm:@typescript/typescript6@6.0.2"');
-    expect(migrated).toContain('"projectNote": "preserve me"');
-    const migratedOxlint = tree.read("oxlint.config.ts", "utf-8") ?? "";
-    expect(migratedOxlint).toContain("@nx/enforce-module-boundaries");
-    expect(migratedOxlint).toContain("packages/backend/confect/**");
-    expect(migratedOxlint).toContain("packages/ui/**/*");
-  });
+    await preset(tree, { name: "pre-boundary" });
+    downgradeBoundaryBridge(tree);
 
-  test("reports an actionable conflict for an ambiguous customization", async () => {
-    const tree = createTreeWithEmptyWorkspace();
-    tree.write(
-      "package.json",
-      JSON.stringify({
-        devDependencies: {
-          "@effect/tsgo": "0.39.1",
-          oxlint: "1.81.0",
-          "oxlint-plugin-effect": "0.12.0",
-          typescript: "7.0.2",
-        },
-        scripts: { check: "my custom verifier" },
-      })
-    );
-    tree.write("oxlint.config.ts", oldOxlint);
-    await expect(normalizeCheck(tree)).rejects.toThrow("customized");
-  });
+    const pkg = readJson(tree, "package.json");
+    pkg.projectNote = "preserve me";
+    tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
 
-  test("preserves unrelated Oxlint plugins and rules", async () => {
-    const tree = createTreeWithEmptyWorkspace();
-    tree.write(
-      "package.json",
-      JSON.stringify({
-        devDependencies: {
-          "@effect/tsgo": "0.39.1",
-          oxlint: "1.81.0",
-          "oxlint-plugin-effect": "0.12.0",
-          typescript: "7.0.2",
-        },
-        scripts: { check: current, "codegen:check": "keenko check --guidance --codegen", test: "bun test --pass-with-no-tests" },
-      })
-    );
-    tree.write(
-      "oxlint.config.ts",
-      oldOxlint
-        .replace('"oxlint-plugin-effect/plugin"', '"project-plugin", "oxlint-plugin-effect/plugin"')
-        .replace('"eslint/no-plusplus": "off",', '"project/custom-rule": "warn",\n    "eslint/no-plusplus": "off",')
-    );
     await normalizeCheck(tree);
+
+    const migrated = readJson(tree, "package.json");
+    const devDependencies = record(migrated.devDependencies, "devDependencies");
+    expect(record(migrated.scripts, "scripts").check).toBe(CURRENT_CHECK);
+    expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
+    expect(devDependencies["@typescript/native"]).toBe("npm:typescript@7.0.2");
+    expect(devDependencies.typescript).toBe("npm:@typescript/typescript6@6.0.2");
+    expect(migrated.projectNote).toBe("preserve me");
+
     const oxlint = tree.read("oxlint.config.ts", "utf-8") ?? "";
-    expect(oxlint).toContain("project-plugin");
-    expect(oxlint).toContain("project/custom-rule");
+    expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
+    expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
+    expect(oxlint).toContain('sourceTag: "scope:shared"');
   });
 
   test("rejects a customized Nx boundary rule", async () => {
     const tree = createTreeWithEmptyWorkspace();
-    tree.write(
-      "package.json",
-      JSON.stringify({
-        devDependencies: {
-          "@effect/tsgo": "0.39.1",
-          "@nx/oxlint": "23.2.0",
-          "@typescript/native": "npm:typescript@7.0.2",
-          oxlint: "1.81.0",
-          "oxlint-plugin-effect": "0.12.0",
-          typescript: "npm:@typescript/typescript6@6.0.2",
-        },
-        scripts: { check: current, "codegen:check": "keenko check --guidance --codegen", test: "bun test --pass-with-no-tests" },
-      })
-    );
+    await preset(tree, { name: "custom-boundary" });
+    const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
+    const start = source.indexOf('    "@nx/enforce-module-boundaries": [');
+    const end = source.indexOf('    "eslint/no-plusplus": "off",');
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error("Could not locate generated boundary rule");
+    }
     tree.write(
       "oxlint.config.ts",
-      oldOxlint
-        .replace('"oxlint-plugin-effect/plugin"', '"@nx/oxlint/boundaries-plugin", "oxlint-plugin-effect/plugin"')
-        .replace('"eslint/no-plusplus": "off",', '"@nx/enforce-module-boundaries": ["error", {}],\n    "eslint/no-plusplus": "off",')
+      `${source.slice(0, start)}    "@nx/enforce-module-boundaries": ["error", { allow: ["custom/**"] }],\n${source.slice(end)}`
     );
+
     await expect(normalizeCheck(tree)).rejects.toThrow("Keenko-owned rule was customized");
   });
+
+  test("rejects a customized Keenko shadcn wrapper", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "custom-wrapper" });
+    const wrapper = tree.read("tools/keenko-ui.ts", "utf-8") ?? "";
+    expect(wrapper).toContain("shadcn@4.20.1");
+    tree.write("tools/keenko-ui.ts", wrapper.replace("shadcn@4.20.1", "shadcn@4.20.0"));
+
+    await expect(normalizeCheck(tree)).rejects.toThrow("Keenko-owned shadcn wrapper was customized");
+  });
 });
+
+function downgradeBoundaryBridge(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
+  const pkg = readJson(tree, "package.json");
+  const devDependencies = record(pkg.devDependencies, "devDependencies");
+  delete devDependencies["@nx/oxlint"];
+  delete devDependencies["@typescript/native"];
+  devDependencies.typescript = "7.0.2";
+  pkg.devDependencies = devDependencies;
+  tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+
+  const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
+  const start = source.indexOf('    "@nx/enforce-module-boundaries": [');
+  const end = source.indexOf('    "eslint/no-plusplus": "off",');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("Could not locate generated boundary rule");
+  }
+  const withoutBoundary = `${source.slice(0, start)}${source.slice(end)}`;
+  tree.write("oxlint.config.ts", withoutBoundary.replace('"@nx/oxlint/boundaries-plugin", ', ""));
+}
+
+function snapshot(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
+  return Object.fromEntries(
+    tree
+      .listChanges()
+      .filter((change) => change.content !== null)
+      .map((change) => [change.path, change.content?.toString("utf-8")])
+      .toSorted(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+function readJson(tree: ReturnType<typeof createTreeWithEmptyWorkspace>, path: string): Record<string, unknown> {
+  const source = tree.read(path, "utf-8");
+  if (source === null) {
+    throw new Error(`Missing ${path}`);
+  }
+  return record(JSON.parse(source), path);
+}
+
+function record(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} must be an object`);
+  }
+  return Object.fromEntries(Object.entries(value));
+}

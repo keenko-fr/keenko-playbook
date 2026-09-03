@@ -55,10 +55,13 @@ jobs:
         run: |
           first_release=""
           if ! git tag --list 'v*' | grep -q .; then first_release="--first-release"; fi
-          bunx nx release --skip-publish --git-tag=false --git-push=false $first_release
+          bunx nx release version $first_release
           version="$(node -p "require('./package.json').version")"
+          bunx nx release changelog "$version" $first_release
           branch="release/keenko-v${version}"
           test "$(git rev-parse HEAD)" != "${{ inputs.expected_sha }}"
+          git diff --exit-code
+          git diff --cached --exit-code
           git push origin "HEAD:refs/heads/${branch}"
           echo "Review and merge ${branch} before running publish from its exact main SHA."
       - name: Tag exact reviewed release commit with Nx
@@ -70,6 +73,7 @@ jobs:
           if ! git tag --list 'v*' | grep -q .; then first_release="--first-release"; fi
           bunx nx release changelog "$version" --git-commit=false --git-tag=true --stage-changes=false --git-push=true $first_release
           git diff --exit-code
+          git diff --cached --exit-code
           test "$(git rev-list -n 1 "v${version}")" = "${{ inputs.expected_sha }}"
       - name: Publish exact tagged release
         if: ${{ inputs.mode == 'publish' }}
