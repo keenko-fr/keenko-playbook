@@ -201,7 +201,10 @@ async function historicalTarball(root: string, commit: string, version: string, 
   try {
     await symlink(path.join(ROOT, "node_modules"), path.join(worktree, "node_modules"), process.platform === "win32" ? "junction" : "dir");
     run("bun", ["run", "build"], worktree);
-    const packedName = runOut("npm", ["pack", "--ignore-scripts", "--pack-destination", packDir, "--silent"], worktree).trim().split("\n").at(-1);
+    const packedName = runOut("npm", ["pack", "--ignore-scripts", "--pack-destination", packDir, "--silent"], worktree)
+      .trim()
+      .split("\n")
+      .at(-1);
     if (packedName === undefined) {
       throw new Error(`npm pack did not return a tarball name for ${commit}`);
     }
@@ -214,7 +217,10 @@ async function historicalTarball(root: string, commit: string, version: string, 
 async function installPackedCli(root: string, tarball: string, label: string) {
   const runner = path.join(root, `${label}-runner`);
   await mkdir(runner);
-  await writeFile(path.join(runner, "package.json"), JSON.stringify({ dependencies: { keenko: `file:${tarball}` }, private: true }, null, 2));
+  await writeFile(
+    path.join(runner, "package.json"),
+    JSON.stringify({ dependencies: { keenko: `file:${tarball}` }, private: true }, null, 2)
+  );
   run("bun", ["install"], runner);
   return path.join(runner, "node_modules/keenko/dist/cli/keenko.js");
 }

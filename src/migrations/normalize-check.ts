@@ -34,7 +34,7 @@ const UI_OVERRIDE = `    {
 `;
 const NX_BOUNDARY_CONSTRAINTS = KEENKO_BOUNDARY_CONSTRAINTS.map(
   ({ onlyDependOnLibsWithTags, sourceTag }) =>
-    `          { onlyDependOnLibsWithTags: [${onlyDependOnLibsWithTags.map((tag) => `"${tag}"`).join(", ")}], sourceTag: "${sourceTag}" },`,
+    `          { onlyDependOnLibsWithTags: [${onlyDependOnLibsWithTags.map((tag) => `"${tag}"`).join(", ")}], sourceTag: "${sourceTag}" },`
 ).join("\n");
 const NX_BOUNDARY_RULE = `    "@nx/enforce-module-boundaries": [
       "error",
@@ -108,7 +108,13 @@ function migrateRootPackage(tree: Tree) {
   }
 
   migrateKnownString(scripts, "check", [...PREVIOUS_CHECKS], CURRENT_CHECK, "package.json scripts.check");
-  migrateKnownString(scripts, "codegen:check", [undefined, PREVIOUS_CODEGEN_CHECK], CURRENT_CODEGEN_CHECK, "package.json scripts.codegen:check");
+  migrateKnownString(
+    scripts,
+    "codegen:check",
+    [undefined, PREVIOUS_CODEGEN_CHECK],
+    CURRENT_CODEGEN_CHECK,
+    "package.json scripts.codegen:check"
+  );
   migrateKnownString(scripts, "test", [undefined], CURRENT_TEST, "package.json scripts.test");
   migrateKnownString(scripts, "dev", ["nx run web:dev"], `nx run @${name}/web:dev`, "package.json scripts.dev");
   migrateKnownString(scripts, "ui", [PREVIOUS_UI], CURRENT_UI, "package.json scripts.ui");
@@ -188,7 +194,9 @@ function migrateGeneratedConfig(tree: Tree, file: string) {
     return;
   }
   if (present.length > 0) {
-    throw new Error(`Cannot migrate ${file} generated-code exclusions because the Keenko-owned block was partially customized; reconcile it manually`);
+    throw new Error(
+      `Cannot migrate ${file} generated-code exclusions because the Keenko-owned block was partially customized; reconcile it manually`
+    );
   }
   const anchor = '"**/routeTree.gen.ts"';
   if (!source.includes(anchor)) {
@@ -213,12 +221,16 @@ function migrateOxlintConfig(tree: Tree) {
 
   if (source.includes('files: ["packages/ui/**/*"]')) {
     if (!source.includes(UI_OVERRIDE.trim())) {
-      throw new Error("Cannot migrate oxlint.config.ts packages/ui override because the Keenko-owned override was customized; reconcile it manually");
+      throw new Error(
+        "Cannot migrate oxlint.config.ts packages/ui override because the Keenko-owned override was customized; reconcile it manually"
+      );
     }
   } else {
     const backendOverride = '    {\n      files: ["packages/backend/**/*.ts"],';
     if (!source.includes(backendOverride)) {
-      throw new Error("Cannot migrate oxlint.config.ts overrides because the known Keenko backend override is missing; reconcile it manually");
+      throw new Error(
+        "Cannot migrate oxlint.config.ts overrides because the known Keenko backend override is missing; reconcile it manually"
+      );
     }
     source = source.replace(backendOverride, `${UI_OVERRIDE}${backendOverride}`);
   }
@@ -226,7 +238,9 @@ function migrateOxlintConfig(tree: Tree) {
   const boundaryRuleName = '"@nx/enforce-module-boundaries"';
   if (source.includes(boundaryRuleName)) {
     if (!source.includes(NX_BOUNDARY_RULE.trim())) {
-      throw new Error("Cannot migrate oxlint.config.ts @nx/enforce-module-boundaries because the Keenko-owned rule was customized; reconcile it manually");
+      throw new Error(
+        "Cannot migrate oxlint.config.ts @nx/enforce-module-boundaries because the Keenko-owned rule was customized; reconcile it manually"
+      );
     }
   } else {
     const rootRulesAnchor = '  plugins: ["effecttsgo"],\n  rules: {\n';
@@ -262,7 +276,7 @@ async function formatMigratedFiles(tree: Tree) {
         throw new Error(`Cannot format migrated ${file}: ${result.errors.map(({ message }) => message).join(", ")}`);
       }
       tree.write(file, result.code);
-    }),
+    })
   );
 }
 
@@ -273,7 +287,9 @@ function migrateIntroducedTool(devDependencies: Record<string, string>, name: st
     return;
   }
   if (value !== current) {
-    throw new Error(`Cannot migrate devDependencies.${name} because it was customized; reconcile it with the Keenko tooling baseline first`);
+    throw new Error(
+      `Cannot migrate devDependencies.${name} because it was customized; reconcile it with the Keenko tooling baseline first`
+    );
   }
 }
 
@@ -282,7 +298,7 @@ function migrateKnownString(
   key: string,
   previousValues: Array<string | undefined>,
   current: string,
-  label: string,
+  label: string
 ) {
   const value = record[key];
   if (value === current) {
