@@ -64,7 +64,7 @@
   "scripts": {
     "keenko": "bun cli/keenko.ts",
     "format": "oxfmt .",
-    "format:check": "oxfmt . && git diff --exit-code -- tests/package-contract.test.ts tests/reviewer-fixes.test.ts",
+    "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "typecheck": "tsc --noEmit",
