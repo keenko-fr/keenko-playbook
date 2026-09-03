@@ -71,6 +71,14 @@ jobs:
           )
           source = source.replace('const first = relative.split("/")[0];', 'const [first] = relative.split("/");')
           source = source.replace(
+              '  if (relative === "apps/web/src/routeTree.gen.ts" || relative.startsWith("apps/web/src/paraglide/")) return true;',
+              '  if (relative === "apps/web/src/routeTree.gen.ts" || relative.startsWith("apps/web/src/paraglide/")) {\n    return true;\n  }'
+          )
+          source = source.replace(
+              '  if (relative.startsWith("packages/backend/confect/") && relative !== "packages/backend/confect/.gitkeep") return true;',
+              '  if (relative.startsWith("packages/backend/confect/") && relative !== "packages/backend/confect/.gitkeep") {\n    return true;\n  }'
+          )
+          source = source.replace(
               'async function generatedHashes(root: string) {',
               '// oxlint-disable eslint/no-await-in-loop -- Generated paths are read in stable order before hashing.\nasync function generatedHashes(root: string) {'
           )
@@ -109,18 +117,23 @@ jobs:
           source = source.replace('const first = relative.split("/")[0];', 'const [first] = relative.split("/");')
           source = source.replace('  deleteUndefined(scripts);\n  pkg.scripts = scripts;', '  pkg.scripts = withoutUndefined(scripts);')
           source = source.replace(
-              'function record(value: unknown, label: string): Record<string, any> {\n  if (value === null || typeof value !== "object" || Array.isArray(value)) {\n    throw new TypeError(`${label} must be an object`);\n  }\n  return value as Record<string, any>;\n}',
+              'function record(value: unknown, label: string): Record<string, any> {\n  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${label} must be an object`);\n  return value as Record<string, any>;\n}',
               'function record(value: unknown, label: string): Record<string, unknown> {\n  if (value === null || typeof value !== "object" || Array.isArray(value)) {\n    throw new TypeError(`${label} must be an object`);\n  }\n  return Object.fromEntries(Object.entries(value));\n}'
           )
           source = source.replace(
-              'function deleteUndefined(value: Record<string, any>) {\n  for (const [key, entry] of Object.entries(value)) {\n    if (entry === undefined) delete value[key];\n  }\n}',
+              'function deleteUndefined(value: Record<string, any>) {\n  for (const [key, entry] of Object.entries(value)) if (entry === undefined) delete value[key];\n}',
               'function withoutUndefined(value: Record<string, unknown>) {\n  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));\n}'
           )
           product.write_text(source)
           PY
       - run: bun run format
-      - run: bun run lint:fix
+      - run: bun run lint:fix || true
       - run: bun run format
+      - name: Inspect remaining lint context
+        run: |
+          nl -ba cli/keenko.ts | sed -n '250,280p'
+          nl -ba tests/packed-product.test.ts | sed -n '120,140p;205,235p'
+      - run: bun run lint
       - run: bun run check:release
         env:
           GITHUB_TOKEN: ${{ github.token }}
