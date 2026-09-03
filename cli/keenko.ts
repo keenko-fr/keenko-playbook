@@ -18,6 +18,8 @@ interface SemverApi {
   valid: (version: string) => string | null;
 }
 
+type ProjectScope = "scope:web" | "scope:backend" | "scope:ui" | "scope:shared";
+
 const PACKAGE_ROOT = packageRoot();
 const loadedSemver: unknown = createRequire(import.meta.url)("semver");
 if (!isSemverApi(loadedSemver)) {
@@ -295,7 +297,7 @@ async function verifyProjectDependencies() {
   }
 }
 
-function projectScope(tags: string[] | undefined) {
+function projectScope(tags: string[] | undefined): ProjectScope | null {
   for (const scope of ["scope:web", "scope:backend", "scope:ui", "scope:shared"] as const) {
     if (tags?.includes(scope) === true) {
       return scope;
@@ -304,16 +306,14 @@ function projectScope(tags: string[] | undefined) {
   return null;
 }
 
-function allowedProjectScopes(scope: "scope:web" | "scope:backend" | "scope:ui" | "scope:shared") {
-  switch (scope) {
-    case "scope:web":
-      return ["scope:backend", "scope:ui", "scope:shared"] as const;
-    case "scope:backend":
-    case "scope:ui":
-      return ["scope:shared"] as const;
-    case "scope:shared":
-      return [] as const;
-  }
+function allowedProjectScopes(scope: ProjectScope): readonly ProjectScope[] {
+  const allowed: Record<ProjectScope, readonly ProjectScope[]> = {
+    "scope:backend": ["scope:shared"],
+    "scope:shared": [],
+    "scope:ui": ["scope:shared"],
+    "scope:web": ["scope:backend", "scope:ui", "scope:shared"],
+  };
+  return allowed[scope];
 }
 
 async function verifyGeneratedCode(root: string) {
