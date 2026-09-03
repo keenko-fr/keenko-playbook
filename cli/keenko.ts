@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createProjectGraphAsync } from "@nx/devkit";
 import { FsTree } from "@nx/devkit/internal";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -110,10 +111,11 @@ async function check(args: string[]) {
   const tree = new FsTree(root, false);
   verifyGuidance(tree);
   await verifyTopology(root);
+  await verifyProjectDependencies();
   if (args.includes("--codegen")) {
     await verifyGeneratedCode(root);
   }
-  console.log("Keenko generated guidance, generated code, and workspace topology are valid.");
+  console.log("Keenko generated guidance, generated code, workspace topology, and project dependencies are valid.");
 }
 
 function printHelp() {
@@ -270,6 +272,47 @@ async function verifyTopology(root: string) {
   const actual = [...apps.map((name) => `apps/${name}`), ...packages.map((name) => `packages/${name}`)].toSorted();
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`Unexpected Keenko workspace topology: ${actual.join(", ")}`);
+  }
+}
+
+async function verifyProjectDependencies() {
+  const graph = await createProjectGraphAsync({ exitOnError: true });
+  for (const [source, dependencies] of Object.entries(graph.dependencies)) {
+    const sourceScope = projectScope(graph.nodes[source]?.data.tags);
+    if (sourceScope === null) {
+      continue;
+    }
+    const allowed = allowedProjectScopes(sourceScope);
+    for (const dependency of dependencies) {
+      if (dependency.target === source) {
+        continue;
+      }
+      const targetScope = projectScope(graph.nodes[dependency.target]?.data.tags);
+      if (targetScope !== null && !allowed.includes(targetScope)) {
+        throw new Error(`Forbidden Keenko project dependency: ${source} (${sourceScope}) -> ${dependency.target} (${targetScope})`);
+      }
+    }
+  }
+}
+
+function projectScope(tags: string[] | undefined) {
+  for (const scope of ["scope:web", "scope:backend", "scope:ui", "scope:shared"] as const) {
+    if (tags?.includes(scope) === true) {
+      return scope;
+    }
+  }
+  return null;
+}
+
+function allowedProjectScopes(scope: "scope:web" | "scope:backend" | "scope:ui" | "scope:shared") {
+  switch (scope) {
+    case "scope:web":
+      return ["scope:backend", "scope:ui", "scope:shared"] as const;
+    case "scope:backend":
+    case "scope:ui":
+      return ["scope:shared"] as const;
+    case "scope:shared":
+      return [] as const;
   }
 }
 
