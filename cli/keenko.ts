@@ -191,10 +191,7 @@ function explicitUpgradeTarget(args: string[]) {
     throw new Error("keenko upgrade accepts at most one exact target version");
   }
   const [target] = targets;
-  if (target === undefined) {
-    return;
-  }
-  if (!isExactVersion(target)) {
+  if (target !== undefined && !isExactVersion(target)) {
     throw new Error(`Keenko upgrade target must be an exact version such as 0.3.0 or 1.1.0-beta.1; found ${target}`);
   }
   return target;
