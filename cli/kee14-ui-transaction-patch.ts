@@ -32,8 +32,68 @@ if (!generator.includes(uiTsconfigNeedle)) {
   throw new Error("Expected UI tsconfig insertion point was not found");
 }
 generator = generator.replace(uiTsconfigNeedle, uiTsconfigReplacement);
-
 await writeFile(generatorPath, generator);
+
+const migrationPath = "src/migrations/normalize-check.ts";
+let migration = await readFile(migrationPath, "utf-8");
+const migrationConstants = 'const PREVIOUS_OXLINT = "1.80.0";\nconst CURRENT_OXLINT = "1.81.0";';
+const migrationConstantsReplacement = `${migrationConstants}\nconst PREVIOUS_EFFECT_TSGO = "0.38.0";\nconst CURRENT_EFFECT_TSGO = "0.39.1";\nconst PREVIOUS_EFFECT_PLUGIN = "0.11.0";\nconst CURRENT_EFFECT_PLUGIN = "0.12.0";`;
+if (!migration.includes(migrationConstants)) {
+  throw new Error("Expected migration tooling constants were not found");
+}
+migration = migration.replace(migrationConstants, migrationConstantsReplacement);
+const oxlintMigration = `  if (devDependencies.oxlint === PREVIOUS_OXLINT) devDependencies.oxlint = CURRENT_OXLINT;\n  else if (devDependencies.oxlint !== CURRENT_OXLINT) {\n    throw new Error("Cannot migrate devDependencies.oxlint because it was customized; reconcile it with the Keenko tooling baseline first");\n  }`;
+const coupledMigration = `${oxlintMigration}\n  migrateTool(devDependencies, "@effect/tsgo", PREVIOUS_EFFECT_TSGO, CURRENT_EFFECT_TSGO);\n  migrateTool(devDependencies, "oxlint-plugin-effect", PREVIOUS_EFFECT_PLUGIN, CURRENT_EFFECT_PLUGIN);`;
+if (!migration.includes(oxlintMigration)) {
+  throw new Error("Expected Oxlint migration block was not found");
+}
+migration = migration.replace(oxlintMigration, coupledMigration);
+const migrationHelperNeedle = 'function object(value: unknown, label: string): Record<string, unknown> {';
+const migrationHelper = `function migrateTool(devDependencies: Record<string, string>, name: string, previous: string, current: string) {\n  if (devDependencies[name] === previous) {\n    devDependencies[name] = current;\n    return;\n  }\n  if (devDependencies[name] !== current) {\n    throw new Error(\`Cannot migrate devDependencies.\${name} because it was customized; reconcile it with the Keenko tooling baseline first\`);\n  }\n}\n\n${migrationHelperNeedle}`;
+if (!migration.includes(migrationHelperNeedle)) {
+  throw new Error("Expected migration helper insertion point was not found");
+}
+migration = migration.replace(migrationHelperNeedle, migrationHelper);
+await writeFile(migrationPath, migration);
+
+const migrationTestPath = "tests/migrations.test.ts";
+let migrationTest = await readFile(migrationTestPath, "utf-8");
+const migrationCases = 'test.each([[oldest, "1.80.0"], [firstPass, "1.81.0"]] as const)("supports a pre-v1 baseline", (check, oxlint) => {';
+const migrationCasesReplacement =
+  'test.each([[oldest, "1.80.0", "0.38.0", "0.11.0"], [firstPass, "1.81.0", "0.39.1", "0.12.0"]] as const)("supports a pre-v1 baseline", (check, oxlint, effectTsgo, effectPlugin) => {';
+if (!migrationTest.includes(migrationCases)) {
+  throw new Error("Expected migration test cases were not found");
+}
+migrationTest = migrationTest.replace(migrationCases, migrationCasesReplacement);
+const migrationDeps = 'devDependencies: { oxlint },';
+const migrationDepsReplacement = 'devDependencies: { "@effect/tsgo": effectTsgo, oxlint, "oxlint-plugin-effect": effectPlugin },';
+if (!migrationTest.includes(migrationDeps)) {
+  throw new Error("Expected migration test dependency fixture was not found");
+}
+migrationTest = migrationTest.replace(migrationDeps, migrationDepsReplacement);
+const migrationAssertion = '    expect(migrated).toContain(\'"oxlint": "1.81.0"\');';
+const migrationAssertionReplacement = `${migrationAssertion}\n    expect(migrated).toContain('"@effect/tsgo": "0.39.1"');\n    expect(migrated).toContain('"oxlint-plugin-effect": "0.12.0"');`;
+if (!migrationTest.includes(migrationAssertion)) {
+  throw new Error("Expected migration assertion was not found");
+}
+migrationTest = migrationTest.replace(migrationAssertion, migrationAssertionReplacement);
+await writeFile(migrationTestPath, migrationTest);
+
+const productTestPath = "tests/packed-product.test.ts";
+let productTest = await readFile(productTestPath, "utf-8");
+const baselineDeps = '  const devDependencies = record(pkg.devDependencies, "baseline devDependencies");\n  devDependencies.oxlint = oxlint;\n  pkg.devDependencies = devDependencies;';
+const baselineDepsReplacement = `${baselineDeps}\n  if (oxlint === "1.80.0") {\n    devDependencies["@effect/tsgo"] = "0.38.0";\n    devDependencies["oxlint-plugin-effect"] = "0.11.0";\n  }`;
+if (!productTest.includes(baselineDeps)) {
+  throw new Error("Expected packed baseline dependency block was not found");
+}
+productTest = productTest.replace(baselineDeps, baselineDepsReplacement);
+const upgradedAssertion = '  expect(record(pkg.devDependencies, "upgraded devDependencies").oxlint).toBe("1.81.0");';
+const upgradedAssertionReplacement = `  const devDependencies = record(pkg.devDependencies, "upgraded devDependencies");\n  expect(devDependencies.oxlint).toBe("1.81.0");\n  expect(devDependencies["@effect/tsgo"]).toBe("0.39.1");\n  expect(devDependencies["oxlint-plugin-effect"]).toBe("0.12.0");`;
+if (!productTest.includes(upgradedAssertion)) {
+  throw new Error("Expected packed upgrade dependency assertion was not found");
+}
+productTest = productTest.replace(upgradedAssertion, upgradedAssertionReplacement);
+await writeFile(productTestPath, productTest);
 
 const pkg = JSON.parse(await readFile(packagePath, "utf-8")) as { scripts: Record<string, string> };
 pkg.scripts.format = "oxfmt .";
