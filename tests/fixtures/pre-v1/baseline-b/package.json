@@ -9,9 +9,9 @@
   "type": "module",
   "scripts": {
     "build": "nx run-many -t build",
-    "check": "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build",
+    "check": "bun run codegen:check && bun run test && bun run format:check && bun run lint && bun run typecheck && bun run build",
     "codegen": "nx run-many -t codegen",
-    "codegen:check": "keenko check --guidance",
+    "codegen:check": "keenko check --guidance --codegen",
     "custom": "node -e \"console.log('preserved')\"",
     "dev": "nx run @project/web:dev",
     "format": "oxfmt .",
@@ -19,6 +19,7 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "postinstall": "effect-tsgo patch --oxlint",
+    "test": "bun test --pass-with-no-tests",
     "typecheck": "nx run-many -t typecheck",
     "ui": "bun tools/keenko-ui.ts"
   },
