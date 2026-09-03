@@ -49,7 +49,7 @@ async function startRegistry(
       reject(error);
     });
     child.once("exit", (code) => {
-      reject(new Error(`Test registry exited before startup with code ${code ?? 1}`));
+      reject(new Error(\`Test registry exited before startup with code \${code ?? 1}\`));
     });
     child.stdout.once("data", (chunk) => {
       resolve(String(chunk).trim());
