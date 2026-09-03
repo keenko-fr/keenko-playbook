@@ -25,6 +25,14 @@ if (!generator.includes(backendOverrideNeedle)) {
 }
 generator = generator.replace(backendOverrideNeedle, `${uiOverride}${backendOverrideNeedle}`);
 
+const uiTsconfigNeedle = '  tree.write("packages/ui/tsconfig.json", packageTsconfig("src/**/*.ts", "src/**/*.tsx"));';
+const uiTsconfigReplacement =
+  '  tree.write("packages/ui/tsconfig.json", json({ compilerOptions: { composite: false, jsx: "react-jsx" }, extends: "../../tsconfig.json", include: ["src/**/*.ts", "src/**/*.tsx"] }));';
+if (!generator.includes(uiTsconfigNeedle)) {
+  throw new Error("Expected UI tsconfig insertion point was not found");
+}
+generator = generator.replace(uiTsconfigNeedle, uiTsconfigReplacement);
+
 await writeFile(generatorPath, generator);
 
 const pkg = JSON.parse(await readFile(packagePath, "utf-8")) as { scripts: Record<string, string> };
