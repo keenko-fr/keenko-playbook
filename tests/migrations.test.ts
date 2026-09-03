@@ -1,3 +1,4 @@
+import type { Tree } from "@nx/devkit";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { describe, expect, test } from "bun:test";
 
@@ -54,7 +55,7 @@ describe("Keenko migrations", () => {
       `${source.slice(0, start)}    "@nx/enforce-module-boundaries": ["error", { allow: ["custom/**"] }],\n${source.slice(end)}`
     );
 
-    await expect(normalizeCheck(tree)).rejects.toThrow("Keenko-owned rule was customized");
+    await expectMigrationFailure(tree, "Keenko-owned rule was customized");
   });
 
   test("rejects a customized Keenko shadcn wrapper", async () => {
@@ -64,11 +65,11 @@ describe("Keenko migrations", () => {
     expect(wrapper).toContain("shadcn@4.20.1");
     tree.write("tools/keenko-ui.ts", wrapper.replace("shadcn@4.20.1", "shadcn@4.20.0"));
 
-    await expect(normalizeCheck(tree)).rejects.toThrow("Keenko-owned shadcn wrapper was customized");
+    await expectMigrationFailure(tree, "Keenko-owned shadcn wrapper was customized");
   });
 });
 
-function downgradeBoundaryBridge(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
+function downgradeBoundaryBridge(tree: Tree) {
   const pkg = readJson(tree, "package.json");
   const devDependencies = record(pkg.devDependencies, "devDependencies");
   delete devDependencies["@nx/oxlint"];
@@ -87,22 +88,37 @@ function downgradeBoundaryBridge(tree: ReturnType<typeof createTreeWithEmptyWork
   tree.write("oxlint.config.ts", withoutBoundary.replace('"@nx/oxlint/boundaries-plugin", ', ""));
 }
 
-function snapshot(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
-  return Object.fromEntries(
-    tree
-      .listChanges()
-      .filter((change) => change.content !== null)
-      .map((change) => [change.path, change.content?.toString("utf-8")])
-      .toSorted(([left], [right]) => left.localeCompare(right))
-  );
+async function expectMigrationFailure(tree: Tree, message: string) {
+  let failure: unknown;
+  try {
+    await normalizeCheck(tree);
+  } catch (error) {
+    failure = error;
+  }
+  if (!(failure instanceof Error)) {
+    throw new TypeError("Expected migration to fail with an Error");
+  }
+  expect(failure.message).toContain(message);
 }
 
-function readJson(tree: ReturnType<typeof createTreeWithEmptyWorkspace>, path: string): Record<string, unknown> {
+function snapshot(tree: Tree): Record<string, string> {
+  const entries: [string, string][] = [];
+  for (const change of tree.listChanges()) {
+    if (change.content !== null) {
+      entries.push([change.path, change.content.toString("utf-8")]);
+    }
+  }
+  entries.sort(([left], [right]) => left.localeCompare(right));
+  return Object.fromEntries(entries);
+}
+
+function readJson(tree: Tree, path: string): Record<string, unknown> {
   const source = tree.read(path, "utf-8");
   if (source === null) {
     throw new Error(`Missing ${path}`);
   }
-  return record(JSON.parse(source), path);
+  const value: unknown = JSON.parse(source);
+  return record(value, path);
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {

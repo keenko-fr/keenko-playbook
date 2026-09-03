@@ -9,7 +9,11 @@ const NX = path.join(ROOT, "node_modules/nx/dist/bin/nx.js");
 const tempRoots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(tempRoots.splice(0).map(async (root) => await rm(root, { force: true, recursive: true })));
+  await Promise.all(
+    tempRoots.splice(0).map(async (root) => {
+      await rm(root, { force: true, recursive: true });
+    })
+  );
 });
 
 describe("Nx release publication", () => {
@@ -55,14 +59,14 @@ describe("Nx release publication", () => {
 
   test("the workflow keeps reviewed-SHA, attached-main, clean-tree, and exact-tag guards", async () => {
     const workflow = await readFile(path.join(ROOT, ".github/workflows/release.yml"), "utf-8");
-    expect(workflow).toContain('test "$(git rev-parse origin/main)" = "${{ inputs.expected_sha }}"');
-    expect(workflow).toContain('git checkout -B main "${{ inputs.expected_sha }}"');
+    expect(workflow).toContain(`test "$(git rev-parse origin/main)" = "\${{ inputs.expected_sha }}"`);
+    expect(workflow).toContain(`git checkout -B main "\${{ inputs.expected_sha }}"`);
     expect(workflow).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
     expect(workflow).toContain("bunx nx release version $first_release");
     expect(workflow).toContain('bunx nx release changelog "$version" $first_release');
     expect(workflow).toContain("--git-commit=false --git-tag=true --stage-changes=false --git-push=true");
     expect(workflow).toContain("git diff --cached --exit-code");
-    expect(workflow).toContain('test "$(git rev-list -n 1 "v${version}")" = "${{ inputs.expected_sha }}"');
+    expect(workflow).toContain(`test "$(git rev-list -n 1 "v\${version}")" = "\${{ inputs.expected_sha }}"`);
     expect(workflow).not.toContain("bunx nx release --skip-publish");
   });
 });
@@ -117,7 +121,7 @@ function nx(cwd: string, args: string[]) {
   return spawnSync("node", [NX, ...args], { cwd, encoding: "utf-8", env: { ...process.env, NX_DAEMON: "false" } });
 }
 
-function assertNxSuccess(result: ReturnType<typeof spawnSync>) {
+function assertNxSuccess(result: ReturnType<typeof nx>) {
   if (result.status !== 0) {
     throw new Error(output(result));
   }
@@ -131,7 +135,7 @@ function gitDir(gitDirPath: string, ...args: string[]) {
   return execFileSync("git", [`--git-dir=${gitDirPath}`, ...args], { encoding: "utf-8" }).trim();
 }
 
-function output(result: ReturnType<typeof spawnSync>) {
+function output(result: ReturnType<typeof nx>) {
   return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 }
 

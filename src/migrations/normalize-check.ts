@@ -296,7 +296,7 @@ function migrateIntroducedTool(devDependencies: Record<string, string>, name: st
 function migrateKnownString(
   record: Record<string, string>,
   key: string,
-  previousValues: Array<string | undefined>,
+  previousValues: (string | undefined)[],
   current: string,
   label: string
 ) {

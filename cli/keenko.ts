@@ -107,17 +107,19 @@ async function upgrade(args: string[]) {
 }
 
 async function formatUpgradeOwnedFiles(root: string) {
-  for (const relative of ["package.json", "oxlint.config.ts"]) {
-    const target = path.join(root, relative);
-    const source = await readFile(target, "utf-8");
-    const result = await format(relative, source, { printWidth: 140, sortImports: true, sortPackageJson: true });
-    if (result.errors.length > 0) {
-      throw new Error(`Cannot format upgraded ${relative}: ${result.errors.map(({ message }) => message).join(", ")}`);
-    }
-    if (result.code !== source) {
-      await writeFile(target, result.code);
-    }
-  }
+  await Promise.all(
+    ["package.json", "oxlint.config.ts"].map(async (relative) => {
+      const target = path.join(root, relative);
+      const source = await readFile(target, "utf-8");
+      const result = await format(relative, source, { printWidth: 140, sortImports: true, sortPackageJson: true });
+      if (result.errors.length > 0) {
+        throw new Error(`Cannot format upgraded ${relative}: ${result.errors.map(({ message }) => message).join(", ")}`);
+      }
+      if (result.code !== source) {
+        await writeFile(target, result.code);
+      }
+    })
+  );
 }
 
 async function check(args: string[]) {
@@ -298,8 +300,8 @@ async function verifyManifestDependencies(root: string) {
       const manifestPath = path.join(root, workspacePath, "package.json");
       const manifest = parseObject(await readFile(manifestPath, "utf-8"), manifestPath);
       const name = stringValue(manifest.name, `${workspacePath}/package.json.name`);
-      const nx = objectOrEmpty(manifest.nx, `${workspacePath}/package.json.nx`);
-      const tags = stringArray(nx.tags, `${workspacePath}/package.json.nx.tags`);
+      const nxConfig = objectOrEmpty(manifest.nx, `${workspacePath}/package.json.nx`);
+      const tags = stringArray(nxConfig.tags, `${workspacePath}/package.json.nx.tags`);
       const scope = projectScope(tags);
       if (scope === null) {
         throw new Error(`Missing Keenko scope tag in ${workspacePath}/package.json`);
