@@ -27,16 +27,23 @@ const helper = `type TestRegistry = {
 async function startRegistry(root: string, version: string, tarball: string, manifest: Record<string, unknown>): Promise<TestRegistry> {
   const statePath = path.join(root, "registry-state.json");
   const packages: Record<string, string> = { [version]: tarball };
-  const writeState = async () => writeFile(statePath, JSON.stringify({ manifest, packages }));
+  const writeState = () => writeFile(statePath, JSON.stringify({ manifest, packages }));
   await writeState();
 
   const child = spawn("bun", [path.join(ROOT, "tests/registry-server.ts"), statePath], {
     stdio: ["ignore", "pipe", "inherit"],
   });
+  // oxlint-disable-next-line promise/avoid-new -- Child-process startup is exposed through events.
   const origin = await new Promise<string>((resolve, reject) => {
-    child.once("error", reject);
-    child.once("exit", (code) => reject(new Error(\`Test registry exited before startup with code \${code ?? 1}\`)));
-    child.stdout.once("data", (chunk) => resolve(String(chunk).trim()));
+    child.once("error", (error) => {
+      reject(error);
+    });
+    child.once("exit", (code) => {
+      reject(new Error(\`Test registry exited before startup with code \${code ?? 1}\`));
+    });
+    child.stdout.once("data", (chunk) => {
+      resolve(String(chunk).trim());
+    });
   });
 
   return {
