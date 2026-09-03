@@ -27,7 +27,7 @@ const helper = `type TestRegistry = {
 async function startRegistry(root: string, version: string, tarball: string, manifest: Record<string, unknown>): Promise<TestRegistry> {
   const statePath = path.join(root, "registry-state.json");
   const packages: Record<string, string> = { [version]: tarball };
-  const writeState = () => writeFile(statePath, JSON.stringify({ manifest, packages }));
+  const writeState = async () => await writeFile(statePath, JSON.stringify({ manifest, packages }));
   await writeState();
 
   const child = spawn("bun", [path.join(ROOT, "tests/registry-server.ts"), statePath], {
@@ -47,9 +47,9 @@ async function startRegistry(root: string, version: string, tarball: string, man
   });
 
   return {
-    add(packageVersion, packageTarball) {
+    async add(packageVersion, packageTarball) {
       packages[packageVersion] = packageTarball;
-      return writeState();
+      return await writeState();
     },
     env: { BUN_CONFIG_REGISTRY: origin, NPM_CONFIG_REGISTRY: origin },
     stop() {
