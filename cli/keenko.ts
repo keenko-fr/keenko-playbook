@@ -18,7 +18,11 @@ interface SemverApi {
 }
 
 const PACKAGE_ROOT = packageRoot();
-const semver = createRequire(import.meta.url)("semver") as SemverApi;
+const loadedSemver: unknown = createRequire(import.meta.url)("semver");
+if (!isSemverApi(loadedSemver)) {
+  throw new TypeError("Loaded semver package does not expose the required API");
+}
+const semver = loadedSemver;
 
 async function main() {
   const [command = "help", ...args] = process.argv.slice(2);
@@ -225,6 +229,21 @@ function registryVersionForMajor(installed: string) {
 
 function isExactVersion(value: string) {
   return semver.valid(value) === value && !value.includes("+");
+}
+
+function isSemverApi(value: unknown): value is SemverApi {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "compare" in value &&
+    typeof value.compare === "function" &&
+    "major" in value &&
+    typeof value.major === "function" &&
+    "prerelease" in value &&
+    typeof value.prerelease === "function" &&
+    "valid" in value &&
+    typeof value.valid === "function"
+  );
 }
 
 function requireCleanGit(root: string) {
