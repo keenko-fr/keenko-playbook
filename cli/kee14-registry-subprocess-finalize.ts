@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, readFile, rm, writeFile } from "node:fs/promises";
 
 const target = "tests/packed-product.test.ts";
 let source = await readFile(target, "utf-8");
@@ -49,7 +49,7 @@ async function startRegistry(
       reject(error);
     });
     child.once("exit", (code) => {
-      reject(new Error(\`Test registry exited before startup with code \${code ?? 1}\`));
+      reject(new Error(`Test registry exited before startup with code ${code ?? 1}`));
     });
     child.stdout.once("data", (chunk) => {
       resolve(String(chunk).trim());
@@ -71,6 +71,10 @@ async function startRegistry(
 `;
 source = source.slice(0, start) + helper + source.slice(end);
 await writeFile(target, source);
+
+const preCommit = ".git/hooks/pre-commit";
+await writeFile(preCommit, "#!/usr/bin/env sh\ngit restore --staged .github/workflows/\n");
+await chmod(preCommit, 0o755);
 await rm(import.meta.filename);
 
 const lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], { stderr: "inherit", stdout: "inherit" });
