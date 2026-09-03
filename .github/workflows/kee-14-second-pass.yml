@@ -24,6 +24,15 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
+      - name: Repair staging-script escaping
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("cli/kee14-second-pass.ts")
+          source = path.read_text()
+          source = source.replace(r"Read \\`references/upstream/SKILL.md\\`", "Read references/upstream/SKILL.md")
+          path.write_text(source)
+          PY
       - name: Apply KEE-14 second pass
         run: |
           bun cli/kee14-second-pass.ts
