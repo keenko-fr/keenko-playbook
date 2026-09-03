@@ -50,6 +50,8 @@ jobs:
           bun cli/kee14-second-pass.ts
           bun cli/kee14-second-pass.ts --finalize
       - run: bun run format
+      - run: bun run lint:fix
+      - run: bun run format
       - run: bun run check:release
         env:
           GITHUB_TOKEN: ${{ github.token }}
