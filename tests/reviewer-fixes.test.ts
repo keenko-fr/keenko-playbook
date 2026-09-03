@@ -1,0 +1,117 @@
+import { expect, test } from "bun:test";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const ROOT = path.resolve(import.meta.dir, "..");
+
+test("packed Keenko enforces release-reviewer contracts through the production CLI", async () => {
+  const temp = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? "/tmp", "keenko-reviewer-fixes-"));
+  try {
+    const packDir = path.join(temp, "pack");
+    await mkdir(packDir);
+    const tarballName = runOut("npm", ["pack", "--pack-destination", packDir, "--silent"], ROOT).trim().split("\n").at(-1);
+    if (tarballName === undefined) {
+      throw new Error("npm pack did not return a tarball name");
+    }
+    const tarball = path.join(packDir, tarballName);
+    const runner = path.join(temp, "runner");
+    await mkdir(runner);
+    await writeFile(path.join(runner, "package.json"), JSON.stringify({ dependencies: { keenko: `file:${tarball}` }, private: true }, null, 2));
+    run("bun", ["install"], runner);
+    const cli = path.join(runner, "node_modules/keenko/dist/cli/keenko.js");
+
+    const project = path.join(temp, "project");
+    run("node", [cli, "create", project], runner, { KEENKO_PACKAGE_SPEC: `file:${tarball}` });
+    expect(runOut("git", ["branch", "--show-current"], project).trim()).toBe("main");
+    expect(spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd: project, encoding: "utf-8" }).status).not.toBe(0);
+    expect(object(JSON.parse(await readFile(path.join(project, "nx.json"), "utf-8"))).defaultBase).toBe("main");
+    expect(await readFile(path.join(project, ".github/workflows/ci.yml"), "utf-8")).toContain("branches: [main]");
+
+    const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
+    const installedManifest = path.join(project, "node_modules/keenko/package.json");
+    const originalInstalled = await readFile(installedManifest, "utf-8");
+    expect(runOut("node", [projectCli, "upgrade", object(JSON.parse(originalInstalled)).version as string], project)).toContain("already installed");
+    await expectForward(project, projectCli, installedManifest, "1.0.0", "1.0.1");
+    await expectForward(project, projectCli, installedManifest, "1.0.0-beta.2", "1.0.0-beta.10");
+    await expectForward(project, projectCli, installedManifest, "1.0.0-beta.2", "1.0.0-beta.alpha");
+    await expectForward(project, projectCli, installedManifest, "1.0.0-A", "1.0.0-a");
+    await expectDowngrade(project, projectCli, installedManifest, "1.0.1", "1.0.0");
+    await expectDowngrade(project, projectCli, installedManifest, "1.0.0-a", "1.0.0-A");
+    await writeFile(installedManifest, originalInstalled);
+
+    const sharedManifestPath = path.join(project, "packages/shared/package.json");
+    const originalShared = await readFile(sharedManifestPath, "utf-8");
+    const webName = string(object(JSON.parse(await readFile(path.join(project, "apps/web/package.json"), "utf-8"))).name, "web name");
+    for (const field of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const) {
+      const shared = object(JSON.parse(originalShared));
+      const dependencies = object(shared[field] ?? {});
+      dependencies[webName] = "workspace:*";
+      shared[field] = dependencies;
+      await writeFile(sharedManifestPath, `${JSON.stringify(shared, null, 2)}\n`);
+      expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain("enforce-module-boundaries");
+      await writeFile(sharedManifestPath, originalShared);
+    }
+
+    const forbiddenImport = path.join(project, "packages/shared/src/forbidden.ts");
+    await writeFile(forbiddenImport, `import "${webName}";\n`);
+    expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain("enforce-module-boundaries");
+    await unlink(forbiddenImport);
+    run("bun", ["run", "lint"], project, { NX_DAEMON: "false" });
+
+    const agentsPath = path.join(project, "AGENTS.md");
+    const agents = await readFile(agentsPath, "utf-8");
+    await writeFile(agentsPath, `${agents.trim()}\n\n<!-- keenko:start -->\nstale duplicate\n<!-- keenko:end -->\n`);
+    expect(runFailure("node", [projectCli, "check", "--guidance"], project)).toContain("expected exactly one");
+    await writeFile(agentsPath, agents);
+    run("node", [projectCli, "check", "--guidance"], project);
+  } finally {
+    await rm(temp, { force: true, recursive: true });
+  }
+}, 240_000);
+
+async function expectForward(project: string, cli: string, manifest: string, installed: string, target: string) {
+  await setInstalledVersion(manifest, installed);
+  expect(runOut("node", [cli, "upgrade", target, "--dry-run"], project)).toContain(`${installed} -> ${target}`);
+}
+
+async function expectDowngrade(project: string, cli: string, manifest: string, installed: string, target: string) {
+  await setInstalledVersion(manifest, installed);
+  expect(runFailure("node", [cli, "upgrade", target, "--dry-run"], project)).toContain("does not support automated downgrades");
+}
+
+async function setInstalledVersion(manifestPath: string, version: string) {
+  const manifest = object(JSON.parse(await readFile(manifestPath, "utf-8")));
+  manifest.version = version;
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function run(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
+  execFileSync(command, args, { cwd, env: { ...process.env, ...extraEnv }, stdio: "inherit" });
+}
+
+function runOut(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
+  return execFileSync(command, args, { cwd, encoding: "utf-8", env: { ...process.env, ...extraEnv } });
+}
+
+function runFailure(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
+  const result = spawnSync(command, args, { cwd, encoding: "utf-8", env: { ...process.env, ...extraEnv } });
+  if (result.status === 0) {
+    throw new Error(`Expected ${command} ${args.join(" ")} to fail`);
+  }
+  return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+}
+
+function object(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Expected object");
+  }
+  return Object.fromEntries(Object.entries(value));
+}
+
+function string(value: unknown, label: string) {
+  if (typeof value !== "string") {
+    throw new TypeError(`${label} must be a string`);
+  }
+  return value;
+}
