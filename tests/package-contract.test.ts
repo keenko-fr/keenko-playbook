@@ -5,7 +5,6 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const EXPECTED_SHA = `\${{ inputs.expected_sha }}`;
-const VERSION = `\${version}`;
 const REPOSITORY = {
   type: "git",
   url: "git+https://github.com/keenko-fr/keenko-playbook.git",
@@ -61,7 +60,7 @@ describe("public package contract", () => {
     expect(release).toContain("git branch --set-upstream-to=origin/main main");
     expect(release).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
     expect(release).toContain(`test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"`);
-    expect(release).toContain(`test "$(git rev-list -n 1 "v${VERSION}")" = "${EXPECTED_SHA}"`);
+    expect(release).toContain(`run: bun cli/release-tag.ts "${EXPECTED_SHA}"`);
     expect(release).toContain("id-token: write");
     expect(release).toContain("registry-url: https://registry.npmjs.org");
     expect(release).toContain("NPM_CONFIG_PROVENANCE: true");
