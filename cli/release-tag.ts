@@ -172,7 +172,7 @@ function localTagCommit(root: string, tag: string) {
     return null;
   }
   if (result.status !== 0) {
-    throw new Error(`git show-ref failed while inspecting ${reference}: ${String(result.stderr ?? "").trim()}`);
+    throw new Error(`git show-ref failed while inspecting ${reference}: ${(result.stderr ?? "").trim()}`);
   }
   return git(root, "rev-list", "-n", "1", tag);
 }
@@ -193,7 +193,7 @@ function remoteTagCommits(root: string) {
       direct.set(rawTag, sha);
     }
   }
-  return new Map([...direct.keys()].map((tag) => [tag, peeled.get(tag) ?? direct.get(tag)!]));
+  return new Map([...direct.entries()].map(([tag, sha]) => [tag, peeled.get(tag) ?? sha]));
 }
 
 function conflictingTagError(location: string, tag: string, expectedSha: string, actualSha: string) {
