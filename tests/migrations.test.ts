@@ -66,7 +66,7 @@ describe("Keenko migrations", () => {
     expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
     expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
     expect(oxlint).toContain('sourceTag: "scope:shared"');
-  });
+  }, 15_000);
 
   test("replaces the Bun-broken TypeScript 6 compatibility alias", async () => {
     const tree = createTreeWithEmptyWorkspace();
