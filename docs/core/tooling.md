@@ -27,22 +27,24 @@ Do not duplicate formatter rules or TypeScript compiler diagnostics merely for c
 
 Tooling that can change accepted source or diagnostics is exact-pinned and upgraded as a reviewed convention change. The v1 baseline is:
 
-| Scope                | Package                | Version/specifier                   |
-| -------------------- | ---------------------- | ----------------------------------- |
-| Application compiler | `@typescript/native`   | `npm:typescript@7.0.2`              |
-| Nx compatibility API | `typescript`           | `npm:@typescript/typescript6@6.0.2` |
-| Nx release actions   | `@nx/js`               | `23.2.0`                            |
-| Nx boundary bridge   | `@nx/oxlint`           | `23.2.0`                            |
-| Universal            | `ultracite`            | `7.10.7`                            |
-| Universal            | `oxfmt`                | `0.65.0`                            |
-| Universal            | `oxlint`               | `1.81.0`                            |
-| Universal            | `oxlint-tsgolint`      | `7.0.2001`                          |
-| Effect module        | `@effect/tsgo`         | `0.39.1`                            |
-| Effect module        | `oxlint-plugin-effect` | `0.12.0`                            |
+| Scope                | Package                | Version/specifier      |
+| -------------------- | ---------------------- | ---------------------- |
+| Application compiler | `@typescript/native`   | `npm:typescript@7.0.2` |
+| Nx compatibility API | `typescript`           | `6.0.2`                |
+| Nx release actions   | `@nx/js`               | `23.2.0`               |
+| Nx boundary bridge   | `@nx/oxlint`           | `23.2.0`               |
+| Universal            | `ultracite`            | `7.10.7`               |
+| Universal            | `oxfmt`                | `0.65.0`               |
+| Universal            | `oxlint`               | `1.81.0`               |
+| Universal            | `oxlint-tsgolint`      | `7.0.2001`             |
+| Effect module        | `@effect/tsgo`         | `0.39.1`               |
+| Effect module        | `oxlint-plugin-effect` | `0.12.0`               |
 
 The Effect tooling is a compatibility unit: before upgrading `@effect/tsgo`, verify its current first-party supported TypeScript, Oxlint, and `oxlint-tsgolint` versions and move the coupled pins together. Re-check `oxlint-plugin-effect` at the same time because its preset and overlap with Effect tsgo are versioned compatibility data.
 
-TypeScript 7 remains the application compiler/tooling decision. The root and each generated workspace package carry the same side-by-side aliases: `@typescript/native` supplies the pinned TypeScript 7 `tsc` binary, while the package name `typescript` deliberately resolves to the published TypeScript 6 API required by the pinned Nx/Oxlint boundary bridge. The aliases must exist at each workspace boundary because the Oxlint JavaScript plugin can resolve dependencies from the linted workspace context; a package-local `typescript` pointing at TypeScript 7 can otherwise bypass the root compatibility alias and make Nx call compiler APIs that TypeScript 7 no longer exports. This is a narrow temporary compatibility workaround, not the repository language level. Remove the package-local and root aliases together only when a verified Nx/`@nx/oxlint` pairing consumes the TypeScript 7 API directly.
+TypeScript 7 remains the application compiler decision. A generated project carries `@typescript/native = npm:typescript@7.0.2` and a direct `typescript = 6.0.2` dependency at the root and at each workspace package boundary. Package `build` and `typecheck` scripts invoke the native compiler explicitly through `node ../../node_modules/@typescript/native/bin/tsc --noEmit`; Nx/Oxlint can continue to import the package name `typescript` and receive the TypeScript 6 programmatic API it requires.
+
+Do not replace the direct TypeScript 6 dependency with `typescript = npm:@typescript/typescript6@6.0.2` while Bun 1.4.0 remains the minimum/reference package manager. That official compatibility package re-exports a nested `npm:` alias, and Bun 1.4.0 can resolve that nested alias back to the wrapper package. The result is an incomplete TypeScript module and Nx failures such as `tsModule.readConfigFile is not a function`. This is a package-manager compatibility workaround, not the repository language level. Remove the direct TypeScript 6 API dependency only when a verified Bun/Nx/Oxlint pairing can use the official compatibility alias safely or Nx consumes the TypeScript 7 API directly.
 
 ## Root configuration and monorepos
 
