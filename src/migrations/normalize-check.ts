@@ -14,8 +14,10 @@ const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
 const CURRENT_TEST = "bun test --pass-with-no-tests";
 const PREVIOUS_TYPESCRIPT = "7.0.2";
 const PREVIOUS_WEB_TYPESCRIPT = "6.0.2";
-const CURRENT_TYPESCRIPT = "npm:@typescript/typescript6@6.0.2";
+const PREVIOUS_TYPESCRIPT_ALIAS = "npm:@typescript/typescript6@6.0.2";
+const CURRENT_TYPESCRIPT = "6.0.2";
 const CURRENT_TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
+const CURRENT_TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 const CURRENT_NX_OXLINT = "23.2.0";
 const PREVIOUS_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate";
 const CURRENT_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate";
@@ -136,7 +138,13 @@ function migrateRootPackage(tree: Tree) {
   }
   migrateIntroducedTool(devDependencies, "@nx/oxlint", CURRENT_NX_OXLINT);
   migrateIntroducedTool(devDependencies, "@typescript/native", CURRENT_TYPESCRIPT_NATIVE);
-  migrateKnownString(devDependencies, "typescript", [PREVIOUS_TYPESCRIPT], CURRENT_TYPESCRIPT, "package.json devDependencies.typescript");
+  migrateKnownString(
+    devDependencies,
+    "typescript",
+    [PREVIOUS_TYPESCRIPT, PREVIOUS_TYPESCRIPT_ALIAS],
+    CURRENT_TYPESCRIPT,
+    "package.json devDependencies.typescript"
+  );
 
   pkg.scripts = scripts;
   pkg.devDependencies = devDependencies;
@@ -149,9 +157,24 @@ function migrateWorkspaceTypescript(tree: Tree, file: string, previousTypescript
   if (devDependencies === undefined) {
     throw new Error(`Cannot migrate ${file} devDependencies because the Keenko baseline is missing`);
   }
+  const scripts = stringRecord(pkg.scripts, `${file}.scripts`);
+  if (scripts === undefined) {
+    throw new Error(`Cannot migrate ${file} scripts because the Keenko baseline is missing`);
+  }
   migrateIntroducedTool(devDependencies, "@typescript/native", CURRENT_TYPESCRIPT_NATIVE);
-  migrateKnownString(devDependencies, "typescript", [previousTypescript], CURRENT_TYPESCRIPT, `${file} devDependencies.typescript`);
+  migrateKnownString(
+    devDependencies,
+    "typescript",
+    [previousTypescript, PREVIOUS_TYPESCRIPT_ALIAS],
+    CURRENT_TYPESCRIPT,
+    `${file} devDependencies.typescript`
+  );
+  migrateKnownString(scripts, "typecheck", ["tsc --noEmit"], CURRENT_TYPESCRIPT_NATIVE_TSC, `${file} scripts.typecheck`);
+  if (file !== "apps/web/package.json") {
+    migrateKnownString(scripts, "build", ["tsc --noEmit"], CURRENT_TYPESCRIPT_NATIVE_TSC, `${file} scripts.build`);
+  }
   pkg.devDependencies = devDependencies;
+  pkg.scripts = scripts;
   writeJson(tree, file, pkg);
 }
 
