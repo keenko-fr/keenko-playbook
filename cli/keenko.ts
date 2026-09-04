@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { FsTree } from "@nx/devkit/internal";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -111,6 +111,15 @@ async function upgrade(args: string[]) {
   await formatUpgradeOwnedFiles(root);
   await nx(["generate", "keenko:sync", "--no-interactive"], root);
   await run("bun", ["run", "codegen"], root);
+  const lint = spawnSync("bun", ["x", "oxlint", ".", "--format", "json"], {
+    cwd: root,
+    encoding: "utf-8",
+    env: process.env,
+  });
+  if (lint.status !== 0) {
+    console.log(`keenko-oxlint-json:${lint.stdout}`);
+    console.error(lint.stderr);
+  }
   await rm(path.join(root, "migrations.json"), { force: true });
   console.log(`Upgraded Keenko to ${target}. Review the Git diff before committing.`);
 }
