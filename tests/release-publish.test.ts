@@ -64,12 +64,13 @@ describe("Nx release publication", () => {
   test("the workflow uses the programmatic tag helper instead of a no-diff changelog replay", async () => {
     const workflow = await readFile(path.join(ROOT, ".github/workflows/release.yml"), "utf-8");
     const helper = await readFile(RELEASE_TAG, "utf-8");
-    expect(workflow).toContain(`test "$(git rev-parse origin/main)" = "\${{ inputs.expected_sha }}"`);
-    expect(workflow).toContain(`git checkout -B main "\${{ inputs.expected_sha }}"`);
+    const expectedShaExpression = `\${{ inputs.expected_sha }}`;
+    expect(workflow).toContain(`test "$(git rev-parse origin/main)" = "${expectedShaExpression}"`);
+    expect(workflow).toContain(`git checkout -B main "${expectedShaExpression}"`);
     expect(workflow).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
     expect(workflow).toContain("bunx nx release version $first_release");
     expect(workflow).toContain('bunx nx release changelog "$version" $first_release');
-    expect(workflow).toContain('run: bun cli/release-tag.ts "\${{ inputs.expected_sha }}"');
+    expect(workflow).toContain(`run: bun cli/release-tag.ts "${expectedShaExpression}"`);
     expect(workflow).toContain("bunx nx release publish $first_release");
     expect(workflow).not.toContain("--create-release=github");
     expect(workflow).not.toContain('release changelog "$version" --git-commit=false');
@@ -161,7 +162,7 @@ function gitDir(gitDirPath: string, ...args: string[]) {
 }
 
 function output(result: ReturnType<typeof nx> | ReturnType<typeof spawnSync>) {
-  return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  return `${String(result.stdout ?? "")}\n${String(result.stderr ?? "")}`;
 }
 
 async function exists(target: string) {

@@ -43,8 +43,12 @@ const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     const state = await readState();
+    const packageEntry = Object.entries(state.packages).find(
+      ([name]) => url.pathname === `/${name}` || url.pathname === `/${name}/` || url.pathname.startsWith(`/${name}/`)
+    );
 
-    for (const [name, packageState] of Object.entries(state.packages)) {
+    if (packageEntry !== undefined) {
+      const [name, packageState] = packageEntry;
       if (url.pathname === `/${name}` || url.pathname === `/${name}/`) {
         const versions = Object.fromEntries(
           await Promise.all(

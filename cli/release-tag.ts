@@ -23,10 +23,10 @@ async function main() {
   }
 
   const packageJson = parseObject(await readFile(path.join(root, "package.json"), "utf-8"), "package.json");
-  if (typeof packageJson.version !== "string" || packageJson.version.length === 0) {
+  const { version } = packageJson;
+  if (typeof version !== "string" || version.length === 0) {
     throw new Error("package.json.version must contain the reviewed release version");
   }
-  const version = packageJson.version;
   const changelogPath = path.join(root, "CHANGELOG.md");
   const changelogBefore = await readFile(changelogPath, "utf-8");
   const tagsBefore = gitTags(root);

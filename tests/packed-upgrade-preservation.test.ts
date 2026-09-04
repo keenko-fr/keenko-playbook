@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
@@ -88,7 +88,8 @@ test("packed historical upgrades preserve project customizations and unrelated l
         },
       },
     });
-    const visibleFixture = object(await (await fetch(`${registry.origin}/${PROJECT_DEPENDENCY}`)).json(), "project dependency packument");
+    const fixtureResponse = await fetch(`${registry.origin}/${PROJECT_DEPENDENCY}`);
+    const visibleFixture = object(await fixtureResponse.json(), "project dependency packument");
     expect(Object.keys(object(visibleFixture.versions, "project dependency versions"))).toEqual(["1.0.1", "1.0.2"]);
 
     const upgradeEnv = { ...registry.env, BUN_INSTALL_CACHE_DIR: path.join(temp, "bun-cache-upgrade") };
@@ -140,7 +141,7 @@ interface TestRegistry {
 async function makeBaseline(
   cli: string,
   target: string,
-  installedVersion: string,
+  expectedVersion: string,
   packageTarball: string,
   registryEnv: Record<string, string>,
   customize: boolean
@@ -186,9 +187,9 @@ async function makeBaseline(
 
   run("bun", ["install"], target, registryEnv);
   run("bun", ["run", "codegen"], target);
-  expect(await installedVersion(target, "keenko")).toBe(installedVersion);
+  expect(await installedVersion(target, "keenko")).toBe(expectedVersion);
   expect(await installedVersion(target, PROJECT_DEPENDENCY)).toBe("1.0.1");
-  gitCommitAll(target, `fixture ${installedVersion}`);
+  gitCommitAll(target, `fixture ${expectedVersion}`);
   return customizations;
 }
 
@@ -238,9 +239,11 @@ async function assertCustomizationMatrix(root: string, expected: CustomizationSn
   expect(oxlint).toContain('"eslint/no-console": "off"');
   expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
   expect(await readFile(path.join(root, "packages/shared/src/project-owned.ts"), "utf-8")).toBe(PROJECT_SOURCE);
-  for (const [relative, content] of Object.entries(PROJECT_DOCUMENTS)) {
-    expect(await readFile(path.join(root, relative), "utf-8")).toBe(content);
-  }
+  await Promise.all(
+    Object.entries(PROJECT_DOCUMENTS).map(async ([relative, content]) => {
+      expect(await readFile(path.join(root, relative), "utf-8")).toBe(content);
+    })
+  );
 
   await assertRoutingFile(root, "AGENTS.md", expected.agents, canonical.agents);
   await assertRoutingFile(root, "CLAUDE.md", expected.claude, canonical.claude);
@@ -259,7 +262,7 @@ async function assertRoutingFile(root: string, file: string, expected: RoutingEx
 function managedParts(source: string) {
   const start = source.indexOf(START);
   const end = source.indexOf(END);
-  if (start < 0 || end < start || occurrences(source, START) !== 1 || occurrences(source, END) !== 1) {
+  if (start === -1 || end === -1 || end < start || occurrences(source, START) !== 1 || occurrences(source, END) !== 1) {
     throw new Error("Expected exactly one Keenko managed block");
   }
   const blockEnd = end + END.length;
@@ -420,8 +423,4 @@ function string(value: unknown, label: string) {
     throw new TypeError(`${label} must be a string`);
   }
   return value;
-}
-
-async function exists(target: string) {
-  return (await stat(target).catch(() => null)) !== null;
 }
