@@ -45,17 +45,19 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     const rootDevDependencies = object(rootManifest.devDependencies);
     expect(rootDevDependencies.typescript).toBe(TYPESCRIPT_API);
     expect(rootDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
-    for (const file of WORKSPACE_MANIFESTS) {
-      const workspace = object(JSON.parse(await readFile(path.join(project, file), "utf-8")));
-      const devDependencies = object(workspace.devDependencies);
-      const scripts = object(workspace.scripts);
-      expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
-      expect(devDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
-      expect(scripts.typecheck).toBe(TYPESCRIPT_NATIVE_TSC);
-      if (file !== "apps/web/package.json") {
-        expect(scripts.build).toBe(TYPESCRIPT_NATIVE_TSC);
-      }
-    }
+    await Promise.all(
+      WORKSPACE_MANIFESTS.map(async (file) => {
+        const workspace = object(JSON.parse(await readFile(path.join(project, file), "utf-8")));
+        const devDependencies = object(workspace.devDependencies);
+        const scripts = object(workspace.scripts);
+        expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
+        expect(devDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+        expect(scripts.typecheck).toBe(TYPESCRIPT_NATIVE_TSC);
+        if (file !== "apps/web/package.json") {
+          expect(scripts.build).toBe(TYPESCRIPT_NATIVE_TSC);
+        }
+      })
+    );
 
     const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
     const installedManifest = path.join(project, "node_modules/keenko/package.json");
