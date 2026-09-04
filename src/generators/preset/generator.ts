@@ -452,6 +452,7 @@ async function formatAuthoredFiles(tree: Tree) {
         printWidth: 140,
         sortImports: true,
         sortPackageJson: true,
+        trailingComma: "es5",
       });
       if (result.errors.length > 0) {
         throw new Error(`Oxfmt could not format generated ${change.path}: ${result.errors.map(({ message }) => message).join(", ")}`);
