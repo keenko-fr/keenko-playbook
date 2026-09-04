@@ -9,7 +9,7 @@ const BASELINE_B_COMMIT = "6303870d1ad0e10a7ef9894ddf6f8e717f467ad3";
 const PROJECT_DEPENDENCY = "keenko-project-fixture";
 const START = "<!-- keenko:start -->";
 const END = "<!-- keenko:end -->";
-const PROJECT_SOURCE = 'export type ProjectOwnedMarker = { readonly preserved: true };\n';
+const PROJECT_SOURCE = "export type ProjectOwnedMarker = { readonly preserved: true };\n";
 const PROJECT_DOCUMENTS = {
   "CONTEXT.md": "# Project context\n\nProject-owned context must survive a Keenko upgrade byte-for-byte.\n",
   "docs/project/architecture.md": "# Project architecture\n\nProject-owned architecture decision: preserve-this-architecture.\n",
@@ -212,12 +212,7 @@ async function baselineSnapshot(root: string): Promise<BaselineSnapshot> {
   };
 }
 
-async function assertUpgradedBaseline(
-  root: string,
-  before: BaselineSnapshot,
-  currentVersion: string,
-  registryEnv: Record<string, string>
-) {
+async function assertUpgradedBaseline(root: string, before: BaselineSnapshot, currentVersion: string, registryEnv: Record<string, string>) {
   const pkg = json(await readFile(path.join(root, "package.json"), "utf-8"));
   const dependencies = recordOrEmpty(pkg.dependencies, "upgraded dependencies");
   const devDependencies = recordOrEmpty(pkg.devDependencies, "upgraded devDependencies");
@@ -294,10 +289,7 @@ async function historicalTarball(root: string, commit: string, version: string, 
   try {
     await symlink(path.join(ROOT, "node_modules"), path.join(worktree, "node_modules"), process.platform === "win32" ? "junction" : "dir");
     run("bun", ["run", "build"], worktree);
-    const name = runOut("npm", ["pack", "--ignore-scripts", "--pack-destination", packDir, "--silent"], worktree)
-      .trim()
-      .split("\n")
-      .at(-1);
+    const name = runOut("npm", ["pack", "--ignore-scripts", "--pack-destination", packDir, "--silent"], worktree).trim().split("\n").at(-1);
     if (name === undefined) {
       throw new Error(`npm pack did not return a tarball name for ${commit}`);
     }

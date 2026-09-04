@@ -48,7 +48,9 @@ const server = Bun.serve({
       if (url.pathname === `/${name}` || url.pathname === `/${name}/`) {
         const versions = Object.fromEntries(
           await Promise.all(
-            Object.keys(packageState.versions).map(async (version) => [version, await versionManifest(name, packageState, version)] as const)
+            Object.keys(packageState.versions).map(
+              async (version) => [version, await versionManifest(name, packageState, version)] as const
+            )
           )
         );
         return Response.json({ "dist-tags": { latest: Object.keys(packageState.versions).at(-1) }, name, versions });

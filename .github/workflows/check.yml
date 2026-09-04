@@ -25,7 +25,4 @@ jobs:
       - name: Release-grade check
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          bun run format
-          git diff -- cli/keenko.ts cli/release-tag.ts tests/packed-upgrade-preservation.test.ts tests/upgrade-registry-server.ts
-          exit 1
+        run: bun run check:release
