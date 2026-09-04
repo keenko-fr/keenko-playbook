@@ -98,6 +98,7 @@ async function upgrade(args: string[]) {
   await nx(["migrate", spec, `--from=keenko@${installed}`, "--interactive=false", "--no-agentic", "--skip-install"], root);
   await run("bun", ["install", "--ignore-scripts"], root);
   await nx(["migrate", "--run-migrations", "--if-exists", "--no-agentic"], root);
+  await rm(path.join(root, "bun.lock"), { force: true });
   await rm(path.join(root, "node_modules"), { force: true, recursive: true });
   await run("bun", ["install"], root);
   await formatUpgradeOwnedFiles(root);
