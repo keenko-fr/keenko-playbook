@@ -57,7 +57,7 @@ test("packed Keenko enforces release-reviewer contracts through the production C
       "node",
       [
         "-e",
-        'const ts = require("typescript"); console.log(`${require.resolve("typescript")}|${typeof ts.readConfigFile}|${ts.version}`);',
+        'const ts = require("typescript"); console.log(require.resolve("typescript") + "|" + typeof ts.readConfigFile + "|" + ts.version);',
       ],
       project
     );
@@ -66,7 +66,7 @@ test("packed Keenko enforces release-reviewer contracts through the production C
       "node",
       [
         "-e",
-        'const { createRequire } = require("node:module"); const path = require("node:path"); const fromNx = createRequire(path.resolve("node_modules/nx/dist/src/plugins/js/utils/typescript.js")); const ts = fromNx("typescript"); console.log(`${fromNx.resolve("typescript")}|${typeof ts.readConfigFile}|${ts.version}`);',
+        'const { createRequire } = require("node:module"); const path = require("node:path"); const fromNx = createRequire(path.resolve("node_modules/nx/dist/src/plugins/js/utils/typescript.js")); const ts = fromNx("typescript"); console.log(fromNx.resolve("typescript") + "|" + typeof ts.readConfigFile + "|" + ts.version);',
       ],
       project
     );
