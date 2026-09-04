@@ -206,7 +206,7 @@ async function writeFixturePackage(root: string, version: string) {
         nx: {
           targets: {
             "nx-release-publish": {
-              command: "node -e \"require('node:fs').writeFileSync('.published', 'yes\\n')\"",
+              command: "node -e \"require('node:fs').writeFileSync('.published', 'yes\\n')\" --",
             },
           },
         },
