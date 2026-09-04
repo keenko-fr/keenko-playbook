@@ -7,6 +7,7 @@ import sync from "../src/generators/sync/generator.ts";
 
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const TYPESCRIPT_API = '"typescript": "6.0.2"';
+const TYPESCRIPT_API_BRIDGE = '"typescript-api": "npm:typescript@6.0.2"';
 const TYPESCRIPT_NATIVE = '"@typescript/native": "npm:typescript@7.0.2"';
 const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 const WORKSPACE_MANIFESTS = [
@@ -33,10 +34,15 @@ describe("Keenko Nx preset", () => {
     expect(rootPackage).toContain('"@nx/oxlint": "23.2.0"');
     expect(rootPackage).toContain(TYPESCRIPT_NATIVE);
     expect(rootPackage).toContain(TYPESCRIPT_API);
+    expect(rootPackage).toContain(TYPESCRIPT_API_BRIDGE);
+    expect(rootPackage).toContain('"postinstall": "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts"');
     expect(rootPackage).toContain('"codegen:check": "keenko check --guidance --codegen"');
     expect(rootPackage).toContain(`"check": "${CURRENT_CHECK}"`);
     expect(rootPackage).toContain('"lint": "oxlint ."');
     expect(rootPackage).toContain('"lint:fix": "oxlint --fix ."');
+    const nxPatchTool = tree.read("tools/keenko-patch-nx-typescript.ts", "utf-8") ?? "";
+    expect(nxPatchTool).toContain('path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js")');
+    expect(nxPatchTool).toContain("typescript-api");
     for (const file of WORKSPACE_MANIFESTS) {
       const manifest = tree.read(file, "utf-8") ?? "";
       expect(manifest).toContain(TYPESCRIPT_NATIVE);
