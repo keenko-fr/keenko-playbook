@@ -114,10 +114,7 @@ test("packed Keenko enforces release-reviewer contracts through the production C
       project
     );
     expect(nxTypeScript).toContain("|function|6.0.2");
-    const installedNxTypeScript = await readFile(
-      path.join(project, "node_modules/nx/dist/src/plugins/js/utils/typescript.js"),
-      "utf-8"
-    );
+    const installedNxTypeScript = await readFile(path.join(project, "node_modules/nx/dist/src/plugins/js/utils/typescript.js"), "utf-8");
     expect(/require\((["'])typescript-api\1\)/u.test(installedNxTypeScript)).toBe(true);
     expect(/require\((["'])typescript\1\)/u.test(installedNxTypeScript)).toBe(false);
     expect(runOut("node", ["node_modules/@typescript/native/bin/tsc", "--version"], project).trim()).toContain("Version 7.0.2");
