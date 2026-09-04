@@ -53,10 +53,24 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     await expectManifestBoundary(project, projectCli, sharedManifestPath, originalShared, webName, "optionalDependencies");
     await expectManifestBoundary(project, projectCli, sharedManifestPath, originalShared, webName, "peerDependencies");
 
+    const rootTypeScript = runOut("node", ["-p", 'require("typescript").version'], project).trim();
+    expect(rootTypeScript).toBe("6.0.2");
+    const nxTypeScript = runOut(
+      "node",
+      [
+        "-e",
+        'const { createRequire } = require("node:module"); const path = require("node:path"); const fromNx = createRequire(path.resolve("node_modules/nx/dist/src/plugins/js/utils/typescript.js")); console.log(fromNx("typescript").version); console.log(fromNx.resolve("typescript"));',
+      ],
+      project
+    );
+    expect(nxTypeScript).toContain("6.0.2");
+
     const uiName = string(object(JSON.parse(await readFile(path.join(project, "packages/ui/package.json"), "utf-8"))).name, "ui name");
     const forbiddenImport = path.join(project, "packages/shared/src/forbidden.ts");
     await writeFile(forbiddenImport, `import "${uiName}/lib/utils";\n`);
-    expect(runFailure("bun", ["run", "lint"], project, { NX_DAEMON: "false" })).toContain("enforce-module-boundaries");
+    expect(runFailure("bun", ["x", "oxlint", "--format", "json", "."], project, { NX_DAEMON: "false" })).toContain(
+      "enforce-module-boundaries"
+    );
     await unlink(forbiddenImport);
     run("bun", ["run", "lint"], project, { NX_DAEMON: "false" });
 
