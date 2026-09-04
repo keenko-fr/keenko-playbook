@@ -100,6 +100,14 @@ async function upgrade(args: string[]) {
   await nx(["migrate", "--run-migrations", "--if-exists", "--no-agentic"], root);
   await rm(path.join(root, "node_modules"), { force: true, recursive: true });
   await run("bun", ["install"], root);
+  await run(
+    process.execPath,
+    [
+      "-e",
+      'const { createRequire } = require("node:module"); const path = require("node:path"); for (const [label, base] of [["root", "package.json"], ["nx", "node_modules/nx/package.json"]]) { const load = createRequire(path.join(process.cwd(), base)); const ts = load("typescript"); console.log(`keenko-ts-resolution:${label}:${load.resolve("typescript")}:${String(ts.version)}:${typeof ts.readConfigFile}`); }',
+    ],
+    root
+  );
   await formatUpgradeOwnedFiles(root);
   await nx(["generate", "keenko:sync", "--no-interactive"], root);
   await run("bun", ["run", "codegen"], root);
