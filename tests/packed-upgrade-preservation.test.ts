@@ -7,6 +7,14 @@ const ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_A_COMMIT = "f983654297acb84c1e4005ef72a646c7b33ddcfe";
 const BASELINE_B_COMMIT = "6303870d1ad0e10a7ef9894ddf6f8e717f467ad3";
 const PROJECT_DEPENDENCY = "keenko-project-fixture";
+const TYPESCRIPT_API = "npm:@typescript/typescript6@6.0.2";
+const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
+const WORKSPACE_MANIFESTS = [
+  "apps/web/package.json",
+  "packages/backend/package.json",
+  "packages/shared/package.json",
+  "packages/ui/package.json",
+] as const;
 const START = "<!-- keenko:start -->";
 const END = "<!-- keenko:end -->";
 const PROJECT_SOURCE = "export interface ProjectOwnedMarker {\n  readonly preserved: true;\n}\n";
@@ -221,9 +229,15 @@ async function assertUpgradedBaseline(root: string, before: BaselineSnapshot, cu
 
   expect(string(dependencies[PROJECT_DEPENDENCY], "upgraded project dependency range")).toBe(before.projectDependencyRange);
   expect(scripts.custom).toBe("node -e \"console.log('preserved')\"");
-  expect(devDependencies.typescript).toBe("npm:@typescript/typescript6@6.0.2");
-  expect(devDependencies["@typescript/native"]).toBe("npm:typescript@7.0.2");
+  expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
+  expect(devDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
   expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
+  for (const file of WORKSPACE_MANIFESTS) {
+    const workspace = json(await readFile(path.join(root, file), "utf-8"));
+    const workspaceDevDependencies = recordOrEmpty(workspace.devDependencies, `${file} upgraded devDependencies`);
+    expect(workspaceDevDependencies.typescript).toBe(TYPESCRIPT_API);
+    expect(workspaceDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+  }
   expect(await readFile(path.join(root, "bun.lock"))).not.toEqual(before.lockfile);
   expect(await installedVersion(root, PROJECT_DEPENDENCY)).toBe(before.projectDependencyVersion);
   expect(await installedVersion(root, "keenko")).toBe(currentVersion);
@@ -358,6 +372,7 @@ async function startRegistry(root: string, state: RegistryState): Promise<TestRe
       resolve(String(chunk).trim());
     });
   });
+
   return {
     env: {
       BUN_CONFIG_REGISTRY: origin,
