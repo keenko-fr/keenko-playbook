@@ -31,6 +31,8 @@ const TANSTACK_PINS: Record<string, string> = {
   "react-dom": versions.react,
   tailwindcss: versions.tailwind,
 };
+const TYPESCRIPT_API = "npm:@typescript/typescript6@6.0.2";
+const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 
 export default async function presetGenerator(tree: Tree, options: PresetSchema) {
   const projectName = normalizeName(options.name);
@@ -103,6 +105,11 @@ async function generateWeb(tree: Tree, projectName: string) {
     [`@${projectName}/shared`]: "workspace:*",
     [`@${projectName}/ui`]: "workspace:*",
   };
+  pkg.devDependencies = {
+    ...stringRecord(pkg.devDependencies, "apps/web/package.json.devDependencies"),
+    "@typescript/native": TYPESCRIPT_NATIVE,
+    typescript: TYPESCRIPT_API,
+  };
   pinDependencies(pkg);
   tree.write("apps/web/package.json", json(pkg));
   tree.write("apps/web/components.json", json(componentsConfig(projectName, "web")));
@@ -132,14 +139,14 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
         "@effect/tsgo": "0.39.1",
         "@nx/oxlint": versions.nx,
         "@types/bun": versions.bun,
-        "@typescript/native": "npm:typescript@7.0.2",
+        "@typescript/native": TYPESCRIPT_NATIVE,
         keenko: keenkoVersion(),
         nx: versions.nx,
         oxfmt: "0.65.0",
         oxlint: "1.81.0",
         "oxlint-plugin-effect": "0.12.0",
         "oxlint-tsgolint": "7.0.2001",
-        typescript: "npm:@typescript/typescript6@6.0.2",
+        typescript: TYPESCRIPT_API,
         ultracite: "7.10.7",
       },
       engines: { bun: ">=1.4.0 <2", node: ">=24 <25" },
@@ -154,8 +161,8 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
         dev: `nx run @${projectName}/web:dev`,
         format: "oxfmt .",
         "format:check": "oxfmt --check .",
-        lint: "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint .",
-        "lint:fix": "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint --fix .",
+        lint: "oxlint .",
+        "lint:fix": "oxlint --fix .",
         postinstall: "effect-tsgo patch --oxlint",
         test: "bun test --pass-with-no-tests",
         typecheck: "nx run-many -t typecheck",
@@ -234,7 +241,11 @@ function writeBackend(tree: Tree, projectName: string) {
         convex: versions.convex,
         effect: versions.effect,
       },
-      devDependencies: { "@confect/cli": versions.confect, typescript: "7.0.2" },
+      devDependencies: {
+        "@confect/cli": versions.confect,
+        "@typescript/native": TYPESCRIPT_NATIVE,
+        typescript: TYPESCRIPT_API,
+      },
       exports: { ".": "./src/index.ts" },
       imports: { "#lib/*": "./src/lib/*.ts" },
       name: `@${projectName}/backend`,
@@ -263,7 +274,12 @@ function writeUi(tree: Tree, projectName: string) {
         clsx: "2.1.1",
         "tailwind-merge": "3.3.1",
       },
-      devDependencies: { "@types/react": "19.2.0", "@types/react-dom": "19.2.0", typescript: "7.0.2" },
+      devDependencies: {
+        "@types/react": "19.2.0",
+        "@types/react-dom": "19.2.0",
+        "@typescript/native": TYPESCRIPT_NATIVE,
+        typescript: TYPESCRIPT_API,
+      },
       exports: {
         "./components/*": "./src/components/*.tsx",
         "./globals.css": "./src/styles/globals.css",
@@ -303,7 +319,7 @@ function writeShared(tree: Tree, projectName: string) {
   tree.write(
     "packages/shared/package.json",
     json({
-      devDependencies: { typescript: "7.0.2" },
+      devDependencies: { "@typescript/native": TYPESCRIPT_NATIVE, typescript: TYPESCRIPT_API },
       exports: { ".": "./src/index.ts" },
       imports: { "#lib/*": "./src/lib/*.ts" },
       name: `@${projectName}/shared`,
