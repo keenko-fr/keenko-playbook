@@ -98,7 +98,7 @@ async function upgrade(args: string[]) {
   await nx(["migrate", spec, `--from=keenko@${installed}`, "--interactive=false", "--no-agentic", "--skip-install"], root);
   await run("bun", ["install", "--ignore-scripts"], root);
   await nx(["migrate", "--run-migrations", "--if-exists", "--no-agentic"], root);
-  await run("bun", ["install"], root);
+  await run("bun", ["install", "--force"], root);
   await formatUpgradeOwnedFiles(root);
   await nx(["generate", "keenko:sync", "--no-interactive"], root);
   await run("bun", ["run", "codegen"], root);
