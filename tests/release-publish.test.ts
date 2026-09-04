@@ -64,9 +64,7 @@ describe("Nx release publication", () => {
     expect(workflow).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
     expect(workflow).toContain("bunx nx release version $first_release");
     expect(workflow).toContain('bunx nx release changelog "$version" $first_release');
-    expect(workflow).toContain(
-      "--git-commit=false --git-tag=true --stage-changes=false --git-push=true --create-release=github"
-    );
+    expect(workflow).toContain("--git-commit=false --git-tag=true --stage-changes=false --git-push=true --create-release=github");
     expect(workflow).toContain("GITHUB_TOKEN: ${{ github.token }}");
     expect(workflow).toContain("git diff --cached --exit-code");
     expect(workflow).toContain(`test "$(git rev-list -n 1 "v\${version}")" = "\${{ inputs.expected_sha }}"`);
