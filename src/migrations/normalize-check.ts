@@ -110,7 +110,7 @@ if (originalCount === 2 && patchedCount === 0) {
   await writeFile(target, source.replace(original, "require('typescript-api')"));
 } else if (originalCount !== 0 || patchedCount !== 2) {
   throw new Error(
-    `Expected Nx 23.2.0 TypeScript bridge at ${target} to contain two unpatched or two patched TypeScript requires; found ${originalCount} unpatched and ${patchedCount} patched`
+    \`Expected Nx 23.2.0 TypeScript bridge at \${target} to contain two unpatched or two patched TypeScript requires; found \${originalCount} unpatched and \${patchedCount} patched\`
   );
 }
 `;
