@@ -32,8 +32,30 @@ const TANSTACK_PINS: Record<string, string> = {
   tailwindcss: versions.tailwind,
 };
 const TYPESCRIPT_API = "6.0.2";
+const TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
+const NX_TYPESCRIPT_PATCH = `import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const target = path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js");
+const source = await readFile(target, "utf-8");
+const original = /require\\((["'])typescript\\1\\)/gu;
+const patched = /require\\((["'])typescript-api\\1\\)/gu;
+const originalCount = [...source.matchAll(original)].length;
+const patchedCount = [...source.matchAll(patched)].length;
+
+if (originalCount === 0 && patchedCount === 2) {
+  process.exit(0);
+}
+if (originalCount !== 2 || patchedCount !== 0) {
+  throw new Error(
+    \`Expected Nx 23.2.0 TypeScript bridge at \${target} to contain two unpatched TypeScript requires; found \${originalCount} unpatched and \${patchedCount} patched\`
+  );
+}
+
+await writeFile(target, source.replace(original, (_match, quote) => \`require(\${quote}typescript-api\${quote})\`));
+`;
 
 export default async function presetGenerator(tree: Tree, options: PresetSchema) {
   const projectName = normalizeName(options.name);
@@ -148,6 +170,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
         "oxlint-plugin-effect": "0.12.0",
         "oxlint-tsgolint": "7.0.2001",
         typescript: TYPESCRIPT_API,
+        "typescript-api": TYPESCRIPT_API_BRIDGE,
         ultracite: "7.10.7",
       },
       engines: { bun: ">=1.4.0 <2", node: ">=24 <25" },
@@ -164,7 +187,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
         "format:check": "oxfmt --check .",
         lint: "oxlint .",
         "lint:fix": "oxlint --fix .",
-        postinstall: "effect-tsgo patch --oxlint",
+        postinstall: "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts",
         test: "bun test --pass-with-no-tests",
         typecheck: "nx run-many -t typecheck",
         ui: "bun tools/keenko-ui.ts",
@@ -178,6 +201,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
     "tools/keenko-ui.ts",
     `const args = process.argv.slice(2);\n\nif (args.length === 0) {\n  throw new Error("Pass at least one shadcn component name.");\n}\n\nconst options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;\nconst add = Bun.spawnSync(["bunx", "--bun", "shadcn@${versions.shadcn}", "add", "-c", "apps/web", ...args], options);\nif (add.exitCode !== 0) {\n  throw new Error("shadcn failed");\n}\n\nconst install = Bun.spawnSync(["bun", "install"], options);\nif (install.exitCode !== 0) {\n  throw new Error("bun install failed after shadcn updated workspace dependencies");\n}\n\nconst codegen = Bun.spawnSync(["bun", "run", "codegen"], options);\nif (codegen.exitCode !== 0) {\n  throw new Error("Keenko codegen failed after shadcn updated dependencies");\n}\n\nconst format = Bun.spawnSync(["bun", "run", "format"], options);\nif (format.exitCode !== 0) {\n  throw new Error("Keenko format failed after shadcn generated components");\n}\n\nconst lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], options);\nif (lintFix.exitCode !== 0) {\n  throw new Error("Keenko lint fixes failed after shadcn generated components");\n}\n\nconst reformat = Bun.spawnSync(["bun", "run", "format"], options);\nif (reformat.exitCode !== 0) {\n  throw new Error("Keenko format failed after lint fixes");\n}\n`
   );
+  tree.write("tools/keenko-patch-nx-typescript.ts", NX_TYPESCRIPT_PATCH);
   tree.write(
     "nx.json",
     json({
@@ -218,7 +242,18 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
   );
   tree.write(
     "oxlint.config.ts",
-    `import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";\nimport { defineConfig } from "oxlint";\nimport { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";\nimport core from "ultracite/oxlint/core";\n\nexport default defineConfig({\n  extends: [core],\n  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  jsPlugins: ["@nx/oxlint/boundaries-plugin", "oxlint-plugin-effect/plugin"],\n  options: { typeAware: true },\n  overrides: [\n    {\n      files: ["apps/web/**/*"],\n      rules: {\n        "eslint/no-empty-function": "off",\n        "eslint/no-use-before-define": "off",\n        "eslint/require-await": "off",\n        "eslint/sort-keys": "off",\n      },\n    },\n    {\n      files: ["packages/ui/**/*"],\n      rules: { "eslint/sort-keys": "off" },\n    },\n    {\n      files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectTsgoRecommended.rules,\n        ...effectRecommended,\n        "effect/noTernary": "off",\n      },\n    },\n  ],\n  plugins: ["effecttsgo"],\n  rules: {\n    "@nx/enforce-module-boundaries": [\n      "error",\n      {\n        allow: [],\n        allowCircularSelfDependency: true,\n        depConstraints: [\n${boundaryConstraints}\n        ],\n      },\n    ],\n    "eslint/no-plusplus": "off",\n    "func-style": "off",\n    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],\n  },\n});\n`
+    `import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";\nimport { defineConfig } from "oxlint";\nimport { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";\nimport core from "ultracite/oxlint/core";\n\nexport default defineConfig({\n  extends: [core],\n  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  jsPlugins: ["@nx/oxlint/boundaries-plugin", "oxlint-plugin-effect/plugin"],\n  options: { typeAware: true },\n  overrides: [\n    {\n      files: ["apps/web/**/*"],\n      rules: {\n        "eslint/no-empty-function": "off",\n        "eslint/no-use-before-define": "off",\n        "eslint/require-await": "off",\n        "eslint/sort-keys": "off",\n      },\n    },\n    {\n      files: ["packages/ui/**/*"],\n      rules: { "eslint/sort-keys": "off" },\n    },\n    {\n      files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectTsgoRecommended.rules,\n        ...effectRecommended,\n        "effect/noTernary": "off",\n      },\n    },\n  ],\n  plugins: ["effecttsgo"],\n  rules: {\n    "@nx/enforce-module-boundaries": [\n      "error",\n      {\n        allow: [],\n        allowCircularSelfDependency: true,
+        depConstraints: [
+${boundaryConstraints}
+        ],
+      },
+    ],
+    "eslint/no-plusplus": "off",
+    "func-style": "off",
+    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],
+  },
+});
+`
   );
   tree.write(
     ".github/workflows/ci.yml",
