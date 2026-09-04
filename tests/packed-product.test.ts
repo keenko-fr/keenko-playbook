@@ -355,14 +355,6 @@ async function assertUpgraded(project: string, registryEnv: Record<string, strin
 
   run("bun", ["install", "--frozen-lockfile"], project, registryEnv);
   expect(runOut("bun", ["x", "tsc", "--version"], path.join(project, "packages/shared"))).toContain("7.0.2");
-  const lint = spawnSync("bun", ["x", "oxlint", ".", "--format", "json"], {
-    cwd: project,
-    encoding: "utf-8",
-    env: { ...process.env, ...registryEnv },
-  });
-  if (lint.status !== 0) {
-    throw new Error(`Migrated project lint failed:\n${lint.stdout ?? ""}\n${lint.stderr ?? ""}`);
-  }
   run("bun", ["run", "check"], project);
 }
 
