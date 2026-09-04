@@ -34,7 +34,9 @@ describe("Nx release publication", () => {
     const second = await runReleaseTag(fixture.root, fixture.reviewed, "first-release-second-output");
     expect(second.result.status).toBe(0);
     expect(second.githubOutput).toBe("first_release=true\n");
-    expect(output(second.result)).toContain(`Release tag ${expectedTag} already exists at reviewed commit ${fixture.reviewed}; reusing it.`);
+    expect(output(second.result)).toContain(
+      `Release tag ${expectedTag} already exists at reviewed commit ${fixture.reviewed}; reusing it.`
+    );
     expect(git(fixture.root, "rev-list", "-n", "1", expectedTag)).toBe(localAfterFirst);
     expect(gitDir(fixture.remote, "rev-list", "-n", "1", `refs/tags/${expectedTag}`)).toBe(remoteAfterFirst);
     expect(tagCount(fixture.root, expectedTag)).toBe(1);
@@ -66,7 +68,9 @@ describe("Nx release publication", () => {
     const second = await runReleaseTag(fixture.root, fixture.reviewed, "later-release-second-output");
     expect(second.result.status).toBe(0);
     expect(second.githubOutput).toBe("first_release=false\n");
-    expect(output(second.result)).toContain(`Release tag ${expectedTag} already exists at reviewed commit ${fixture.reviewed}; reusing it.`);
+    expect(output(second.result)).toContain(
+      `Release tag ${expectedTag} already exists at reviewed commit ${fixture.reviewed}; reusing it.`
+    );
     expect(git(fixture.root, "rev-list", "-n", "1", expectedTag)).toBe(localAfterFirst);
     expect(gitDir(fixture.remote, "rev-list", "-n", "1", `refs/tags/${expectedTag}`)).toBe(remoteAfterFirst);
     expect(gitDir(fixture.remote, "rev-list", "-n", "1", `refs/tags/${priorTag}`)).toBe(priorTagCommit);
@@ -113,7 +117,9 @@ describe("Nx release publication", () => {
     expect(workflow).toContain("bunx nx release version $first_release");
     expect(workflow).toContain('bunx nx release changelog "$version" $first_release');
     expect(workflow).toContain(`run: bun cli/release-tag.ts "${expectedShaExpression}"`);
-    expect(workflow).toContain('if [ "${{ steps.release_tag.outputs.first_release }}" = "true" ]; then first_release="--first-release"; fi');
+    expect(workflow).toContain(
+      'if [ "${{ steps.release_tag.outputs.first_release }}" = "true" ]; then first_release="--first-release"; fi'
+    );
     expect(workflow).toContain("bunx nx release publish $first_release");
     expect(workflow).not.toContain("--create-release=github");
     expect(workflow).not.toContain('release changelog "$version" --git-commit=false');
