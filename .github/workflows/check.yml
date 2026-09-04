@@ -24,6 +24,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Release-grade check
         env:
+          CODEX_SANDBOX: ""
+          CODEX_THREAD_ID: ""
           GITHUB_ACTIONS: "false"
           GITHUB_TOKEN: ${{ github.token }}
         run: bun run check:release
