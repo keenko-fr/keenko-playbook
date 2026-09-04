@@ -110,7 +110,7 @@ if (originalCount === 2 && patchedCount === 0) {
   await writeFile(target, source.replace(original, "require('typescript-api')"));
 } else if (originalCount !== 0 || patchedCount !== 2) {
   throw new Error(
-    \`Expected Nx 23.2.0 TypeScript bridge at \${target} to contain two unpatched or two patched TypeScript requires; found \${originalCount} unpatched and \${patchedCount} patched\`
+    `Expected Nx 23.2.0 TypeScript bridge at ${target} to contain two unpatched or two patched TypeScript requires; found ${originalCount} unpatched and ${patchedCount} patched`
   );
 }
 `;
@@ -267,6 +267,7 @@ async function migrateNxTypescriptPatch(tree: Tree) {
     printWidth: 140,
     sortImports: true,
     sortPackageJson: true,
+    trailingComma: "es5",
   });
   if (expected.errors.length > 0) {
     throw new Error(`Cannot format expected Nx TypeScript bridge: ${expected.errors.map(({ message }) => message).join(", ")}`);
@@ -365,7 +366,12 @@ async function formatMigratedFiles(tree: Tree) {
       if (source === null) {
         return;
       }
-      const result = await format(file, source, { printWidth: 140, sortImports: true, sortPackageJson: true });
+      const result = await format(file, source, {
+        printWidth: 140,
+        sortImports: true,
+        sortPackageJson: true,
+        trailingComma: "es5",
+      });
       if (result.errors.length > 0) {
         throw new Error(`Cannot format migrated ${file}: ${result.errors.map(({ message }) => message).join(", ")}`);
       }
