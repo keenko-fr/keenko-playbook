@@ -20,6 +20,12 @@ describe("public package contract", () => {
     expect(pkg.bin).toEqual({ keenko: "dist/cli/keenko.js" });
     expect(pkg.generators).toBe("./generators.json");
     expect(pkg["nx-migrations"]).toBe("./migrations.json");
+    const scripts = object(pkg.scripts);
+    expect(scripts.test).toBe(
+      "bun test --path-ignore-patterns tests/packed-product.test.ts --path-ignore-patterns tests/packed-upgrade-preservation.test.ts && bun run test:product"
+    );
+    expect(scripts.check).toContain("bun run test");
+    expect(scripts["check:release"]).toBe("bun run check && bun run vendor:check && bun pm pack --dry-run");
     for (const file of [
       "package/dist/cli/keenko.js",
       "package/dist/src/generators/preset/generator.js",
