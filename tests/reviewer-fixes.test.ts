@@ -4,6 +4,15 @@ import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promise
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
+const TYPESCRIPT_API = "6.0.2";
+const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
+const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
+const WORKSPACE_MANIFESTS = [
+  "apps/web/package.json",
+  "packages/backend/package.json",
+  "packages/shared/package.json",
+  "packages/ui/package.json",
+] as const;
 type DependencyField = "dependencies" | "devDependencies" | "optionalDependencies" | "peerDependencies";
 
 test("packed Keenko enforces release-reviewer contracts through the production CLI", async () => {
@@ -32,6 +41,22 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     expect(object(JSON.parse(await readFile(path.join(project, "nx.json"), "utf-8"))).defaultBase).toBe("main");
     expect(await readFile(path.join(project, ".github/workflows/ci.yml"), "utf-8")).toContain("branches: [main]");
 
+    const rootManifest = object(JSON.parse(await readFile(path.join(project, "package.json"), "utf-8")));
+    const rootDevDependencies = object(rootManifest.devDependencies);
+    expect(rootDevDependencies.typescript).toBe(TYPESCRIPT_API);
+    expect(rootDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+    for (const file of WORKSPACE_MANIFESTS) {
+      const workspace = object(JSON.parse(await readFile(path.join(project, file), "utf-8")));
+      const devDependencies = object(workspace.devDependencies);
+      const scripts = object(workspace.scripts);
+      expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
+      expect(devDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+      expect(scripts.typecheck).toBe(TYPESCRIPT_NATIVE_TSC);
+      if (file !== "apps/web/package.json") {
+        expect(scripts.build).toBe(TYPESCRIPT_NATIVE_TSC);
+      }
+    }
+
     const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
     const installedManifest = path.join(project, "node_modules/keenko/package.json");
     const originalInstalled = await readFile(installedManifest, "utf-8");
@@ -57,11 +82,11 @@ test("packed Keenko enforces release-reviewer contracts through the production C
       "node",
       [
         "-e",
-        'const ts = require("typescript"); console.log(require.resolve("typescript") + "|" + typeof ts.readConfigFile + "|" + ts.version);',
+        'const pkg = require("typescript/package.json"); const ts = require("typescript"); console.log(pkg.name + "|" + pkg.version + "|" + typeof ts.readConfigFile + "|" + ts.version);',
       ],
       project
     );
-    expect(rootTypeScript).toContain("|function|");
+    expect(rootTypeScript.trim()).toBe("typescript|6.0.2|function|6.0.2");
     const nxTypeScript = runOut(
       "node",
       [
@@ -70,7 +95,8 @@ test("packed Keenko enforces release-reviewer contracts through the production C
       ],
       project
     );
-    expect(nxTypeScript).toContain("|function|");
+    expect(nxTypeScript).toContain("|function|6.0.2");
+    expect(runOut("node", ["node_modules/@typescript/native/bin/tsc", "--version"], project).trim()).toBe("Version 7.0.2");
 
     const uiName = string(object(JSON.parse(await readFile(path.join(project, "packages/ui/package.json"), "utf-8"))).name, "ui name");
     await expectBoundaryLintRecoveryRepeated(project, uiName, 1, 5);
