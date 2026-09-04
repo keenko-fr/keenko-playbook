@@ -89,8 +89,11 @@ test("packed Keenko creates and upgrades real consumer fixtures", async () => {
     const occupied = path.join(temp, "occupied");
     await mkdir(occupied);
     await writeFile(path.join(occupied, "sentinel.txt"), "keep me\n");
-    const refused = spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd: occupied, encoding: "utf-8" });
-    void refused;
+    const refused = spawnSync("node", [cli, "create", occupied], { cwd: runner, encoding: "utf-8" });
+    expect(refused.status).not.toBe(0);
+    expect(await readFile(path.join(occupied, "sentinel.txt"), "utf-8")).toBe("keep me\n");
+    const occupiedEntries = await readdir(occupied);
+    expect(occupiedEntries.toSorted()).toEqual(["sentinel.txt"]);
 
     const project = path.join(temp, "project");
     run("node", [cli, "create", project], runner, { KEENKO_PACKAGE_SPEC: `file:${tarball}` });
