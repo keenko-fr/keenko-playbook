@@ -16,9 +16,12 @@ const PREVIOUS_TYPESCRIPT = "7.0.2";
 const PREVIOUS_WEB_TYPESCRIPT = "6.0.2";
 const PREVIOUS_TYPESCRIPT_ALIAS = "npm:@typescript/typescript6@6.0.2";
 const CURRENT_TYPESCRIPT = "6.0.2";
+const CURRENT_TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
 const CURRENT_TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const CURRENT_TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 const CURRENT_NX_OXLINT = "23.2.0";
+const PREVIOUS_POSTINSTALL = "effect-tsgo patch --oxlint";
+const CURRENT_POSTINSTALL = "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts";
 const PREVIOUS_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate";
 const CURRENT_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate";
 const PREVIOUS_UI = "bunx --bun shadcn@4.20.1 add -c apps/web";
@@ -93,6 +96,27 @@ if (reformat.exitCode !== 0) {
   throw new Error("Keenko format failed after lint fixes");
 }
 `;
+const NX_TYPESCRIPT_PATCH = `import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const target = path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js");
+const source = await readFile(target, "utf-8");
+const original = /require\\((["'])typescript\\1\\)/gu;
+const patched = /require\\((["'])typescript-api\\1\\)/gu;
+const originalCount = [...source.matchAll(original)].length;
+const patchedCount = [...source.matchAll(patched)].length;
+
+if (originalCount === 0 && patchedCount === 2) {
+  process.exit(0);
+}
+if (originalCount !== 2 || patchedCount !== 0) {
+  throw new Error(
+    \`Expected Nx 23.2.0 TypeScript bridge at \${target} to contain two unpatched TypeScript requires; found \${originalCount} unpatched and \${patchedCount} patched\`
+  );
+}
+
+await writeFile(target, source.replace(original, (_match, quote) => \`require(\${quote}typescript-api\${quote})\`));
+`;
 
 export default async function normalizeCheck(tree: Tree) {
   migrateRootPackage(tree);
@@ -106,6 +130,7 @@ export default async function normalizeCheck(tree: Tree) {
   migrateComponentsConfig(tree, "packages/ui/components.json");
   migrateUiTsconfig(tree);
   migrateUiTool(tree);
+  migrateNxTypescriptPatch(tree);
   migrateGeneratedConfig(tree, "oxfmt.config.ts");
   migrateOxlintConfig(tree);
   tree.delete("apps/web/src/paraglide/README.md");
@@ -131,6 +156,7 @@ function migrateRootPackage(tree: Tree) {
   migrateKnownString(scripts, "test", [undefined], CURRENT_TEST, "package.json scripts.test");
   migrateKnownString(scripts, "dev", ["nx run web:dev"], `nx run @${name}/web:dev`, "package.json scripts.dev");
   migrateKnownString(scripts, "ui", [PREVIOUS_UI], CURRENT_UI, "package.json scripts.ui");
+  migrateKnownString(scripts, "postinstall", [PREVIOUS_POSTINSTALL], CURRENT_POSTINSTALL, "package.json scripts.postinstall");
 
   const devDependencies = stringRecord(pkg.devDependencies, "package.json.devDependencies");
   if (devDependencies === undefined) {
@@ -138,6 +164,7 @@ function migrateRootPackage(tree: Tree) {
   }
   migrateIntroducedTool(devDependencies, "@nx/oxlint", CURRENT_NX_OXLINT);
   migrateIntroducedTool(devDependencies, "@typescript/native", CURRENT_TYPESCRIPT_NATIVE);
+  migrateIntroducedTool(devDependencies, "typescript-api", CURRENT_TYPESCRIPT_API_BRIDGE);
   migrateKnownString(
     devDependencies,
     "typescript",
@@ -233,6 +260,19 @@ function migrateUiTool(tree: Tree) {
   }
 }
 
+function migrateNxTypescriptPatch(tree: Tree) {
+  const existing = tree.read("tools/keenko-patch-nx-typescript.ts", "utf-8");
+  if (existing === null) {
+    tree.write("tools/keenko-patch-nx-typescript.ts", NX_TYPESCRIPT_PATCH);
+    return;
+  }
+  if (existing.trim() !== NX_TYPESCRIPT_PATCH.trim()) {
+    throw new Error(
+      "Cannot migrate tools/keenko-patch-nx-typescript.ts because the Keenko-owned Nx TypeScript bridge was customized; reconcile it manually"
+    );
+  }
+}
+
 function migrateGeneratedConfig(tree: Tree, file: string) {
   const source = readText(tree, file);
   const present = CURRENT_GENERATED_IGNORES.filter((pattern) => source.includes(`"${pattern}"`));
@@ -310,6 +350,7 @@ async function formatMigratedFiles(tree: Tree) {
     "packages/ui/components.json",
     "packages/ui/tsconfig.json",
     "tools/keenko-ui.ts",
+    "tools/keenko-patch-nx-typescript.ts",
     "oxfmt.config.ts",
     "oxlint.config.ts",
   ];
