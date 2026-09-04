@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -111,15 +111,14 @@ describe("Nx release publication", () => {
     const workflow = await readFile(path.join(ROOT, ".github/workflows/release.yml"), "utf-8");
     const helper = await readFile(RELEASE_TAG, "utf-8");
     const expectedShaExpression = `\${{ inputs.expected_sha }}`;
+    const firstReleaseOutputExpression = `\${{ steps.release_tag.outputs.first_release }}`;
     expect(workflow).toContain(`test "$(git rev-parse origin/main)" = "${expectedShaExpression}"`);
     expect(workflow).toContain(`git checkout -B main "${expectedShaExpression}"`);
     expect(workflow).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
     expect(workflow).toContain("bunx nx release version $first_release");
     expect(workflow).toContain('bunx nx release changelog "$version" $first_release');
     expect(workflow).toContain(`run: bun cli/release-tag.ts "${expectedShaExpression}"`);
-    expect(workflow).toContain(
-      'if [ "${{ steps.release_tag.outputs.first_release }}" = "true" ]; then first_release="--first-release"; fi'
-    );
+    expect(workflow).toContain(`if [ "${firstReleaseOutputExpression}" = "true" ]; then first_release="--first-release"; fi`);
     expect(workflow).toContain("bunx nx release publish $first_release");
     expect(workflow).not.toContain("--create-release=github");
     expect(workflow).not.toContain('release changelog "$version" --git-commit=false');
@@ -251,13 +250,13 @@ function assertReleaseTag(fixture: { remote: string; root: string }, tag: string
 }
 
 function tagCount(root: string, tag: string) {
-  const output = git(root, "for-each-ref", "--format=%(refname)", `refs/tags/${tag}`);
-  return output === "" ? 0 : output.split("\n").length;
+  const refs = git(root, "for-each-ref", "--format=%(refname)", `refs/tags/${tag}`);
+  return refs === "" ? 0 : refs.split("\n").length;
 }
 
 function remoteTagCount(remote: string, tag: string) {
-  const output = gitDir(remote, "for-each-ref", "--format=%(refname)", `refs/tags/${tag}`);
-  return output === "" ? 0 : output.split("\n").length;
+  const refs = gitDir(remote, "for-each-ref", "--format=%(refname)", `refs/tags/${tag}`);
+  return refs === "" ? 0 : refs.split("\n").length;
 }
 
 function nx(cwd: string, args: string[]) {
