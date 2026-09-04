@@ -6,6 +6,8 @@ import preset from "../src/generators/preset/generator.ts";
 import sync from "../src/generators/sync/generator.ts";
 
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const CURRENT_LINT = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint .";
+const CURRENT_LINT_FIX = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint --fix .";
 
 describe("Keenko Nx preset", () => {
   test("creates the fixed package-based workspace through first-party TanStack output", async () => {
@@ -26,6 +28,8 @@ describe("Keenko Nx preset", () => {
     expect(rootPackage).toContain('"typescript": "npm:@typescript/typescript6@6.0.2"');
     expect(rootPackage).toContain('"codegen:check": "keenko check --guidance --codegen"');
     expect(rootPackage).toContain(`"check": "${CURRENT_CHECK}"`);
+    expect(rootPackage).toContain(`"lint": "${CURRENT_LINT}"`);
+    expect(rootPackage).toContain(`"lint:fix": "${CURRENT_LINT_FIX}"`);
     const oxlint = tree.read("oxlint.config.ts", "utf-8") ?? "";
     expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
     expect(oxlint).toContain('"@nx/enforce-module-boundaries"');

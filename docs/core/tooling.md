@@ -50,6 +50,8 @@ A TypeScript repository owns root `oxfmt.config.ts` and `oxlint.config.ts` files
 
 `options.typeAware: true` is required in the root Oxlint configuration. Keep TypeScript type checking as a separate `typecheck` script; do not enable Oxlint's experimental type-check mode as a replacement for the compiler contract.
 
+With the pinned Oxlint/tsgolint integration, generated `lint` and `lint:fix` scripts set `OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true`. This excludes tsgolint program/compiler diagnostics from the lint surface while preserving type-aware lint-rule diagnostics; `typecheck` remains the sole owner of compiler diagnostics. Treat this as a pinned-tool compatibility workaround for the observed nondeterministic program-diagnostic leak, and remove it when the supported tsgolint stack can preserve the same diagnostic ownership without the environment switch.
+
 Oxfmt owns mechanical import sorting. Keep external and workspace packages before project-local imports and preserve side-effect import order. Type-import semantics remain a convention in `code-style.md` and the TypeScript stack; the linter enforces the mechanical form.
 
 ## Generated, managed, and vendored files

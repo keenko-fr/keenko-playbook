@@ -9,6 +9,10 @@ const PREVIOUS_CHECKS = new Set([
   "bun run codegen:check && bun run test && bun run format:check && bun run lint && bun run typecheck && bun run build",
 ]);
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const PREVIOUS_LINT = "oxlint .";
+const CURRENT_LINT = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint .";
+const PREVIOUS_LINT_FIX = "oxlint --fix .";
+const CURRENT_LINT_FIX = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint --fix .";
 const PREVIOUS_CODEGEN_CHECK = "keenko check --guidance";
 const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
 const CURRENT_TEST = "bun test --pass-with-no-tests";
@@ -117,6 +121,8 @@ function migrateRootPackage(tree: Tree) {
   );
   migrateKnownString(scripts, "test", [undefined], CURRENT_TEST, "package.json scripts.test");
   migrateKnownString(scripts, "dev", ["nx run web:dev"], `nx run @${name}/web:dev`, "package.json scripts.dev");
+  migrateKnownString(scripts, "lint", [PREVIOUS_LINT], CURRENT_LINT, "package.json scripts.lint");
+  migrateKnownString(scripts, "lint:fix", [PREVIOUS_LINT_FIX], CURRENT_LINT_FIX, "package.json scripts.lint:fix");
   migrateKnownString(scripts, "ui", [PREVIOUS_UI], CURRENT_UI, "package.json scripts.ui");
 
   const devDependencies = stringRecord(pkg.devDependencies, "package.json.devDependencies");

@@ -6,6 +6,8 @@ import preset from "../src/generators/preset/generator.ts";
 import normalizeCheck from "../src/migrations/normalize-check.ts";
 
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const CURRENT_LINT = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint .";
+const CURRENT_LINT_FIX = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint --fix .";
 
 describe("Keenko migrations", () => {
   test("leaves the current generated tooling baseline unchanged", async () => {
@@ -28,8 +30,11 @@ describe("Keenko migrations", () => {
     await normalizeCheck(tree);
 
     const migrated = readJson(tree, "package.json");
+    const scripts = record(migrated.scripts, "scripts");
     const devDependencies = record(migrated.devDependencies, "devDependencies");
-    expect(record(migrated.scripts, "scripts").check).toBe(CURRENT_CHECK);
+    expect(scripts.check).toBe(CURRENT_CHECK);
+    expect(scripts.lint).toBe(CURRENT_LINT);
+    expect(scripts["lint:fix"]).toBe(CURRENT_LINT_FIX);
     expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
     expect(devDependencies["@typescript/native"]).toBe("npm:typescript@7.0.2");
     expect(devDependencies.typescript).toBe("npm:@typescript/typescript6@6.0.2");
@@ -71,6 +76,10 @@ describe("Keenko migrations", () => {
 
 function downgradeBoundaryBridge(tree: Tree) {
   const pkg = readJson(tree, "package.json");
+  const scripts = record(pkg.scripts, "scripts");
+  scripts.lint = "oxlint .";
+  scripts["lint:fix"] = "oxlint --fix .";
+  pkg.scripts = scripts;
   const devDependencies = record(pkg.devDependencies, "devDependencies");
   delete devDependencies["@nx/oxlint"];
   delete devDependencies["@typescript/native"];
