@@ -117,7 +117,9 @@ function remoteTagCommit(root: string, tag: string) {
     .split("\n")
     .filter((line) => line.length > 0)
     .map((line) => line.split("\t"));
-  const peeled = rows.find(([, reference]) => reference === `refs/tags/${tag}^{}`) ?? rows.find(([, reference]) => reference === `refs/tags/${tag}`);
+  const peeled =
+    rows.find(([, reference]) => reference === `refs/tags/${tag}^{}`) ??
+    rows.find(([, reference]) => reference === `refs/tags/${tag}`);
   const sha = peeled?.[0];
   if (sha === undefined) {
     throw new Error(`Nx did not push release tag ${tag} to origin`);
