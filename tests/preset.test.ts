@@ -6,8 +6,14 @@ import preset from "../src/generators/preset/generator.ts";
 import sync from "../src/generators/sync/generator.ts";
 
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
-const CURRENT_LINT = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint .";
-const CURRENT_LINT_FIX = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint --fix .";
+const TYPESCRIPT_API = '"typescript": "npm:@typescript/typescript6@6.0.2"';
+const TYPESCRIPT_NATIVE = '"@typescript/native": "npm:typescript@7.0.2"';
+const WORKSPACE_MANIFESTS = [
+  "apps/web/package.json",
+  "packages/backend/package.json",
+  "packages/shared/package.json",
+  "packages/ui/package.json",
+] as const;
 
 describe("Keenko Nx preset", () => {
   test("creates the fixed package-based workspace through first-party TanStack output", async () => {
@@ -24,12 +30,17 @@ describe("Keenko Nx preset", () => {
     const rootPackage = tree.read("package.json", "utf-8") ?? "";
     expect(rootPackage).not.toContain('"latest"');
     expect(rootPackage).toContain('"@nx/oxlint": "23.2.0"');
-    expect(rootPackage).toContain('"@typescript/native": "npm:typescript@7.0.2"');
-    expect(rootPackage).toContain('"typescript": "npm:@typescript/typescript6@6.0.2"');
+    expect(rootPackage).toContain(TYPESCRIPT_NATIVE);
+    expect(rootPackage).toContain(TYPESCRIPT_API);
     expect(rootPackage).toContain('"codegen:check": "keenko check --guidance --codegen"');
     expect(rootPackage).toContain(`"check": "${CURRENT_CHECK}"`);
-    expect(rootPackage).toContain(`"lint": "${CURRENT_LINT}"`);
-    expect(rootPackage).toContain(`"lint:fix": "${CURRENT_LINT_FIX}"`);
+    expect(rootPackage).toContain('"lint": "oxlint ."');
+    expect(rootPackage).toContain('"lint:fix": "oxlint --fix ."');
+    for (const file of WORKSPACE_MANIFESTS) {
+      const manifest = tree.read(file, "utf-8") ?? "";
+      expect(manifest).toContain(TYPESCRIPT_NATIVE);
+      expect(manifest).toContain(TYPESCRIPT_API);
+    }
     const oxlint = tree.read("oxlint.config.ts", "utf-8") ?? "";
     expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
     expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
