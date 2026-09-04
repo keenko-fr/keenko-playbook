@@ -31,6 +31,7 @@ Tooling that can change accepted source or diagnostics is exact-pinned and upgra
 | -------------------- | ---------------------- | ---------------------- |
 | Application compiler | `@typescript/native`   | `npm:typescript@7.0.2` |
 | Nx compatibility API | `typescript`           | `6.0.2`                |
+| Nx API bridge        | `typescript-api`       | `npm:typescript@6.0.2` |
 | Nx release actions   | `@nx/js`               | `23.2.0`               |
 | Nx boundary bridge   | `@nx/oxlint`           | `23.2.0`               |
 | Universal            | `ultracite`            | `7.10.7`               |
@@ -42,9 +43,11 @@ Tooling that can change accepted source or diagnostics is exact-pinned and upgra
 
 The Effect tooling is a compatibility unit: before upgrading `@effect/tsgo`, verify its current first-party supported TypeScript, Oxlint, and `oxlint-tsgolint` versions and move the coupled pins together. Re-check `oxlint-plugin-effect` at the same time because its preset and overlap with Effect tsgo are versioned compatibility data.
 
-TypeScript 7 remains the application compiler decision. A generated project carries `@typescript/native = npm:typescript@7.0.2` and a direct `typescript = 6.0.2` dependency at the root and at each workspace package boundary. Package `build` and `typecheck` scripts invoke the native compiler explicitly through `node ../../node_modules/@typescript/native/bin/tsc --noEmit`; Nx/Oxlint can continue to import the package name `typescript` and receive the TypeScript 6 programmatic API it requires.
+TypeScript 7 remains the application compiler decision. A generated project carries `@typescript/native = npm:typescript@7.0.2` and a direct `typescript = 6.0.2` dependency at the root and at each workspace package boundary. Package `build` and `typecheck` scripts invoke the native compiler explicitly through `node ../../node_modules/@typescript/native/bin/tsc --noEmit`.
 
-Do not replace the direct TypeScript 6 dependency with `typescript = npm:@typescript/typescript6@6.0.2` while Bun 1.4.0 remains the minimum/reference package manager. That official compatibility package re-exports a nested `npm:` alias, and Bun 1.4.0 can resolve that nested alias back to the wrapper package. The result is an incomplete TypeScript module and Nx failures such as `tsModule.readConfigFile is not a function`. This is a package-manager compatibility workaround, not the repository language level. Remove the direct TypeScript 6 API dependency only when a verified Bun/Nx/Oxlint pairing can use the official compatibility alias safely or Nx consumes the TypeScript 7 API directly.
+The generated root also carries `typescript-api = npm:typescript@6.0.2` as a non-colliding alias for the same TypeScript 6 programmatic API. This alias exists specifically for the pinned Nx 23.2.0 boundary implementation under Bun 1.4.0. In the supported reference environment, normal Node resolution can load the direct TypeScript 6 dependency while Oxlint's JS-plugin process can still hand Nx an incomplete TypeScript module for its bare `require("typescript")`. The Keenko-owned `tools/keenko-patch-nx-typescript.ts` postinstall step therefore redirects exactly the two pinned Nx programmatic API loads to `typescript-api`. The patch is idempotent and hard-fails when the expected Nx source shape changes so an Nx upgrade cannot silently inherit this workaround.
+
+Do not replace the direct TypeScript 6 dependency with `typescript = npm:@typescript/typescript6@6.0.2` while Bun 1.4.0 remains the minimum/reference package manager. That official compatibility package re-exports a nested `npm:` alias, and Bun 1.4.0 can resolve that nested alias back to the wrapper package. The result is an incomplete TypeScript module and Nx failures such as `tsModule.readConfigFile is not a function`. This is a package-manager compatibility workaround, not the repository language level. Remove the direct TypeScript 6 API dependency and the `typescript-api` Nx bridge only when a verified Bun/Nx/Oxlint pairing can use the official compatibility alias safely or Nx no longer requires this TypeScript programmatic API path.
 
 ## Root configuration and monorepos
 
