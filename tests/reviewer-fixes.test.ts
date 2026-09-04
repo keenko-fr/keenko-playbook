@@ -5,6 +5,7 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const TYPESCRIPT_API = "6.0.2";
+const TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 const WORKSPACE_MANIFESTS = [
@@ -43,8 +44,14 @@ test("packed Keenko enforces release-reviewer contracts through the production C
 
     const rootManifest = object(JSON.parse(await readFile(path.join(project, "package.json"), "utf-8")));
     const rootDevDependencies = object(rootManifest.devDependencies);
+    const rootScripts = object(rootManifest.scripts);
     expect(rootDevDependencies.typescript).toBe(TYPESCRIPT_API);
+    expect(rootDevDependencies["typescript-api"]).toBe(TYPESCRIPT_API_BRIDGE);
     expect(rootDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+    expect(rootScripts.postinstall).toBe("effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts");
+    const nxPatchTool = await readFile(path.join(project, "tools/keenko-patch-nx-typescript.ts"), "utf-8");
+    expect(nxPatchTool).toContain('path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js")');
+    expect(nxPatchTool).toContain("typescript-api");
     await Promise.all(
       WORKSPACE_MANIFESTS.map(async (file) => {
         const workspace = object(JSON.parse(await readFile(path.join(project, file), "utf-8")));
@@ -89,6 +96,15 @@ test("packed Keenko enforces release-reviewer contracts through the production C
       project
     );
     expect(rootTypeScript.trim()).toBe("typescript|6.0.2|function|6.0.2");
+    const bridgeTypeScript = runOut(
+      "node",
+      [
+        "-e",
+        'const pkg = require("typescript-api/package.json"); const ts = require("typescript-api"); console.log(pkg.name + "|" + pkg.version + "|" + typeof ts.readConfigFile + "|" + ts.version);',
+      ],
+      project
+    );
+    expect(bridgeTypeScript.trim()).toBe("typescript|6.0.2|function|6.0.2");
     const nxTypeScript = runOut(
       "node",
       [
@@ -98,6 +114,12 @@ test("packed Keenko enforces release-reviewer contracts through the production C
       project
     );
     expect(nxTypeScript).toContain("|function|6.0.2");
+    const installedNxTypeScript = await readFile(
+      path.join(project, "node_modules/nx/dist/src/plugins/js/utils/typescript.js"),
+      "utf-8"
+    );
+    expect(installedNxTypeScript.includes('require("typescript-api")') || installedNxTypeScript.includes("require('typescript-api')")).toBe(true);
+    expect(/require\((["'])typescript\1\)/u.test(installedNxTypeScript)).toBe(false);
     expect(runOut("node", ["node_modules/@typescript/native/bin/tsc", "--version"], project).trim()).toContain("Version 7.0.2");
 
     const uiName = string(object(JSON.parse(await readFile(path.join(project, "packages/ui/package.json"), "utf-8"))).name, "ui name");
