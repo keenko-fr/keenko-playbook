@@ -6,8 +6,9 @@ import preset from "../src/generators/preset/generator.ts";
 import sync from "../src/generators/sync/generator.ts";
 
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
-const TYPESCRIPT_API = '"typescript": "npm:@typescript/typescript6@6.0.2"';
+const TYPESCRIPT_API = '"typescript": "6.0.2"';
 const TYPESCRIPT_NATIVE = '"@typescript/native": "npm:typescript@7.0.2"';
+const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 const WORKSPACE_MANIFESTS = [
   "apps/web/package.json",
   "packages/backend/package.json",
@@ -40,6 +41,10 @@ describe("Keenko Nx preset", () => {
       const manifest = tree.read(file, "utf-8") ?? "";
       expect(manifest).toContain(TYPESCRIPT_NATIVE);
       expect(manifest).toContain(TYPESCRIPT_API);
+      expect(manifest).toContain(`"typecheck": "${TYPESCRIPT_NATIVE_TSC}"`);
+      if (file !== "apps/web/package.json") {
+        expect(manifest).toContain(`"build": "${TYPESCRIPT_NATIVE_TSC}"`);
+      }
     }
     const oxlint = tree.read("oxlint.config.ts", "utf-8") ?? "";
     expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
