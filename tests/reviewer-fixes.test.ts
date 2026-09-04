@@ -37,6 +37,7 @@ test("packed Keenko enforces release-reviewer contracts through the production C
 
     const project = path.join(temp, "project");
     run("node", [cli, "create", project], runner, { KEENKO_PACKAGE_SPEC: `file:${tarball}` });
+    run("bun", ["run", "format:check"], project);
     expect(runOut("git", ["branch", "--show-current"], project).trim()).toBe("main");
     expect(spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd: project, encoding: "utf-8" }).status).not.toBe(0);
     expect(object(JSON.parse(await readFile(path.join(project, "nx.json"), "utf-8"))).defaultBase).toBe("main");
