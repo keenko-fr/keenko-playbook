@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { FsTree } from "@nx/devkit/internal";
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -98,28 +98,10 @@ async function upgrade(args: string[]) {
   await nx(["migrate", spec, `--from=keenko@${installed}`, "--interactive=false", "--no-agentic", "--skip-install"], root);
   await run("bun", ["install", "--ignore-scripts"], root);
   await nx(["migrate", "--run-migrations", "--if-exists", "--no-agentic"], root);
-  await rm(path.join(root, "node_modules"), { force: true, recursive: true });
-  await run("bun", ["install"], root);
-  await run(
-    process.execPath,
-    [
-      "-e",
-      'const { createRequire } = require("node:module"); const path = require("node:path"); for (const [label, base] of [["root", "package.json"], ["nx", "node_modules/nx/package.json"]]) { const load = createRequire(path.join(process.cwd(), base)); const ts = load("typescript"); console.log("keenko-ts-resolution:" + label + ":" + load.resolve("typescript") + ":" + String(ts.version) + ":" + typeof ts.readConfigFile); }',
-    ],
-    root
-  );
+  await run("bun", ["update", "typescript", "@typescript/native", "@nx/oxlint", "nx"], root);
   await formatUpgradeOwnedFiles(root);
   await nx(["generate", "keenko:sync", "--no-interactive"], root);
   await run("bun", ["run", "codegen"], root);
-  const lint = spawnSync("bun", ["x", "oxlint", ".", "--format", "json"], {
-    cwd: root,
-    encoding: "utf-8",
-    env: process.env,
-  });
-  if (lint.status !== 0) {
-    console.log(`keenko-oxlint-json:${lint.stdout}`);
-    console.error(lint.stderr);
-  }
   await rm(path.join(root, "migrations.json"), { force: true });
   console.log(`Upgraded Keenko to ${target}. Review the Git diff before committing.`);
 }
