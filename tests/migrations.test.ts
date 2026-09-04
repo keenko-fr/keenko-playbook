@@ -6,8 +6,16 @@ import preset from "../src/generators/preset/generator.ts";
 import normalizeCheck from "../src/migrations/normalize-check.ts";
 
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
-const CURRENT_LINT = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint .";
-const CURRENT_LINT_FIX = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint --fix .";
+const CURRENT_LINT = "oxlint .";
+const CURRENT_LINT_FIX = "oxlint --fix .";
+const TYPESCRIPT_API = "npm:@typescript/typescript6@6.0.2";
+const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
+const WORKSPACE_MANIFESTS = [
+  "apps/web/package.json",
+  "packages/backend/package.json",
+  "packages/shared/package.json",
+  "packages/ui/package.json",
+] as const;
 
 describe("Keenko migrations", () => {
   test("leaves the current generated tooling baseline unchanged", async () => {
@@ -36,14 +44,35 @@ describe("Keenko migrations", () => {
     expect(scripts.lint).toBe(CURRENT_LINT);
     expect(scripts["lint:fix"]).toBe(CURRENT_LINT_FIX);
     expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
-    expect(devDependencies["@typescript/native"]).toBe("npm:typescript@7.0.2");
-    expect(devDependencies.typescript).toBe("npm:@typescript/typescript6@6.0.2");
+    expect(devDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+    expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
     expect(migrated.projectNote).toBe("preserve me");
+
+    for (const file of WORKSPACE_MANIFESTS) {
+      const workspace = readJson(tree, file);
+      const workspaceDevDependencies = record(workspace.devDependencies, `${file}.devDependencies`);
+      expect(workspaceDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+      expect(workspaceDevDependencies.typescript).toBe(TYPESCRIPT_API);
+    }
 
     const oxlint = tree.read("oxlint.config.ts", "utf-8") ?? "";
     expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
     expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
     expect(oxlint).toContain('sourceTag: "scope:shared"');
+  });
+
+  test("rejects a customized workspace TypeScript compatibility dependency", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "custom-typescript" });
+    downgradeBoundaryBridge(tree);
+
+    const pkg = readJson(tree, "packages/shared/package.json");
+    const devDependencies = record(pkg.devDependencies, "packages/shared/package.json.devDependencies");
+    devDependencies.typescript = "7.0.1";
+    pkg.devDependencies = devDependencies;
+    tree.write("packages/shared/package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+
+    await expectMigrationFailure(tree, "packages/shared/package.json devDependencies.typescript");
   });
 
   test("rejects a customized Nx boundary rule", async () => {
@@ -86,6 +115,15 @@ function downgradeBoundaryBridge(tree: Tree) {
   devDependencies.typescript = "7.0.2";
   pkg.devDependencies = devDependencies;
   tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+
+  for (const file of WORKSPACE_MANIFESTS) {
+    const workspace = readJson(tree, file);
+    const workspaceDevDependencies = record(workspace.devDependencies, `${file}.devDependencies`);
+    delete workspaceDevDependencies["@typescript/native"];
+    workspaceDevDependencies.typescript = "7.0.2";
+    workspace.devDependencies = workspaceDevDependencies;
+    tree.write(file, `${JSON.stringify(workspace, null, 2)}\n`);
+  }
 
   const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
   const start = source.indexOf('    "@nx/enforce-module-boundaries": [');
