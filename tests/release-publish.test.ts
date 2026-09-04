@@ -94,7 +94,7 @@ async function nxReleaseFixture() {
         nx: {
           targets: {
             "nx-release-publish": {
-              command: 'node -e "require(\\'node:fs\\').writeFileSync(\\'.published\\', \\'yes\\')"',
+              command: "node -e \"require('node:fs').writeFileSync('.published', 'yes')\"",
             },
           },
         },
