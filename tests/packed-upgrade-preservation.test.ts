@@ -232,12 +232,14 @@ async function assertUpgradedBaseline(root: string, before: BaselineSnapshot, cu
   expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
   expect(devDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
   expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
-  for (const file of WORKSPACE_MANIFESTS) {
-    const workspace = json(await readFile(path.join(root, file), "utf-8"));
-    const workspaceDevDependencies = recordOrEmpty(workspace.devDependencies, `${file} upgraded devDependencies`);
-    expect(workspaceDevDependencies.typescript).toBe(TYPESCRIPT_API);
-    expect(workspaceDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
-  }
+  await Promise.all(
+    WORKSPACE_MANIFESTS.map(async (file) => {
+      const workspace = json(await readFile(path.join(root, file), "utf-8"));
+      const workspaceDevDependencies = recordOrEmpty(workspace.devDependencies, `${file} upgraded devDependencies`);
+      expect(workspaceDevDependencies.typescript).toBe(TYPESCRIPT_API);
+      expect(workspaceDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+    })
+  );
   expect(await readFile(path.join(root, "bun.lock"))).not.toEqual(before.lockfile);
   expect(await installedVersion(root, PROJECT_DEPENDENCY)).toBe(before.projectDependencyVersion);
   expect(await installedVersion(root, "keenko")).toBe(currentVersion);
