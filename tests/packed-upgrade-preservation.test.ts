@@ -7,8 +7,9 @@ const ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_A_COMMIT = "f983654297acb84c1e4005ef72a646c7b33ddcfe";
 const BASELINE_B_COMMIT = "6303870d1ad0e10a7ef9894ddf6f8e717f467ad3";
 const PROJECT_DEPENDENCY = "keenko-project-fixture";
-const TYPESCRIPT_API = "npm:@typescript/typescript6@6.0.2";
+const TYPESCRIPT_API = "6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
+const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 const WORKSPACE_MANIFESTS = [
   "apps/web/package.json",
   "packages/backend/package.json",
@@ -236,8 +237,13 @@ async function assertUpgradedBaseline(root: string, before: BaselineSnapshot, cu
     WORKSPACE_MANIFESTS.map(async (file) => {
       const workspace = json(await readFile(path.join(root, file), "utf-8"));
       const workspaceDevDependencies = recordOrEmpty(workspace.devDependencies, `${file} upgraded devDependencies`);
+      const workspaceScripts = recordOrEmpty(workspace.scripts, `${file} upgraded scripts`);
       expect(workspaceDevDependencies.typescript).toBe(TYPESCRIPT_API);
       expect(workspaceDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+      expect(workspaceScripts.typecheck).toBe(TYPESCRIPT_NATIVE_TSC);
+      if (file !== "apps/web/package.json") {
+        expect(workspaceScripts.build).toBe(TYPESCRIPT_NATIVE_TSC);
+      }
     })
   );
   expect(await readFile(path.join(root, "bun.lock"))).not.toEqual(before.lockfile);
