@@ -8,8 +8,10 @@ import normalizeCheck from "../src/migrations/normalize-check.ts";
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const CURRENT_LINT = "oxlint .";
 const CURRENT_LINT_FIX = "oxlint --fix .";
-const TYPESCRIPT_API = "npm:@typescript/typescript6@6.0.2";
+const TYPESCRIPT_API = "6.0.2";
+const TYPESCRIPT_API_ALIAS = "npm:@typescript/typescript6@6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
+const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 const WORKSPACE_MANIFESTS = [
   "apps/web/package.json",
   "packages/backend/package.json",
@@ -26,7 +28,7 @@ describe("Keenko migrations", () => {
     expect(snapshot(tree)).toEqual(before);
   });
 
-  test("adds the TypeScript compatibility aliases and Nx boundary bridge to the pre-boundary baseline", async () => {
+  test("adds the Bun-safe TypeScript compatibility split and Nx boundary bridge to the pre-boundary baseline", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "pre-boundary" });
     downgradeBoundaryBridge(tree);
@@ -51,14 +53,34 @@ describe("Keenko migrations", () => {
     for (const file of WORKSPACE_MANIFESTS) {
       const workspace = readJson(tree, file);
       const workspaceDevDependencies = record(workspace.devDependencies, `${file}.devDependencies`);
+      const workspaceScripts = record(workspace.scripts, `${file}.scripts`);
       expect(workspaceDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
       expect(workspaceDevDependencies.typescript).toBe(TYPESCRIPT_API);
+      expect(workspaceScripts.typecheck).toBe(TYPESCRIPT_NATIVE_TSC);
+      if (file !== "apps/web/package.json") {
+        expect(workspaceScripts.build).toBe(TYPESCRIPT_NATIVE_TSC);
+      }
     }
 
     const oxlint = tree.read("oxlint.config.ts", "utf-8") ?? "";
     expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
     expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
     expect(oxlint).toContain('sourceTag: "scope:shared"');
+  });
+
+  test("replaces the Bun-broken TypeScript 6 compatibility alias", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "alias-baseline" });
+    setCompatibilityAlias(tree);
+
+    await normalizeCheck(tree);
+
+    const root = readJson(tree, "package.json");
+    expect(record(root.devDependencies, "package.json.devDependencies").typescript).toBe(TYPESCRIPT_API);
+    for (const file of WORKSPACE_MANIFESTS) {
+      const workspace = readJson(tree, file);
+      expect(record(workspace.devDependencies, `${file}.devDependencies`).typescript).toBe(TYPESCRIPT_API);
+    }
   });
 
   test("rejects a customized workspace TypeScript compatibility dependency", async () => {
@@ -119,9 +141,15 @@ function downgradeBoundaryBridge(tree: Tree) {
   for (const file of WORKSPACE_MANIFESTS) {
     const workspace = readJson(tree, file);
     const workspaceDevDependencies = record(workspace.devDependencies, `${file}.devDependencies`);
+    const workspaceScripts = record(workspace.scripts, `${file}.scripts`);
     delete workspaceDevDependencies["@typescript/native"];
     workspaceDevDependencies.typescript = file === "apps/web/package.json" ? "6.0.2" : "7.0.2";
+    workspaceScripts.typecheck = "tsc --noEmit";
+    if (file !== "apps/web/package.json") {
+      workspaceScripts.build = "tsc --noEmit";
+    }
     workspace.devDependencies = workspaceDevDependencies;
+    workspace.scripts = workspaceScripts;
     tree.write(file, `${JSON.stringify(workspace, null, 2)}\n`);
   }
 
@@ -133,6 +161,22 @@ function downgradeBoundaryBridge(tree: Tree) {
   }
   const withoutBoundary = `${source.slice(0, start)}${source.slice(end)}`;
   tree.write("oxlint.config.ts", withoutBoundary.replace('"@nx/oxlint/boundaries-plugin", ', ""));
+}
+
+function setCompatibilityAlias(tree: Tree) {
+  const root = readJson(tree, "package.json");
+  const rootDevDependencies = record(root.devDependencies, "package.json.devDependencies");
+  rootDevDependencies.typescript = TYPESCRIPT_API_ALIAS;
+  root.devDependencies = rootDevDependencies;
+  tree.write("package.json", `${JSON.stringify(root, null, 2)}\n`);
+
+  for (const file of WORKSPACE_MANIFESTS) {
+    const workspace = readJson(tree, file);
+    const workspaceDevDependencies = record(workspace.devDependencies, `${file}.devDependencies`);
+    workspaceDevDependencies.typescript = TYPESCRIPT_API_ALIAS;
+    workspace.devDependencies = workspaceDevDependencies;
+    tree.write(file, `${JSON.stringify(workspace, null, 2)}\n`);
+  }
 }
 
 async function expectMigrationFailure(tree: Tree, message: string) {
