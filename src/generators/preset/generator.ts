@@ -31,8 +31,9 @@ const TANSTACK_PINS: Record<string, string> = {
   "react-dom": versions.react,
   tailwindcss: versions.tailwind,
 };
-const TYPESCRIPT_API = "npm:@typescript/typescript6@6.0.2";
+const TYPESCRIPT_API = "6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
+const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 
 export default async function presetGenerator(tree: Tree, options: PresetSchema) {
   const projectName = normalizeName(options.name);
@@ -96,7 +97,7 @@ async function generateWeb(tree: Tree, projectName: string) {
   pkg.scripts = {
     ...stringRecord(pkg.scripts, "apps/web/package.json.scripts"),
     codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate",
-    typecheck: "tsc --noEmit",
+    typecheck: TYPESCRIPT_NATIVE_TSC,
   };
   pkg.dependencies = {
     ...stringRecord(pkg.dependencies, "apps/web/package.json.dependencies"),
@@ -251,7 +252,7 @@ function writeBackend(tree: Tree, projectName: string) {
       name: `@${projectName}/backend`,
       nx: { tags: ["type:lib", "scope:backend"] },
       private: true,
-      scripts: { build: "tsc --noEmit", codegen: "confect codegen", typecheck: "tsc --noEmit" },
+      scripts: { build: TYPESCRIPT_NATIVE_TSC, codegen: "confect codegen", typecheck: TYPESCRIPT_NATIVE_TSC },
       type: "module",
       version: "0.0.0",
     })
@@ -291,7 +292,7 @@ function writeUi(tree: Tree, projectName: string) {
       nx: { tags: ["type:lib", "scope:ui"] },
       peerDependencies: { react: versions.react, "react-dom": versions.react },
       private: true,
-      scripts: { build: "tsc --noEmit", typecheck: "tsc --noEmit" },
+      scripts: { build: TYPESCRIPT_NATIVE_TSC, typecheck: TYPESCRIPT_NATIVE_TSC },
       type: "module",
       version: "0.0.0",
     })
@@ -325,7 +326,7 @@ function writeShared(tree: Tree, projectName: string) {
       name: `@${projectName}/shared`,
       nx: { tags: ["type:lib", "scope:shared"] },
       private: true,
-      scripts: { build: "tsc --noEmit", typecheck: "tsc --noEmit" },
+      scripts: { build: TYPESCRIPT_NATIVE_TSC, typecheck: TYPESCRIPT_NATIVE_TSC },
       type: "module",
       version: "0.0.0",
     })
