@@ -79,7 +79,7 @@
     "release:plan": "nx release plan",
     "release:plan:check": "nx release plan:check",
     "prepack": "bun run build",
-    "test:product": "bun test tests/packed-product.test.ts"
+    "test:product": "bun test tests/packed-product.test.ts tests/packed-upgrade-preservation.test.ts"
   },
   "dependencies": {
     "@nx/devkit": "23.2.0",
