@@ -73,12 +73,9 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     expect(nxTypeScript).toContain("|function|");
 
     const uiName = string(object(JSON.parse(await readFile(path.join(project, "packages/ui/package.json"), "utf-8"))).name, "ui name");
-    const forbiddenImport = path.join(project, "packages/shared/src/forbidden.ts");
-    await writeFile(forbiddenImport, `import "${uiName}/lib/utils";\n`);
-    expect(runFailure("bun", ["x", "oxlint", "--format", "json", "."], project, { NX_DAEMON: "false" })).toContain(
-      "enforce-module-boundaries"
-    );
-    await unlink(forbiddenImport);
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await expectBoundaryLintRecovery(project, uiName, attempt);
+    }
     run("bun", ["run", "lint"], project, { NX_DAEMON: "false" });
 
     const agentsPath = path.join(project, "AGENTS.md");
@@ -91,6 +88,16 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     await rm(temp, { force: true, recursive: true });
   }
 }, 240_000);
+
+async function expectBoundaryLintRecovery(project: string, uiName: string, attempt: number) {
+  const forbiddenImport = path.join(project, "packages/shared/src/forbidden.ts");
+  await writeFile(forbiddenImport, `import "${uiName}/lib/utils";\n`);
+  expect(runFailure("bun", ["x", "oxlint", "--format", "json", "."], project, { NX_DAEMON: "false" })).toContain(
+    "enforce-module-boundaries"
+  );
+  await unlink(forbiddenImport);
+  runCaptured("bun", ["x", "oxlint", "--format", "json", "."], project, { NX_DAEMON: "false" }, `boundary cleanup attempt ${attempt}`);
+}
 
 async function expectManifestBoundary(
   project: string,
@@ -133,6 +140,22 @@ function run(command: string, args: string[], cwd: string, extraEnv: Record<stri
 
 function runOut(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
   return execFileSync(command, args, { cwd, encoding: "utf-8", env: { ...process.env, ...extraEnv } });
+}
+
+function runCaptured(
+  command: string,
+  args: string[],
+  cwd: string,
+  extraEnv: Record<string, string> = {},
+  label = `${command} ${args.join(" ")}`
+) {
+  const result = spawnSync(command, args, { cwd, encoding: "utf-8", env: { ...process.env, ...extraEnv } });
+  if (result.status !== 0) {
+    throw new Error(
+      `${label} failed with status ${result.status ?? "null"}\nstdout:\n${result.stdout ?? ""}\nstderr:\n${result.stderr ?? ""}`
+    );
+  }
+  return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 }
 
 function runFailure(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
