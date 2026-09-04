@@ -104,7 +104,7 @@ async function upgrade(args: string[]) {
     process.execPath,
     [
       "-e",
-      'const { createRequire } = require("node:module"); const path = require("node:path"); for (const [label, base] of [["root", "package.json"], ["nx", "node_modules/nx/package.json"]]) { const load = createRequire(path.join(process.cwd(), base)); const ts = load("typescript"); console.log(`keenko-ts-resolution:${label}:${load.resolve("typescript")}:${String(ts.version)}:${typeof ts.readConfigFile}`); }',
+      'const { createRequire } = require("node:module"); const path = require("node:path"); for (const [label, base] of [["root", "package.json"], ["nx", "node_modules/nx/package.json"]]) { const load = createRequire(path.join(process.cwd(), base)); const ts = load("typescript"); console.log("keenko-ts-resolution:" + label + ":" + load.resolve("typescript") + ":" + String(ts.version) + ":" + typeof ts.readConfigFile); }',
     ],
     root
   );
