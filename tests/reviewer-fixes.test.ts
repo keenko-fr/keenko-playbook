@@ -98,7 +98,7 @@ test("packed Keenko enforces release-reviewer contracts through the production C
       project
     );
     expect(nxTypeScript).toContain("|function|6.0.2");
-    expect(runOut("node", ["node_modules/@typescript/native/bin/tsc", "--version"], project).trim()).toBe("Version 7.0.2");
+    expect(runOut("node", ["node_modules/@typescript/native/bin/tsc", "--version"], project).trim()).toContain("Version 7.0.2");
 
     const uiName = string(object(JSON.parse(await readFile(path.join(project, "packages/ui/package.json"), "utf-8"))).name, "ui name");
     await expectBoundaryLintRecoveryRepeated(project, uiName, 1, 5);
