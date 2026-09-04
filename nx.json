@@ -24,7 +24,9 @@
         "stageChanges": true,
         "push": false
       },
-      "workspaceChangelog": true
+      "workspaceChangelog": {
+        "file": "{workspaceRoot}/CHANGELOG.md"
+      }
     }
   },
   "targetDefaults": {

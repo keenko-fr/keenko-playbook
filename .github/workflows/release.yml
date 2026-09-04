@@ -54,7 +54,7 @@ jobs:
         if: ${{ inputs.mode == 'prepare' }}
         run: |
           first_release=""
-          if ! git tag --list 'v*' | grep -q .; then first_release="--first-release"; fi
+          if ! git tag --list | grep -q .; then first_release="--first-release"; fi
           bunx nx release version $first_release
           version="$(node -p "require('./package.json').version")"
           bunx nx release changelog "$version" $first_release
@@ -64,19 +64,10 @@ jobs:
           git diff --cached --exit-code
           git push origin "HEAD:refs/heads/${branch}"
           echo "Review and merge ${branch} before running publish from its exact main SHA."
-      - name: Tag and release exact reviewed commit with Nx
+      - name: Tag exact reviewed commit with Nx
+        id: release_tag
         if: ${{ inputs.mode == 'publish' }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          test -z "$(find .nx/version-plans -type f -name '*.md' -print -quit 2>/dev/null)"
-          version="$(node -p "require('./package.json').version")"
-          first_release=""
-          if ! git tag --list 'v*' | grep -q .; then first_release="--first-release"; fi
-          bunx nx release changelog "$version" --git-commit=false --git-tag=true --stage-changes=false --git-push=true --create-release=github $first_release
-          git diff --exit-code
-          git diff --cached --exit-code
-          test "$(git rev-list -n 1 "v${version}")" = "${{ inputs.expected_sha }}"
+        run: bun cli/release-tag.ts "${{ inputs.expected_sha }}"
       - name: Publish exact tagged release
         if: ${{ inputs.mode == 'publish' }}
         env:
@@ -84,5 +75,5 @@ jobs:
           NPM_CONFIG_PROVENANCE: true
         run: |
           first_release=""
-          if [ "$(git tag --list 'v*' | wc -l)" -eq 1 ]; then first_release="--first-release"; fi
+          if [ "${{ steps.release_tag.outputs.first_release }}" = "true" ]; then first_release="--first-release"; fi
           bunx nx release publish $first_release

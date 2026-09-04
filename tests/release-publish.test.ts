@@ -6,6 +6,7 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const NX = path.join(ROOT, "node_modules/nx/dist/bin/nx.js");
+const RELEASE_TAG = path.join(ROOT, "cli/release-tag.ts");
 const tempRoots: string[] = [];
 
 afterEach(async () => {
@@ -17,7 +18,7 @@ afterEach(async () => {
 });
 
 describe("Nx release publication", () => {
-  test("pinned Nx prepares one reviewable commit and does not tag a no-diff changelog replay", async () => {
+  test("the publish helper tags and pushes the exact reviewed commit under CI semantics", async () => {
     const fixture = await nxReleaseFixture();
     const initial = git(fixture.root, "rev-parse", "HEAD");
 
@@ -28,47 +29,55 @@ describe("Nx release publication", () => {
     expect(git(fixture.root, "tag", "--list", "v0.1.1")).toBe("");
 
     assertNxSuccess(nx(fixture.root, ["release", "changelog", "0.1.1", "--first-release"]));
-    const prepared = git(fixture.root, "rev-parse", "HEAD");
-    expect(prepared).not.toBe(initial);
+    const reviewed = git(fixture.root, "rev-parse", "HEAD");
+    expect(reviewed).not.toBe(initial);
     expect(git(fixture.root, "status", "--porcelain")).toBe("");
     expect(await exists(path.join(fixture.root, ".nx/version-plans/fixture.md"))).toBe(false);
-    expect(await exists(path.join(fixture.root, "CHANGELOG.md"))).toBe(true);
+    const changelogBefore = await readFile(path.join(fixture.root, "CHANGELOG.md"), "utf-8");
+    expect(changelogBefore).toContain("0.1.1");
     expect(git(fixture.root, "tag", "--list", "v0.1.1")).toBe("");
-    expect(gitDir(fixture.remote, "rev-parse", "refs/heads/main")).toBe(initial);
 
     git(fixture.root, "push", "origin", "HEAD:main");
-    expect(gitDir(fixture.remote, "rev-parse", "refs/heads/main")).toBe(prepared);
+    expect(gitDir(fixture.remote, "rev-parse", "refs/heads/main")).toBe(reviewed);
+    expect(git(fixture.root, "rev-parse", "origin/main")).toBe(reviewed);
+    expect(git(fixture.root, "symbolic-ref", "--short", "HEAD")).toBe("main");
 
-    assertNxSuccess(
-      nx(fixture.root, [
-        "release",
-        "changelog",
-        "0.1.1",
-        "--git-commit=false",
-        "--git-tag=true",
-        "--stage-changes=false",
-        "--git-push=true",
-        "--first-release",
-      ])
-    );
-    expect(git(fixture.root, "rev-parse", "HEAD")).toBe(prepared);
-    expect(git(fixture.root, "tag", "--list", "v0.1.1")).toBe("");
-    expect(gitDir(fixture.remote, "tag", "--list", "v0.1.1")).toBe("");
+    const result = spawnSync("bun", [RELEASE_TAG, reviewed], {
+      cwd: fixture.root,
+      encoding: "utf-8",
+      env: { ...process.env, CI: "true", GITHUB_ACTIONS: "true", NX_DAEMON: "false" },
+    });
+    if (result.status !== 0) {
+      throw new Error(output(result));
+    }
+
+    expect(await readFile(path.join(fixture.root, "CHANGELOG.md"), "utf-8")).toBe(changelogBefore);
+    expect(git(fixture.root, "rev-parse", "HEAD")).toBe(reviewed);
     expect(git(fixture.root, "status", "--porcelain")).toBe("");
+    expect(git(fixture.root, "tag", "--list", "v0.1.1")).toBe("v0.1.1");
+    expect(git(fixture.root, "rev-list", "-n", "1", "v0.1.1")).toBe(reviewed);
+    expect(gitDir(fixture.remote, "rev-list", "-n", "1", "refs/tags/v0.1.1")).toBe(reviewed);
+    expect(await exists(path.join(fixture.root, ".published"))).toBe(false);
+    expect(output(result)).toContain(`Nx created and pushed v0.1.1 at reviewed commit ${reviewed}.`);
   }, 30_000);
 
-  test("the workflow keeps reviewed-SHA guards and gives Nx a release task for exact tagging", async () => {
+  test("the workflow uses the programmatic tag helper instead of a no-diff changelog replay", async () => {
     const workflow = await readFile(path.join(ROOT, ".github/workflows/release.yml"), "utf-8");
+    const helper = await readFile(RELEASE_TAG, "utf-8");
     expect(workflow).toContain(`test "$(git rev-parse origin/main)" = "\${{ inputs.expected_sha }}"`);
     expect(workflow).toContain(`git checkout -B main "\${{ inputs.expected_sha }}"`);
     expect(workflow).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
     expect(workflow).toContain("bunx nx release version $first_release");
     expect(workflow).toContain('bunx nx release changelog "$version" $first_release');
-    expect(workflow).toContain("--git-commit=false --git-tag=true --stage-changes=false --git-push=true --create-release=github");
-    expect(workflow).toContain(`GITHUB_TOKEN: \${{ github.token }}`);
-    expect(workflow).toContain("git diff --cached --exit-code");
-    expect(workflow).toContain(`test "$(git rev-list -n 1 "v\${version}")" = "\${{ inputs.expected_sha }}"`);
-    expect(workflow).not.toContain("bunx nx release --skip-publish");
+    expect(workflow).toContain('run: bun cli/release-tag.ts "\${{ inputs.expected_sha }}"');
+    expect(workflow).toContain("bunx nx release publish $first_release");
+    expect(workflow).not.toContain("--create-release=github");
+    expect(workflow).not.toContain('release changelog "$version" --git-commit=false');
+    expect(helper).toContain('import { ReleaseClient } from "nx/release";');
+    expect(helper).toContain("file: false");
+    expect(helper).toContain("forceChangelogGeneration: true");
+    expect(helper).toContain("gitPush: true");
+    expect(helper).toContain("gitTag: true");
   });
 });
 
@@ -79,7 +88,22 @@ async function nxReleaseFixture() {
 
   await writeFile(
     path.join(root, "package.json"),
-    `${JSON.stringify({ name: "fixture", nx: {}, private: false, version: "0.1.0" }, null, 2)}\n`
+    `${JSON.stringify(
+      {
+        name: "fixture",
+        nx: {
+          targets: {
+            "nx-release-publish": {
+              command: 'node -e "require(\\'node:fs\\').writeFileSync(\\'.published\\', \\'yes\\')"',
+            },
+          },
+        },
+        private: false,
+        version: "0.1.0",
+      },
+      null,
+      2
+    )}\n`
   );
   await writeFile(
     path.join(root, "nx.json"),
@@ -88,7 +112,7 @@ async function nxReleaseFixture() {
         release: {
           changelog: {
             git: { commit: true, push: false, stageChanges: true, tag: false },
-            workspaceChangelog: true,
+            workspaceChangelog: { file: "{workspaceRoot}/CHANGELOG.md" },
           },
           projects: ["fixture"],
           releaseTag: { pattern: "v{version}" },
@@ -136,7 +160,7 @@ function gitDir(gitDirPath: string, ...args: string[]) {
   return execFileSync("git", [`--git-dir=${gitDirPath}`, ...args], { encoding: "utf-8" }).trim();
 }
 
-function output(result: ReturnType<typeof nx>) {
+function output(result: ReturnType<typeof nx> | ReturnType<typeof spawnSync>) {
   return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 }
 
