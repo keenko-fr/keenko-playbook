@@ -101,13 +101,13 @@ import path from "node:path";
 
 const target = path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js");
 const source = await readFile(target, "utf-8");
-const original = /require\\((["'])typescript\\1\\)/gu;
-const patched = /require\\((["'])typescript-api\\1\\)/gu;
+const original = /require\\(["']typescript["']\\)/gu;
+const patched = /require\\(["']typescript-api["']\\)/gu;
 const originalCount = [...source.matchAll(original)].length;
 const patchedCount = [...source.matchAll(patched)].length;
 
 if (originalCount === 2 && patchedCount === 0) {
-  await writeFile(target, source.replace(original, (_match, quote) => \`require(\${quote}typescript-api\${quote})\`));
+  await writeFile(target, source.replace(original, "require(\\\"typescript-api\\\")"));
 } else if (originalCount !== 0 || patchedCount !== 2) {
   throw new Error(
     \`Expected Nx 23.2.0 TypeScript bridge at \${target} to contain two unpatched or two patched TypeScript requires; found \${originalCount} unpatched and \${patchedCount} patched\`
@@ -263,11 +263,15 @@ function migrateNxTypescriptPatch(tree: Tree) {
     tree.write("tools/keenko-patch-nx-typescript.ts", NX_TYPESCRIPT_PATCH);
     return;
   }
-  if (existing.trim() !== NX_TYPESCRIPT_PATCH.trim()) {
+  if (normalizeGeneratedTool(existing) !== normalizeGeneratedTool(NX_TYPESCRIPT_PATCH)) {
     throw new Error(
       "Cannot migrate tools/keenko-patch-nx-typescript.ts because the Keenko-owned Nx TypeScript bridge was customized; reconcile it manually"
     );
   }
+}
+
+function normalizeGeneratedTool(source: string) {
+  return source.split(/\s+/u).join(" ").trim();
 }
 
 function migrateGeneratedConfig(tree: Tree, file: string) {
