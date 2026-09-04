@@ -8,8 +8,10 @@ import normalizeCheck from "../src/migrations/normalize-check.ts";
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const CURRENT_LINT = "oxlint .";
 const CURRENT_LINT_FIX = "oxlint --fix .";
+const CURRENT_POSTINSTALL = "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts";
 const TYPESCRIPT_API = "6.0.2";
 const TYPESCRIPT_API_ALIAS = "npm:@typescript/typescript6@6.0.2";
+const TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 const WORKSPACE_MANIFESTS = [
@@ -45,10 +47,15 @@ describe("Keenko migrations", () => {
     expect(scripts.check).toBe(CURRENT_CHECK);
     expect(scripts.lint).toBe(CURRENT_LINT);
     expect(scripts["lint:fix"]).toBe(CURRENT_LINT_FIX);
+    expect(scripts.postinstall).toBe(CURRENT_POSTINSTALL);
     expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
     expect(devDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
     expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
+    expect(devDependencies["typescript-api"]).toBe(TYPESCRIPT_API_BRIDGE);
     expect(migrated.projectNote).toBe("preserve me");
+    const nxPatchTool = tree.read("tools/keenko-patch-nx-typescript.ts", "utf-8") ?? "";
+    expect(nxPatchTool).toContain('path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js")');
+    expect(nxPatchTool).toContain("typescript-api");
 
     for (const file of WORKSPACE_MANIFESTS) {
       const workspace = readJson(tree, file);
@@ -130,13 +137,16 @@ function downgradeBoundaryBridge(tree: Tree) {
   const scripts = record(pkg.scripts, "scripts");
   scripts.lint = "oxlint .";
   scripts["lint:fix"] = "oxlint --fix .";
+  scripts.postinstall = "effect-tsgo patch --oxlint";
   pkg.scripts = scripts;
   const devDependencies = record(pkg.devDependencies, "devDependencies");
   delete devDependencies["@nx/oxlint"];
   delete devDependencies["@typescript/native"];
+  delete devDependencies["typescript-api"];
   devDependencies.typescript = "7.0.2";
   pkg.devDependencies = devDependencies;
   tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+  tree.delete("tools/keenko-patch-nx-typescript.ts");
 
   for (const file of WORKSPACE_MANIFESTS) {
     const workspace = readJson(tree, file);
