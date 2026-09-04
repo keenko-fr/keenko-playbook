@@ -120,7 +120,7 @@ function downgradeBoundaryBridge(tree: Tree) {
     const workspace = readJson(tree, file);
     const workspaceDevDependencies = record(workspace.devDependencies, `${file}.devDependencies`);
     delete workspaceDevDependencies["@typescript/native"];
-    workspaceDevDependencies.typescript = file === "apps/web/package.json" ? "^6.0.2" : "7.0.2";
+    workspaceDevDependencies.typescript = file === "apps/web/package.json" ? "6.0.2" : "7.0.2";
     workspace.devDependencies = workspaceDevDependencies;
     tree.write(file, `${JSON.stringify(workspace, null, 2)}\n`);
   }
