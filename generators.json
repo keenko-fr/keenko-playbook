@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "generators": {
+    "preset": {
+      "factory": "./dist/src/generators/preset/generator.js",
+      "schema": "./src/generators/preset/schema.json",
+      "description": "Create the fixed Keenko workspace."
+    },
+    "sync": {
+      "factory": "./dist/src/generators/sync/generator.js",
+      "schema": "./src/generators/sync/schema.json",
+      "description": "Refresh generated Keenko guidance."
+    }
+  }
+}

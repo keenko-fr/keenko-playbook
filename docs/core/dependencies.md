@@ -2,13 +2,14 @@
 
 ## Package/runtime policy
 
-- Bun is the default package manager, workspace runner, and TypeScript tooling runtime for Keenko TypeScript repositories. Use another tool only for a concrete project/tool compatibility reason.
+- Node 24 is the tooling runtime for Nx and tools that require Node. Bun is the package manager, workspace script entry point, lockfile owner, and application runtime wherever the selected stack supports it.
 - The current v1 baseline supports Bun `>=1.4.0 <2`. Bun `1.4.0` is the minimum supported version and the reference verification version. Bun `<1.4.0` is unsupported. Bun 2.x is outside the supported range; supporting a new Bun major requires an explicit compatibility decision and verification.
 - A root declaration such as `"packageManager": "bun@1.4.0"` records the repository's reference toolchain version. For the v1 baseline it matches the minimum/reference version, but it does not narrow the supported range or make newer compatible Bun 1.x releases unsupported.
 - A repository has one canonical package manager and one corresponding lockfile. Do not mix competing lockfiles.
 - Keep the committed Bun lockfile format version 2 canonical. Lockfile format version 2 is separate from the Bun 2.x runtime major. Do not regenerate or downgrade the lockfile to accommodate an unsupported local Bun; update the local Bun runtime instead.
 - Do not add mise, asdf, Volta-like machinery, custom bootstrap scripts, or another version-manager requirement solely to enforce this baseline.
 - Do not use a `preinstall` script as the Bun compatibility guard. An incompatible Bun can fail while parsing `bun.lock` before repository scripts run.
+- Generated workspaces declare Node `>=24 <25` and Bun `>=1.4.0 <2`; the Keenko CLI rejects unsupported runtimes before it mutates a project.
 
 ## Adding dependencies
 

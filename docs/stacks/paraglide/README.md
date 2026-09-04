@@ -12,4 +12,4 @@
 - Generated Paraglide modules are compiler-owned, ignored by default, and compiled deterministically before typecheck/test/build.
 - Base locale, supported locales, and locale routing are project/product decisions.
 
-See `.playbook/docs/conventions/i18n.md`.
+See `.keenko/docs/conventions/i18n.md`.

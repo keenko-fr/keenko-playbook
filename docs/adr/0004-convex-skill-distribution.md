@@ -1,19 +1,18 @@
-# ADR 0004: Convex upstream skills remain external; Keenko owns the discoverable adapter
+# ADR 0004: Keenko owns the discoverable Convex specialist
 
 ## Status
 
-Accepted. Updated by the pre-v1 defect review without changing the licensing premise.
+Accepted. Reconciled under KEE-14 before the first stable baseline.
 
 ## Context
 
-Keenko prefers first-party Convex guidance for version-sensitive behavior. The public `get-convex/agent-skills` repository is intentionally installable according to Convex documentation, but the reviewed repository does not declare a compatible repository redistribution license. Public visibility and an upstream installer are not sufficient grounds for Keenko to copy that source into this MIT repository.
+Keenko prefers current first-party Convex guidance for version-sensitive behavior. The official `get-convex/agent-skills` repository now declares Apache-2.0 licensing, so licensing is no longer the reason Keenko keeps its own specialist.
 
-A warning-only external skill reference was also insufficient: a clean consumer could report green while neither supported harness actually discovered Convex guidance.
+Keenko still needs project-specific behavior that the upstream suite cannot own: the Confect/native boundary, Keenko generated-code ownership, authorization and determinism rules, project authority, and the requirement to verify installed source/types before writing unfamiliar APIs.
 
 ## Decision
 
-- Keep the reviewed upstream Convex repository revision in `vendor/sources.json` as an external provenance record.
-- Do not redistribute its files and do not make that external suite a hidden v1 prerequisite.
-- Ship a Keenko-owned `convex` specialist skill in both supported harness trees. It routes agents to the consuming project's installed Convex version, installed package source/types, current first-party Convex documentation, and the external provenance record copied to `.playbook/external-sources.json`.
-- Installing the official external Convex skill suite remains an explicit optional project mutation, performed only from current Convex installation instructions with human approval. Keenko does not attest or manage that external installation.
-- If the upstream repository later declares a compatible redistribution license, supersede this ADR before changing distribution mode.
+- Keep the reviewed upstream Convex revision in `vendor/sources.json` as external provenance with its declared Apache-2.0 license.
+- Do not automatically install or redistribute the complete upstream suite in the default Keenko project.
+- Ship the Keenko-owned `convex` specialist in both supported harness trees. It routes agents to installed Convex source/types, current first-party documentation, Keenko backend/Confect rules, and the pinned upstream provenance record when useful.
+- A project may install the official Convex suite separately when a human deliberately chooses it. That external installation does not replace Keenko authority.

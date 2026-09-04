@@ -14,4 +14,4 @@
 - Focused verification proves each implementation slice; canonical full verification still runs before merge-ready review.
 - Real-provider staging verification complements mocked automated tests when provider contracts materially matter.
 
-See `.playbook/docs/core/verification.md`.
+See `.keenko/docs/core/verification.md`.

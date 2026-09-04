@@ -1,97 +1,49 @@
-# Keenko Playbook
+# Keenko
 
-Shared engineering conventions and portable agent workflows for Keenko projects using Codex and Claude.
+Keenko is one opinionated, versioned TypeScript application distribution. It owns a fixed Nx package-based workspace, compatible stack versions, engineering conventions, AI guidance, and forward migrations.
 
-The playbook separates:
+## Lifecycle
 
-- declarative engineering rules in `docs/`;
-- procedural workflows in `skills/`;
-- immutable/pinned upstream skill sources in `vendor/`;
-- project presets in `presets/`;
-- a Bun/TypeScript CLI that materializes a versioned `.playbook/` into consuming repositories.
+Node 24 is the tooling runtime. Bun `>=1.4.0 <2` owns package installation, workspace script entry, the v2 lockfile, and supported application execution.
 
-## Core model
+```sh
+bunx keenko create my-project
+cd my-project
+bun run check
+bunx keenko upgrade 0.2.0
+```
 
-One canonical source feeds both harnesses. Consumer repositories receive generated native skill copies under `.agents/skills/` and `.claude/skills/`; project-owned `AGENTS.md` and `CLAUDE.md` keep only a managed Keenko routing block.
-
-Instruction precedence is:
-
-1. explicit current human instruction;
-2. project ADR or explicit override;
-3. project-local conventions/architecture;
-4. Keenko core;
-5. enabled stack modules;
-6. Keenko-owned skills;
-7. vendored/first-party upstream skills;
-8. generic defaults.
-
-## Consumer scaffold
-
-`playbook install` creates/maintains:
+`keenko create` refuses a non-empty destination, creates no commit, and generates exactly:
 
 ```text
-CONTEXT.md
-AGENTS.md                  # project-owned; Keenko block managed
-CLAUDE.md                  # project-owned; Keenko block managed
-docs/project/
-  architecture.md
-  overrides.md
-  ui.md                    # project-owned; only when an enabled module declares a UI surface
-.playbook/
-  config.json              # requested preset/modules
-  lock.json                # exact materialized checksums
-  docs/                    # generated, read-only
-  skills/                  # canonical generated snapshot
-.agents/skills/            # generated native Codex copies
-.claude/skills/            # generated native Claude copies
+apps/
+  web/
+packages/
+  backend/
+  ui/
+  shared/
 ```
 
-Project-owned scaffold files are created only when absent and are not overwritten by updates. `CONTEXT.md` is concise project/domain vocabulary and durable facts, not session logs or a second convention manual. `docs/project/ui.md` records durable visual and interaction intent for UI-enabled projects; executable values remain in code/config.
+The stack is fixed: TypeScript, Nx, React, Effect 4, Convex, Confect, TanStack Start/Router/Query/Form/Table, Paraglide, shadcn with Tailwind CSS 4 and Base UI 1, the Keenko testing conventions, Oxfmt, Oxlint, and Ultracite.
 
-## CLI
+`apps/web` comes from the exact-pinned public `@tanstack/create` API. `packages/ui` follows shadcn's monorepo `components.json`, package-import, and package-export conventions. `packages/backend` owns Effect/Convex/Confect application functions. `packages/shared` remains runtime-neutral and minimal.
 
-Run through Bun without requiring a global install:
+## Upgrade and release ownership
 
-```bash
-bun cli/playbook.ts install --target ../consumer --preset effect-convex-web
-bun cli/playbook.ts update --target ../consumer
-bun cli/playbook.ts update --target ../consumer --apply
-bun cli/playbook.ts check --target ../consumer
+`keenko upgrade` delegates package updates and ordered repository migrations to Nx, requires a clean Git tree before mutation, regenerates `bun.lock`, and refreshes generated guidance. It never commits, pushes, deploys, provisions services, or mutates remote data. Use `--dry-run` for a non-mutating version preview.
+
+Nx Release owns versions, changelogs, tags, and publication. User-visible changes require a file-based version plan under `.nx/version-plans/`. Publication remains an explicitly dispatched, human-owned operation.
+
+## Guidance
+
+Generated, read-only convention and skill assets live under `.keenko/`; native skill copies live under `.agents/skills/` and `.claude/skills/`. `AGENTS.md` and `CLAUDE.md` contain one managed routing block while project facts remain owned in `CONTEXT.md` and `docs/project/`.
+
+Repository development uses:
+
+```sh
+bun install --frozen-lockfile
+bun run check
+bun run check:release
 ```
 
-`update` previews by default. `--apply` materializes the current source version. `check` verifies snapshot integrity, native skill copies, managed blocks, and the project scaffold required by the installed modules.
-
-## Conventions
-
-Start with:
-
-- `docs/core/agent-behavior.md`
-- `docs/core/code-style.md`
-- `docs/core/tooling.md`
-- `docs/core/verification.md`
-- `docs/core/security.md`
-- `docs/conventions/schema-types.md`
-- `docs/conventions/backend-architecture.md`
-- `docs/conventions/frontend.md`
-- `docs/conventions/frontend-file-topology.md`
-- `docs/conventions/i18n.md`
-- `docs/conventions/migrations.md`
-- enabled stack modules under `docs/stacks/`
-
-The initial preset is `effect-convex-web`: TypeScript, React, Effect 4, Convex, Confect, TanStack Start/Router/Query/Form/Table, Paraglide, React UI with Tailwind CSS 4 + shadcn/ui + Base UI 1, and testing.
-
-## Upstream skills
-
-Keenko owns its integration/convention layer and prefers first-party library guidance for version-specific APIs. Vendored sources are pinned and carry provenance/license metadata. Substantial intentional forks become Keenko-owned skills instead of silently modifying vendor snapshots.
-
-The official Convex skill repository remains an external provenance source until it exposes a compatible redistribution license. Consumers receive a Keenko-owned `convex` specialist adapter that routes to installed-version source/types and current first-party Convex documentation; the external suite is optional and never treated as silently installed.
-
-## Releases
-
-SemVer applies to playbook behavior/configuration:
-
-- patch: clarifications/fixes;
-- minor: compatible rules/modules/skills;
-- major: breaking config/materialization/behavior changes.
-
-Git tags and GitHub Releases are canonical. Release preparation happens through a reviewed release PR; publication is a separate explicit action gated by `release/v1-gate.json`. A v1 release requires clean source/release checks, fixture install/update/check, both harnesses discovering generated skills, preset resolution, fresh-context review, and real Codex + Claude dogfood in Anoula.
+`bun run check` is the non-remediating merge-ready contract. The release check additionally verifies pinned vendor sources and inspects the npm pack list.

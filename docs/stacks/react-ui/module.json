@@ -1,7 +1,0 @@
-{
-  "name": "react-ui",
-  "requires": ["react"],
-  "skills": [],
-  "incompatibleWith": [],
-  "uiSurface": true
-}

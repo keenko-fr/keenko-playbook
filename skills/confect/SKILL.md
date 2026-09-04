@@ -11,13 +11,13 @@ Use this workflow for `@confect/*`, Confect specs/implementations/refs/codegen, 
 
 1. Read the repository authority chain and project context first.
 2. Read the canonical rules that own this work:
-   - `.playbook/docs/stacks/confect/README.md`
-   - `.playbook/docs/stacks/effect/README.md`
-   - `.playbook/docs/stacks/convex/README.md`
-   - `.playbook/docs/conventions/backend-architecture.md`
-   - `.playbook/docs/conventions/backend-file-topology.md`
-   - `.playbook/docs/conventions/schema-types.md`
-   - `.playbook/docs/conventions/validation.md`
+   - `.keenko/docs/stacks/confect/README.md`
+   - `.keenko/docs/stacks/effect/README.md`
+   - `.keenko/docs/stacks/convex/README.md`
+   - `.keenko/docs/conventions/backend-architecture.md`
+   - `.keenko/docs/conventions/backend-file-topology.md`
+   - `.keenko/docs/conventions/schema-types.md`
+   - `.keenko/docs/conventions/validation.md`
 3. Read project architecture/overrides and relevant ADRs.
 4. Inspect the exact installed Confect, Effect, and Convex versions.
 5. For version-sensitive behavior, inspect installed package source/types and current first-party documentation before choosing an API.

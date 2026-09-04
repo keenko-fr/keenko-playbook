@@ -1,6 +1,6 @@
 # React UI
 
-This module owns the canonical Keenko React UI stack. Renderer-neutral UI quality remains in `.playbook/docs/conventions/frontend.md`; React programming rules remain in the `react` module.
+This module owns the canonical Keenko React UI stack. Renderer-neutral UI quality remains in `.keenko/docs/conventions/frontend.md`; React programming rules remain in the `react` module.
 
 ## Supported stack
 
@@ -31,7 +31,7 @@ shadcn-installed components are application-owned source. They are not generated
 
 Add a wrapper only when it represents meaningful composition, domain behavior, or another real abstraction. Do not wrap application-owned components only to avoid editing them.
 
-`components/ui` is a deliberate reserved location for domain-agnostic application UI primitives. It is an explicit exception to the general rule against generic component dumping grounds. Business-aware and domain-aware components still follow the ownership ladder in `.playbook/docs/conventions/frontend.md`.
+`components/ui` is a deliberate reserved location for domain-agnostic application UI primitives. It is an explicit exception to the general rule against generic component dumping grounds. Business-aware and domain-aware components still follow the ownership ladder in `.keenko/docs/conventions/frontend.md`.
 
 ## STYLES
 
@@ -45,6 +45,6 @@ Keep meaning and visuals separate. `DISPLAY` in the frontend convention decides 
 
 ## UI decisions
 
-Project-specific visual and interaction decisions belong in `docs/project/ui.md`. Follow the renderer-neutral completeness and unsettled-decision rules in `.playbook/docs/conventions/frontend.md`.
+Project-specific visual and interaction decisions belong in `docs/project/ui.md`. Follow the renderer-neutral completeness and unsettled-decision rules in `.keenko/docs/conventions/frontend.md`.
 
 The optional `prototype` skill may help explore materially different UI directions when it is installed by the project preset. This module does not require that skill.

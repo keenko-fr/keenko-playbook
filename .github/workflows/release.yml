@@ -4,96 +4,76 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Prepare a reviewed release PR or publish an already-reviewed version from main
+        description: Prepare a reviewable release commit, or publish an already-reviewed release commit
         required: true
         type: choice
-        options:
-          - prepare
-          - publish
-      version:
-        description: Required for publish, for example 1.0.0
-        required: false
+        options: [prepare, publish]
+      expected_sha:
+        description: Exact main commit reviewed for this release step
+        required: true
         type: string
 
 permissions:
   contents: write
-  pull-requests: write
+  id-token: write
 
 jobs:
-  prepare:
-    if: inputs.mode == 'prepare'
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.4.0
+      - name: Verify exact reviewed main commit
+        run: |
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          test "$(git rev-parse origin/main)" = "${{ inputs.expected_sha }}"
+          git checkout -B main "${{ inputs.expected_sha }}"
+          git branch --set-upstream-to=origin/main main
+          test "$(git symbolic-ref --short HEAD)" = "main"
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
       - run: bun install --frozen-lockfile
       - name: Release-grade verification
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: bun run check:release
-      - id: version
-        run: echo "version=$(bun run --silent release:prepare)" >> "$GITHUB_OUTPUT"
-      - name: Release-grade verification
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bun run check:release
-      - name: Open release PR
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+      - name: Configure release identity
         run: |
-          branch="release/v${VERSION}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$branch"
-          git add package.json CHANGELOG.md .changeset
-          git commit -m "Release v${VERSION}"
-          git push origin "$branch"
-          gh pr create --base main --head "$branch" --title "Release v${VERSION}" --body "Release preparation only. Human review and merge are required. Publishing remains blocked by the machine-readable v1 gate and an explicit publish dispatch."
-
-  publish:
-    if: inputs.mode == 'publish'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: 1.4.0
-      - run: bun install --frozen-lockfile
-      - name: Assert exact reviewed main commit
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - name: Prepare reviewable Nx release commit
+        if: ${{ inputs.mode == 'prepare' }}
         run: |
-          test "$GITHUB_REF" = "refs/heads/main"
-          git fetch origin main
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-      - name: Release-grade verification
+          first_release=""
+          if ! git tag --list | grep -q .; then first_release="--first-release"; fi
+          bunx nx release version $first_release
+          version="$(node -p "require('./package.json').version")"
+          bunx nx release changelog "$version" $first_release
+          branch="release/keenko-v${version}"
+          test "$(git rev-parse HEAD)" != "${{ inputs.expected_sha }}"
+          git diff --exit-code
+          git diff --cached --exit-code
+          git push origin "HEAD:refs/heads/${branch}"
+          echo "Review and merge ${branch} before running publish from its exact main SHA."
+      - name: Tag exact reviewed commit with Nx
+        id: release_tag
+        if: ${{ inputs.mode == 'publish' }}
+        run: bun cli/release-tag.ts "${{ inputs.expected_sha }}"
+      - name: Publish exact tagged release
+        if: ${{ inputs.mode == 'publish' }}
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bun run check:release
-      - run: bun run release:verify-gate
-      - name: Publish reviewed main commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REQUESTED_VERSION: ${{ inputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
         run: |
-          VERSION=$(bun -e 'console.log(require("./package.json").version)')
-          test -n "$REQUESTED_VERSION"
-          test "$VERSION" = "$REQUESTED_VERSION"
-          test "$VERSION" != "0.1.0"
-          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
-            echo "Tag v${VERSION} already exists"
-            exit 1
-          fi
-
-          git tag "v${VERSION}" "$GITHUB_SHA"
-          git push --atomic \
-            --force-with-lease="refs/heads/main:${GITHUB_SHA}" \
-            origin \
-            HEAD:refs/heads/main \
-            "refs/tags/v${VERSION}:refs/tags/v${VERSION}"
-          gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes --target "$GITHUB_SHA"
+          first_release=""
+          if [ "${{ steps.release_tag.outputs.first_release }}" = "true" ]; then first_release="--first-release"; fi
+          bunx nx release publish $first_release

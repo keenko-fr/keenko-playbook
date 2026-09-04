@@ -4,13 +4,13 @@ Effect is a stack module, not a universal requirement. Plain synchronous helpers
 
 ## Tooling
 
-Effect-enabled TypeScript repositories require `@effect/tsgo` and `oxlint-plugin-effect` in addition to the canonical TypeScript tooling. The v1 pins are `@effect/tsgo@0.38.0` and `oxlint-plugin-effect@0.11.0`; the matching universal pins are recorded in `docs/core/tooling.md`.
+Effect-enabled TypeScript repositories require `@effect/tsgo` and `oxlint-plugin-effect` in addition to the canonical TypeScript tooling. The v1 pins are `@effect/tsgo@0.39.1` and `oxlint-plugin-effect@0.12.0`; the matching universal pins are recorded in `docs/core/tooling.md`.
 
 Treat `@effect/tsgo`, TypeScript, Oxlint, and `oxlint-tsgolint` as one compatibility unit. Before an upgrade, inspect the installed/current `@effect/tsgo` supported-components manifest and move the supported pins together. Re-check the pinned `oxlint-plugin-effect` pairing at the same time because its recommended rule set and overlap with Effect tsgo are convention behavior.
 
 Use `effect-tsgo patch --oxlint` after dependency installation so the Effect TypeScript-Go integration owns both the TypeScript and Oxlint integration. Keep root Oxlint `options.typeAware: true`. Extend the `@effect/tsgo/oxlint-presets` recommended preset so semantic/type-aware Effect diagnostics surface through Oxlint. When the Effect language-service plugin is enabled, set its `diagnostics` option to `false` so editor/LSP diagnostics are not duplicated; `typecheck` remains the separate TypeScript compiler verification contract.
 
-Enable the `oxlint-plugin-effect` recommended preset only for authored Effect-owned source. It owns unconditional Effect syntax/structural policy while `@effect/tsgo` owns semantic/type-aware Effect correctness. Within the Oxlint diagnostic surface, one concern has one owner. For the pinned `oxlint-plugin-effect@0.11.0` and `@effect/tsgo@0.38.0` pairing, keep the plugin's recommended unconditional rules and disable the corresponding duplicate `effecttsgo/*` diagnostics.
+Enable the `oxlint-plugin-effect` recommended preset only for authored Effect-owned source. It owns unconditional Effect syntax/structural policy while `@effect/tsgo` owns semantic/type-aware Effect correctness. Within the Oxlint diagnostic surface, one concern has one owner. For the pinned `oxlint-plugin-effect@0.12.0` and `@effect/tsgo@0.39.1` pairing, keep the plugin's recommended unconditional rules and disable the corresponding duplicate `effecttsgo/*` diagnostics.
 
 The canonical plugin exception is `effect/noTernary`. Effect should not introduce a different generic TypeScript syntax convention unless Effect semantics require that divergence. Ordinary Keenko TypeScript permits useful ternaries, while generic rules already reject problematic nested or unnecessary forms. Effect has no semantic reason to ban every conditional expression.
 
@@ -178,7 +178,7 @@ Effect Schema is canonical for first-party schemas when this module is enabled.
 - Do not introduce first-party Zod schemas.
 - Prefer Effect built-ins and transformations before custom wrappers.
 - Standard Schema (`S.toStandardSchemaV1`) is an adapter at an actual consumer boundary, not a canonical representation and not an `s...` export.
-- See `.playbook/docs/conventions/schema-types.md` for `Type`/`Encoded`, transport, persistence, representation, and ownership rules.
+- See `.keenko/docs/conventions/schema-types.md` for `Type`/`Encoded`, transport, persistence, representation, and ownership rules.
 
 ### Structural derivation
 

@@ -1,36 +1,107 @@
 {
-  "name": "keenko-playbook",
+  "name": "keenko",
   "version": "0.1.0",
-  "private": true,
-  "description": "Keenko engineering conventions and portable agent workflows for Codex and Claude.",
+  "private": false,
+  "description": "Opinionated Nx-based Keenko TypeScript application distribution.",
   "license": "MIT",
-  "bin": {
-    "playbook": "cli/playbook.ts"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keenko-fr/keenko-playbook.git"
   },
+  "bin": {
+    "keenko": "dist/cli/keenko.js"
+  },
+  "files": [
+    "dist/cli/keenko.js",
+    "dist/src/",
+    "docs/",
+    "generators.json",
+    "migrations.json",
+    "src/generators/preset/schema.json",
+    "src/generators/sync/schema.json",
+    "skills/",
+    "templates/",
+    "vendor/matt-pocock/LICENSE",
+    "vendor/matt-pocock/VENDORED.json",
+    "vendor/matt-pocock/skills/engineering/ask-matt/",
+    "vendor/matt-pocock/skills/engineering/code-review/",
+    "vendor/matt-pocock/skills/engineering/codebase-design/",
+    "vendor/matt-pocock/skills/engineering/diagnosing-bugs/",
+    "vendor/matt-pocock/skills/engineering/domain-modeling/",
+    "vendor/matt-pocock/skills/engineering/grill-with-docs/",
+    "vendor/matt-pocock/skills/engineering/implement/",
+    "vendor/matt-pocock/skills/engineering/improve-codebase-architecture/",
+    "vendor/matt-pocock/skills/engineering/prototype/",
+    "vendor/matt-pocock/skills/engineering/resolving-merge-conflicts/",
+    "vendor/matt-pocock/skills/engineering/tdd/",
+    "vendor/matt-pocock/skills/engineering/to-spec/",
+    "vendor/matt-pocock/skills/engineering/to-tickets/",
+    "vendor/matt-pocock/skills/engineering/wizard/",
+    "vendor/matt-pocock/skills/productivity/grilling/",
+    "vendor/matt-pocock/skills/productivity/handoff/",
+    "vendor/pstack/LICENSE",
+    "vendor/pstack/VENDORED.json",
+    "vendor/pstack/skills/unslop/",
+    "vendor/effect-ts/LICENSE",
+    "vendor/effect-ts/VENDORED.json",
+    "vendor/effect-ts/skills/effect-ts/"
+  ],
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./preset": {
+      "types": "./dist/src/generators/preset/generator.d.ts",
+      "default": "./dist/src/generators/preset/generator.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "playbook": "bun cli/playbook.ts",
+    "keenko": "bun cli/keenko.ts",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "check": "bun cli/playbook.ts check --source && bun run format:check && bun run lint && bun run typecheck && bun run test",
-    "check:release": "bun run check && bun cli/playbook.ts check --source --release && bun run vendor:check",
+    "test": "bun test --path-ignore-patterns tests/packed-product.test.ts --path-ignore-patterns tests/packed-upgrade-preservation.test.ts && bun run test:product",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
+    "check:release": "bun run check && bun run vendor:check && bun pm pack --dry-run",
     "vendor:sync": "bun cli/vendor-sync.ts",
     "vendor:check": "bun cli/vendor-sync.ts --check",
     "vendor:update": "bun cli/vendor-sync.ts --update",
-    "release:prepare": "bun cli/release.ts prepare",
-    "release:verify-gate": "bun cli/release.ts verify-gate"
+    "build": "bun -e 'import { rmSync } from \"node:fs\"; rmSync(\"dist\", { force: true, recursive: true })' && tsc -p tsconfig.build.json",
+    "release": "nx release",
+    "release:plan": "nx release plan",
+    "release:plan:check": "nx release plan:check",
+    "prepack": "bun run build",
+    "test:product": "bun test tests/packed-product.test.ts tests/packed-upgrade-preservation.test.ts"
+  },
+  "dependencies": {
+    "@nx/devkit": "23.2.0",
+    "@tanstack/create": "0.70.0",
+    "oxfmt": "0.65.0",
+    "semver": "^7.6.3"
   },
   "devDependencies": {
+    "@nx/js": "23.2.0",
     "@types/bun": "1.4.0",
-    "oxfmt": "0.65.0",
-    "oxlint": "1.80.0",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "nx": "23.2.0",
+    "oxlint": "1.81.0",
     "oxlint-tsgolint": "7.0.2001",
-    "typescript": "7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "ultracite": "7.10.7"
   },
-  "packageManager": "bun@1.4.0"
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "bun@1.4.0",
+  "generators": "./generators.json",
+  "nx": {},
+  "nx-migrations": "./migrations.json"
 }

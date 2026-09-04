@@ -25,16 +25,13 @@ describe("vendor policy", () => {
     }
   });
 
-  test("keeps Convex external and out of default external-skill expectations", async () => {
+  test("keeps Convex external while shipping the owned adapter", async () => {
     const manifest = await readJsonObject(`${ROOT}/vendor/sources.json`);
     const sources = asArray(manifest.sources, "vendor/sources.json.sources").map(asVendorSource);
     const convex = sources.find((source) => source.id === "convex");
-    const preset = await readJsonObject(`${ROOT}/presets/effect-convex-web.json`);
-    const externalSkills = asObject(preset.externalSkills, "preset.externalSkills");
-    const ownedSkills = asArray(preset.ownedSkills, "preset.ownedSkills").map((value) => asString(value, "preset.ownedSkills[]"));
     expect(convex?.mode).toBe("external");
-    expect(externalSkills).toEqual({});
-    expect(ownedSkills).toContain("convex");
+    expect(convex?.license).toBe("Apache-2.0");
+    expect(await readFile(`${ROOT}/skills/convex/SKILL.md`, "utf-8")).toContain("name: convex");
   });
 });
 

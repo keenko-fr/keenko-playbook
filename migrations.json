@@ -1,0 +1,9 @@
+{
+  "generators": {
+    "0.1.0-reconcile-baseline": {
+      "version": "0.1.0",
+      "description": "Reconcile supported pre-v1 project scripts and the canonical Oxlint baseline.",
+      "factory": "./dist/src/migrations/normalize-check.js"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # React
 
-This module owns the React-specific programming model. Renderer-neutral UI quality and component ownership live in `.playbook/docs/conventions/frontend.md`.
+This module owns the React-specific programming model. Renderer-neutral UI quality and component ownership live in `.keenko/docs/conventions/frontend.md`.
 
 ## Rendering and state
 
@@ -13,4 +13,4 @@ This module owns the React-specific programming model. Renderer-neutral UI quali
 
 Use semantic native elements and accessibility-capable primitives according to the frontend component contract.
 
-See `.playbook/docs/conventions/frontend.md` and `frontend-file-topology.md`. When `react-ui` is enabled, it owns React styling and component-stack conventions.
+See `.keenko/docs/conventions/frontend.md` and `frontend-file-topology.md`. When `react-ui` is enabled, it owns React styling and component-stack conventions.

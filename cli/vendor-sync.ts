@@ -38,10 +38,6 @@ interface GitTreeEntry {
 interface GitTreeResponse {
   tree: GitTreeEntry[];
 }
-interface GitBlobResponse {
-  encoding: string;
-  content: string;
-}
 
 async function main() {
   const manifest = parseManifest(JSON.parse(await readFile(sourcesPath, "utf-8")));
@@ -134,13 +130,14 @@ async function materialize(source: Source, target: string) {
   const blobs = tree.tree.filter((entry) => entry.type === "blob" && included(entry.path, source.includes));
   await settleAll(
     blobs.map(async (entry) => {
-      const blob = await apiJson<GitBlobResponse>(`https://api.github.com/repos/${source.repository}/git/blobs/${entry.sha}`);
-      if (blob.encoding !== "base64") {
-        throw new Error(`Unsupported blob encoding for ${source.id}:${entry.path}`);
+      const upstreamPath = [source.rootPath, entry.path].filter(Boolean).join("/");
+      const response = await fetch(`https://raw.githubusercontent.com/${source.repository}/${source.commit}/${upstreamPath}`);
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}: ${source.id}:${upstreamPath}`);
       }
       const filePath = join(target, entry.path);
       await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(filePath, Buffer.from(blob.content.replaceAll("\n", ""), "base64"));
+      await writeFile(filePath, Buffer.from(await response.arrayBuffer()));
     })
   );
   const files = await hashTree(target, new Set(["VENDORED.json"]));
@@ -251,7 +248,7 @@ async function exists(path: string) {
 async function apiJson<T>(url: string): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/vnd.github+json", "User-Agent": "keenko-playbook" };
   const githubToken = process.env.GITHUB_TOKEN;
-  if (githubToken !== undefined && githubToken.length > 0) {
+  if (githubToken !== undefined && githubToken.length > 0 && url.includes("/keenko-fr/keenko-playbook/")) {
     headers.Authorization = `Bearer ${githubToken}`;
   }
   const response = await fetch(url, { headers });

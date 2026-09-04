@@ -10,7 +10,7 @@ Human engineering conventions are canonical. Codex and Claude receive thin harne
 
 ## Consequences
 
-- `AGENTS.md` and `CLAUDE.md` stay small.
-- Canonical knowledge lives under `docs/` and `skills/`.
+- `AGENTS.md` and `CLAUDE.md` stay small and preserve project-owned surrounding text.
+- Canonical generated Keenko knowledge lives under `.keenko/docs` and `.keenko/skills` in consuming projects.
 - Harness-specific differences are allowed only where capabilities/invocation actually differ.
-- A project-local decision can override Keenko defaults explicitly without forking the shared playbook.
+- A project-local decision can override Keenko defaults explicitly without forking generated Keenko guidance.

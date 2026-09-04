@@ -27,17 +27,27 @@ Do not duplicate formatter rules or TypeScript compiler diagnostics merely for c
 
 Tooling that can change accepted source or diagnostics is exact-pinned and upgraded as a reviewed convention change. The v1 baseline is:
 
-| Scope         | Package                | Version    |
-| ------------- | ---------------------- | ---------- |
-| TypeScript    | `typescript`           | `7.0.2`    |
-| Universal     | `ultracite`            | `7.10.7`   |
-| Universal     | `oxfmt`                | `0.65.0`   |
-| Universal     | `oxlint`               | `1.80.0`   |
-| Universal     | `oxlint-tsgolint`      | `7.0.2001` |
-| Effect module | `@effect/tsgo`         | `0.38.0`   |
-| Effect module | `oxlint-plugin-effect` | `0.11.0`   |
+| Scope                | Package                | Version/specifier      |
+| -------------------- | ---------------------- | ---------------------- |
+| Application compiler | `@typescript/native`   | `npm:typescript@7.0.2` |
+| Nx compatibility API | `typescript`           | `6.0.2`                |
+| Nx API bridge        | `typescript-api`       | `npm:typescript@6.0.2` |
+| Nx release actions   | `@nx/js`               | `23.2.0`               |
+| Nx boundary bridge   | `@nx/oxlint`           | `23.2.0`               |
+| Universal            | `ultracite`            | `7.10.7`               |
+| Universal            | `oxfmt`                | `0.65.0`               |
+| Universal            | `oxlint`               | `1.81.0`               |
+| Universal            | `oxlint-tsgolint`      | `7.0.2001`             |
+| Effect module        | `@effect/tsgo`         | `0.39.1`               |
+| Effect module        | `oxlint-plugin-effect` | `0.12.0`               |
 
 The Effect tooling is a compatibility unit: before upgrading `@effect/tsgo`, verify its current first-party supported TypeScript, Oxlint, and `oxlint-tsgolint` versions and move the coupled pins together. Re-check `oxlint-plugin-effect` at the same time because its preset and overlap with Effect tsgo are versioned compatibility data.
+
+TypeScript 7 remains the application compiler decision. A generated project carries `@typescript/native = npm:typescript@7.0.2` and a direct `typescript = 6.0.2` dependency at the root and at each workspace package boundary. Package `build` and `typecheck` scripts invoke the native compiler explicitly through `node ../../node_modules/@typescript/native/bin/tsc --noEmit`.
+
+The generated root also carries `typescript-api = npm:typescript@6.0.2` as a non-colliding alias for the same TypeScript 6 programmatic API. This alias exists specifically for the pinned Nx 23.2.0 boundary implementation under Bun 1.4.0. In the supported reference environment, normal Node resolution can load the direct TypeScript 6 dependency while Oxlint's JS-plugin process can still hand Nx an incomplete TypeScript module for its bare `require("typescript")`. The Keenko-owned `tools/keenko-patch-nx-typescript.ts` postinstall step therefore redirects exactly the two pinned Nx programmatic API loads to `typescript-api`. The patch is idempotent and hard-fails when the expected Nx source shape changes so an Nx upgrade cannot silently inherit this workaround.
+
+Do not replace the direct TypeScript 6 dependency with `typescript = npm:@typescript/typescript6@6.0.2` while Bun 1.4.0 remains the minimum/reference package manager. That official compatibility package re-exports a nested `npm:` alias, and Bun 1.4.0 can resolve that nested alias back to the wrapper package. The result is an incomplete TypeScript module and Nx failures such as `tsModule.readConfigFile is not a function`. This is a package-manager compatibility workaround, not the repository language level. Remove the direct TypeScript 6 API dependency and the `typescript-api` Nx bridge only when a verified Bun/Nx/Oxlint pairing can use the official compatibility alias safely or Nx no longer requires this TypeScript programmatic API path.
 
 ## Root configuration and monorepos
 
@@ -52,7 +62,7 @@ Oxfmt owns mechanical import sorting. Keep external and workspace packages befor
 Formatter/linter ownership stops at generator or manager boundaries by default. Exclude generated or immutable output from direct formatting and linting, then validate it with the owning generator/materializer/drift contract instead. Typical exclusions include:
 
 - `vendor/**`;
-- `.playbook/**`;
+- `.keenko/**`;
 - Playbook-generated `.agents/skills/**` and `.claude/skills/**`;
 - `confect/_generated/**` and `convex/_generated/**`;
 - Paraglide compiler output;
@@ -87,6 +97,8 @@ CI consumes the canonical package scripts and never auto-fixes, persists rewritt
 
 During implementation, agents format/fix the touched scope and run focused lint, type, and tests as appropriate. Safe autofixes are encouraged only when their resulting diff is inspected. Never manually fight Oxfmt output and never autofix generated/vendored sources. Before review handoff, run the applicable complete `bun run check` and report exactly what passed, failed, was not run, or was unavailable.
 
-## Consumer boundary
+## Generated workspace boundary
 
-The Playbook defines this dependency/config/script/CI shape, but `playbook install` and `playbook update` do not manage a consumer's `package.json`, root Oxc/Ultracite configs, hooks, or editor settings. Consumer repositories own those project files. Extending materialization to manage them is a separate architecture decision.
+The Keenko Nx preset owns the initial package manifests, root Oxc/Ultracite configuration, scripts, CI contract, and generated guidance. Forward changes to those owned surfaces ship as explicit Nx migrations. Migrations must preserve project-owned files and reject ambiguous customized values with an actionable conflict instead of silently overwriting them.
+
+The verified baseline includes `@nx/oxlint` and `@nx/enforce-module-boundaries`. Nx/Oxlint owns source-import and module-boundary diagnostics for the fixed scope matrix. `keenko check` does not repeat those import diagnostics: it owns the fixed four-workspace topology and supplements Nx/Oxlint only for manifest-declared workspace dependencies in `dependencies`, `devDependencies`, `optionalDependencies`, and `peerDependencies`, which the lint rule does not diagnose without a source import. Both checks derive their allowed scope matrix from the same Keenko definition. Preserve the rule that one diagnostic concern has one owner.
