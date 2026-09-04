@@ -9,10 +9,6 @@ const PREVIOUS_CHECKS = new Set([
   "bun run codegen:check && bun run test && bun run format:check && bun run lint && bun run typecheck && bun run build",
 ]);
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
-const PREVIOUS_LINT = "oxlint .";
-const CURRENT_LINT = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint .";
-const PREVIOUS_LINT_FIX = "oxlint --fix .";
-const CURRENT_LINT_FIX = "OXLINT_TSGOLINT_DANGEROUSLY_SUPPRESS_PROGRAM_DIAGNOSTICS=true oxlint --fix .";
 const PREVIOUS_CODEGEN_CHECK = "keenko check --guidance";
 const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
 const CURRENT_TEST = "bun test --pass-with-no-tests";
@@ -25,6 +21,12 @@ const CURRENT_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --o
 const PREVIOUS_UI = "bunx --bun shadcn@4.20.1 add -c apps/web";
 const CURRENT_UI = "bun tools/keenko-ui.ts";
 const CURRENT_UI_CVA = "0.7.1";
+const WORKSPACE_MANIFESTS = [
+  "apps/web/package.json",
+  "packages/backend/package.json",
+  "packages/shared/package.json",
+  "packages/ui/package.json",
+] as const;
 const CURRENT_GENERATED_IGNORES = [
   "packages/backend/confect/**",
   "packages/backend/convex/**",
@@ -91,6 +93,9 @@ if (reformat.exitCode !== 0) {
 
 export default async function normalizeCheck(tree: Tree) {
   migrateRootPackage(tree);
+  for (const file of WORKSPACE_MANIFESTS) {
+    migrateWorkspaceTypescript(tree, file);
+  }
   migrateWebPackage(tree);
   migrateUiPackage(tree);
   migrateComponentsConfig(tree, "apps/web/components.json");
@@ -121,8 +126,6 @@ function migrateRootPackage(tree: Tree) {
   );
   migrateKnownString(scripts, "test", [undefined], CURRENT_TEST, "package.json scripts.test");
   migrateKnownString(scripts, "dev", ["nx run web:dev"], `nx run @${name}/web:dev`, "package.json scripts.dev");
-  migrateKnownString(scripts, "lint", [PREVIOUS_LINT], CURRENT_LINT, "package.json scripts.lint");
-  migrateKnownString(scripts, "lint:fix", [PREVIOUS_LINT_FIX], CURRENT_LINT_FIX, "package.json scripts.lint:fix");
   migrateKnownString(scripts, "ui", [PREVIOUS_UI], CURRENT_UI, "package.json scripts.ui");
 
   const devDependencies = stringRecord(pkg.devDependencies, "package.json.devDependencies");
@@ -136,6 +139,18 @@ function migrateRootPackage(tree: Tree) {
   pkg.scripts = scripts;
   pkg.devDependencies = devDependencies;
   writeJson(tree, "package.json", pkg);
+}
+
+function migrateWorkspaceTypescript(tree: Tree, file: string) {
+  const pkg = readJson(tree, file);
+  const devDependencies = stringRecord(pkg.devDependencies, `${file}.devDependencies`);
+  if (devDependencies === undefined) {
+    throw new Error(`Cannot migrate ${file} devDependencies because the Keenko baseline is missing`);
+  }
+  migrateIntroducedTool(devDependencies, "@typescript/native", CURRENT_TYPESCRIPT_NATIVE);
+  migrateKnownString(devDependencies, "typescript", [PREVIOUS_TYPESCRIPT], CURRENT_TYPESCRIPT, `${file} devDependencies.typescript`);
+  pkg.devDependencies = devDependencies;
+  writeJson(tree, file, pkg);
 }
 
 function migrateWebPackage(tree: Tree) {
@@ -263,6 +278,8 @@ async function formatMigratedFiles(tree: Tree) {
   const paths = [
     "package.json",
     "apps/web/package.json",
+    "packages/backend/package.json",
+    "packages/shared/package.json",
     "packages/ui/package.json",
     "apps/web/components.json",
     "packages/ui/components.json",
