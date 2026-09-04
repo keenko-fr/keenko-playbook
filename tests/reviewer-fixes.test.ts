@@ -73,9 +73,7 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     expect(nxTypeScript).toContain("|function|");
 
     const uiName = string(object(JSON.parse(await readFile(path.join(project, "packages/ui/package.json"), "utf-8"))).name, "ui name");
-    for (let attempt = 1; attempt <= 5; attempt += 1) {
-      await expectBoundaryLintRecovery(project, uiName, attempt);
-    }
+    await expectBoundaryLintRecoveryRepeated(project, uiName, 1, 5);
     run("bun", ["run", "lint"], project, { NX_DAEMON: "false" });
 
     const agentsPath = path.join(project, "AGENTS.md");
@@ -88,6 +86,13 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     await rm(temp, { force: true, recursive: true });
   }
 }, 240_000);
+
+async function expectBoundaryLintRecoveryRepeated(project: string, uiName: string, attempt: number, finalAttempt: number) {
+  await expectBoundaryLintRecovery(project, uiName, attempt);
+  if (attempt < finalAttempt) {
+    await expectBoundaryLintRecoveryRepeated(project, uiName, attempt + 1, finalAttempt);
+  }
+}
 
 async function expectBoundaryLintRecovery(project: string, uiName: string, attempt: number) {
   const forbiddenImport = path.join(project, "packages/shared/src/forbidden.ts");
