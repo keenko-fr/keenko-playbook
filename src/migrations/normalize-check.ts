@@ -106,16 +106,13 @@ const patched = /require\\((["'])typescript-api\\1\\)/gu;
 const originalCount = [...source.matchAll(original)].length;
 const patchedCount = [...source.matchAll(patched)].length;
 
-if (originalCount === 0 && patchedCount === 2) {
-  process.exit(0);
-}
-if (originalCount !== 2 || patchedCount !== 0) {
+if (originalCount === 2 && patchedCount === 0) {
+  await writeFile(target, source.replace(original, (_match, quote) => \`require(\${quote}typescript-api\${quote})\`));
+} else if (originalCount !== 0 || patchedCount !== 2) {
   throw new Error(
-    \`Expected Nx 23.2.0 TypeScript bridge at \${target} to contain two unpatched TypeScript requires; found \${originalCount} unpatched and \${patchedCount} patched\`
+    \`Expected Nx 23.2.0 TypeScript bridge at \${target} to contain two unpatched or two patched TypeScript requires; found \${originalCount} unpatched and \${patchedCount} patched\`
   );
 }
-
-await writeFile(target, source.replace(original, (_match, quote) => \`require(\${quote}typescript-api\${quote})\`));
 `;
 
 export default async function normalizeCheck(tree: Tree) {
