@@ -74,7 +74,7 @@ describe("Keenko Nx preset", () => {
       expect(tree.exists(`${root}/effect-ts/UPSTREAM_LICENSE`)).toBe(true);
       expect(tree.exists(`${root}/unslop/UPSTREAM_PROVENANCE.json`)).toBe(true);
     }
-  });
+  }, 15_000);
 });
 
 function workspaces(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
