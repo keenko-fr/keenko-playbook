@@ -12,6 +12,15 @@ const OLD_CODEGEN_CHECK = "keenko check --guidance";
 const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
 const OLD_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate";
 const CURRENT_WEB_CODEGEN = "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate";
+const TYPESCRIPT_API = "6.0.2";
+const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
+const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
+const WORKSPACE_MANIFESTS = [
+  "apps/web/package.json",
+  "packages/backend/package.json",
+  "packages/shared/package.json",
+  "packages/ui/package.json",
+] as const;
 const CURRENT_GENERATED_IGNORES = [
   "packages/backend/confect/**",
   "packages/backend/convex/**",
@@ -323,8 +332,20 @@ async function assertUpgraded(project: string, registryEnv: Record<string, strin
   expect(devDependencies["@effect/tsgo"]).toBe("0.39.1");
   expect(devDependencies["oxlint-plugin-effect"]).toBe("0.12.0");
   expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
-  expect(devDependencies["@typescript/native"]).toBe("npm:typescript@7.0.2");
-  expect(devDependencies.typescript).toBe("npm:@typescript/typescript6@6.0.2");
+  expect(devDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+  expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
+
+  for (const file of WORKSPACE_MANIFESTS) {
+    const workspace = json(await readFile(path.join(project, file), "utf-8"));
+    const workspaceDevDependencies = record(workspace.devDependencies, `${file} upgraded devDependencies`);
+    const workspaceScripts = record(workspace.scripts, `${file} upgraded scripts`);
+    expect(workspaceDevDependencies.typescript).toBe(TYPESCRIPT_API);
+    expect(workspaceDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+    expect(workspaceScripts.typecheck).toBe(TYPESCRIPT_NATIVE_TSC);
+    if (file !== "apps/web/package.json") {
+      expect(workspaceScripts.build).toBe(TYPESCRIPT_NATIVE_TSC);
+    }
+  }
 
   const webPackage = json(await readFile(path.join(project, "apps/web/package.json"), "utf-8"));
   expect(record(webPackage.scripts, "upgraded web scripts").codegen).toBe(CURRENT_WEB_CODEGEN);
@@ -354,7 +375,9 @@ async function assertUpgraded(project: string, registryEnv: Record<string, strin
   expect(tooling).toContain("manifest-declared workspace dependencies");
 
   run("bun", ["install", "--frozen-lockfile"], project, registryEnv);
-  expect(runOut("bun", ["x", "tsc", "--version"], path.join(project, "packages/shared"))).toContain("7.0.2");
+  expect(runOut("node", ["../../node_modules/@typescript/native/bin/tsc", "--version"], path.join(project, "packages/shared"))).toContain(
+    "7.0.2"
+  );
   run("bun", ["run", "check"], project);
 }
 
