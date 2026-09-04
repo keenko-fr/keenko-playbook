@@ -13,6 +13,7 @@ const PREVIOUS_CODEGEN_CHECK = "keenko check --guidance";
 const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
 const CURRENT_TEST = "bun test --pass-with-no-tests";
 const PREVIOUS_TYPESCRIPT = "7.0.2";
+const PREVIOUS_WEB_TYPESCRIPT = "^5.7.2";
 const CURRENT_TYPESCRIPT = "npm:@typescript/typescript6@6.0.2";
 const CURRENT_TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const CURRENT_NX_OXLINT = "23.2.0";
@@ -94,7 +95,8 @@ if (reformat.exitCode !== 0) {
 export default async function normalizeCheck(tree: Tree) {
   migrateRootPackage(tree);
   for (const file of WORKSPACE_MANIFESTS) {
-    migrateWorkspaceTypescript(tree, file);
+    const previousTypescript = file === "apps/web/package.json" ? PREVIOUS_WEB_TYPESCRIPT : PREVIOUS_TYPESCRIPT;
+    migrateWorkspaceTypescript(tree, file, previousTypescript);
   }
   migrateWebPackage(tree);
   migrateUiPackage(tree);
@@ -141,14 +143,14 @@ function migrateRootPackage(tree: Tree) {
   writeJson(tree, "package.json", pkg);
 }
 
-function migrateWorkspaceTypescript(tree: Tree, file: string) {
+function migrateWorkspaceTypescript(tree: Tree, file: string, previousTypescript: string) {
   const pkg = readJson(tree, file);
   const devDependencies = stringRecord(pkg.devDependencies, `${file}.devDependencies`);
   if (devDependencies === undefined) {
     throw new Error(`Cannot migrate ${file} devDependencies because the Keenko baseline is missing`);
   }
   migrateIntroducedTool(devDependencies, "@typescript/native", CURRENT_TYPESCRIPT_NATIVE);
-  migrateKnownString(devDependencies, "typescript", [PREVIOUS_TYPESCRIPT], CURRENT_TYPESCRIPT, `${file} devDependencies.typescript`);
+  migrateKnownString(devDependencies, "typescript", [previousTypescript], CURRENT_TYPESCRIPT, `${file} devDependencies.typescript`);
   pkg.devDependencies = devDependencies;
   writeJson(tree, file, pkg);
 }
