@@ -9,7 +9,7 @@ const BASELINE_B_COMMIT = "6303870d1ad0e10a7ef9894ddf6f8e717f467ad3";
 const PROJECT_DEPENDENCY = "keenko-project-fixture";
 const START = "<!-- keenko:start -->";
 const END = "<!-- keenko:end -->";
-const PROJECT_SOURCE = "export type ProjectOwnedMarker = { readonly preserved: true };\n";
+const PROJECT_SOURCE = "export interface ProjectOwnedMarker {\n  readonly preserved: true;\n}\n";
 const PROJECT_DOCUMENTS = {
   "CONTEXT.md": "# Project context\n\nProject-owned context must survive a Keenko upgrade byte-for-byte.\n",
   "docs/project/architecture.md": "# Project architecture\n\nProject-owned architecture decision: preserve-this-architecture.\n",
