@@ -74,7 +74,6 @@ test("packed Keenko enforces release-reviewer contracts through the production C
 
     const uiName = string(object(JSON.parse(await readFile(path.join(project, "packages/ui/package.json"), "utf-8"))).name, "ui name");
     await expectBoundaryLintRecoveryRepeated(project, uiName, 1, 5);
-    run("bun", ["run", "lint"], project, { NX_DAEMON: "false" });
 
     const agentsPath = path.join(project, "AGENTS.md");
     const agents = await readFile(agentsPath, "utf-8");
@@ -101,7 +100,7 @@ async function expectBoundaryLintRecovery(project: string, uiName: string, attem
     "enforce-module-boundaries"
   );
   await unlink(forbiddenImport);
-  runCaptured("bun", ["x", "oxlint", "--format", "json", "."], project, { NX_DAEMON: "false" }, `boundary cleanup attempt ${attempt}`);
+  runCanonicalLint(project, attempt);
 }
 
 async function expectManifestBoundary(
@@ -147,20 +146,24 @@ function runOut(command: string, args: string[], cwd: string, extraEnv: Record<s
   return execFileSync(command, args, { cwd, encoding: "utf-8", env: { ...process.env, ...extraEnv } });
 }
 
-function runCaptured(
-  command: string,
-  args: string[],
-  cwd: string,
-  extraEnv: Record<string, string> = {},
-  label = `${command} ${args.join(" ")}`
-) {
-  const result = spawnSync(command, args, { cwd, encoding: "utf-8", env: { ...process.env, ...extraEnv } });
+function runCanonicalLint(project: string, attempt: number) {
+  const env = { ...process.env, NX_DAEMON: "false" };
+  const result = spawnSync("bun", ["run", "lint"], { cwd: project, encoding: "utf-8", env });
   if (result.status !== 0) {
+    const diagnostic = spawnSync("bun", ["x", "oxlint", "--format", "json", "."], {
+      cwd: project,
+      encoding: "utf-8",
+      env,
+    });
     throw new Error(
-      `${label} failed with status ${result.status ?? "null"}\nstdout:\n${result.stdout ?? ""}\nstderr:\n${result.stderr ?? ""}`
+      `boundary cleanup attempt ${attempt}: bun run lint failed with status ${result.status ?? "null"}\n` +
+        `lint stdout:\n${result.stdout ?? ""}\n` +
+        `lint stderr:\n${result.stderr ?? ""}\n` +
+        `diagnostic status: ${diagnostic.status ?? "null"}\n` +
+        `diagnostic stdout:\n${diagnostic.stdout ?? ""}\n` +
+        `diagnostic stderr:\n${diagnostic.stderr ?? ""}`
     );
   }
-  return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 }
 
 function runFailure(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
