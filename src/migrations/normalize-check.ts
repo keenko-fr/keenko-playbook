@@ -127,7 +127,7 @@ export default async function normalizeCheck(tree: Tree) {
   migrateComponentsConfig(tree, "packages/ui/components.json");
   migrateUiTsconfig(tree);
   migrateUiTool(tree);
-  migrateNxTypescriptPatch(tree);
+  await migrateNxTypescriptPatch(tree);
   migrateGeneratedConfig(tree, "oxfmt.config.ts");
   migrateOxlintConfig(tree);
   tree.delete("apps/web/src/paraglide/README.md");
@@ -257,21 +257,25 @@ function migrateUiTool(tree: Tree) {
   }
 }
 
-function migrateNxTypescriptPatch(tree: Tree) {
+async function migrateNxTypescriptPatch(tree: Tree) {
   const existing = tree.read("tools/keenko-patch-nx-typescript.ts", "utf-8");
   if (existing === null) {
     tree.write("tools/keenko-patch-nx-typescript.ts", NX_TYPESCRIPT_PATCH);
     return;
   }
-  if (normalizeGeneratedTool(existing) !== normalizeGeneratedTool(NX_TYPESCRIPT_PATCH)) {
+  const expected = await format("tools/keenko-patch-nx-typescript.ts", NX_TYPESCRIPT_PATCH, {
+    printWidth: 140,
+    sortImports: true,
+    sortPackageJson: true,
+  });
+  if (expected.errors.length > 0) {
+    throw new Error(`Cannot format expected Nx TypeScript bridge: ${expected.errors.map(({ message }) => message).join(", ")}`);
+  }
+  if (existing.trim() !== expected.code.trim()) {
     throw new Error(
       "Cannot migrate tools/keenko-patch-nx-typescript.ts because the Keenko-owned Nx TypeScript bridge was customized; reconcile it manually"
     );
   }
-}
-
-function normalizeGeneratedTool(source: string) {
-  return source.split(/\s+/u).join(" ").trim();
 }
 
 function migrateGeneratedConfig(tree: Tree, file: string) {
