@@ -16,7 +16,11 @@ test("the packed post-0.2 migration upgrades the exact published 0.2 formatter b
     const published020Tarball = packPublished020(temp);
     const currentPackage = extractPackage(currentTarball, path.join(temp, "current"));
     const published020Package = extractPackage(published020Tarball, path.join(temp, "published-020"));
-    await symlink(path.join(ROOT, "node_modules"), path.join(published020Package, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+    await symlink(
+      path.join(ROOT, "node_modules"),
+      path.join(published020Package, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir"
+    );
 
     const migrations = JSON.parse(await readFile(path.join(currentPackage, "migrations.json"), "utf-8")) as {
       generators: Record<string, { factory: string; version: string }>;

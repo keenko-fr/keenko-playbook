@@ -63,7 +63,7 @@ describe("public package contract", () => {
     expect(versions).not.toContain("keenko:");
     const generator = await readFile(path.join(ROOT, "src/generators/preset/generator.ts"), "utf-8");
     expect(generator).toContain("generateFiles(");
-    expect(generator).toContain("joinPathFragments(import.meta.dirname, \"files\")");
+    expect(generator).toContain('joinPathFragments(import.meta.dirname, "files")');
     expect(generator).toContain("keenko: keenkoVersion()");
     expect(generator).toContain('globalGenerators: ["keenko:sync"]');
     expect(generator).not.toContain("JSON.parse");

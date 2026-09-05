@@ -64,7 +64,9 @@ export default function removeEditorConfig(tree: Tree) {
     );
   }
   if (oxfmtConfig === null) {
-    throw new Error("Keenko-owned oxfmt.config.ts is missing. Restore or reconcile the formatter config before rerunning the Keenko migration.");
+    throw new Error(
+      "Keenko-owned oxfmt.config.ts is missing. Restore or reconcile the formatter config before rerunning the Keenko migration."
+    );
   }
   if (oxfmtConfig !== LEGACY_OXFMT_CONFIG && oxfmtConfig !== CURRENT_OXFMT_CONFIG) {
     throw new Error(

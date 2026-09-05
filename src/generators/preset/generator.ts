@@ -60,6 +60,7 @@ export default async function presetGenerator(tree: Tree, options: PresetSchema)
 
   return runTasksInSerial(installPackagesTask(tree), async () => {
     const { execFileSync } = await import("node:child_process");
+    execFileSync("bun", ["run", "format"], { cwd: tree.root, stdio: "inherit" });
     execFileSync("bun", ["run", "codegen"], { cwd: tree.root, stdio: "inherit" });
   });
 }
@@ -141,7 +142,8 @@ function writeStructuredWorkspaceConfig(tree: Tree, projectName: string) {
     private: true,
     scripts: {
       build: "nx run-many -t build",
-      check: "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
+      check:
+        "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
       codegen: "nx run-many -t codegen",
       "codegen:check": "bun tools/check-generated.ts",
       dev: `nx run @${projectName}/web:dev`,
