@@ -144,9 +144,7 @@ function git(cwd: string, ...args: string[]) {
 }
 
 async function exists(filePath: string) {
-  return await stat(filePath)
-    .then(() => true)
-    .catch(() => false);
+  return await stat(filePath).then(() => true).catch(() => false);
 }
 
 function output(result: ReturnType<typeof nx>) {
