@@ -79,7 +79,8 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     run("bun", ["install", "--frozen-lockfile"], cleanCheckout);
     expect(await stat(cleanParaglide).catch(() => null)).toBeNull();
     run("bun", ["run", "check"], cleanCheckout);
-    expect((await stat(cleanParaglide)).isDirectory()).toBe(true);
+    const materializedParaglide = await stat(cleanParaglide);
+    expect(materializedParaglide.isDirectory()).toBe(true);
     expect(runOut("git", ["status", "--porcelain"], cleanCheckout)).toBe("");
 
     const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
