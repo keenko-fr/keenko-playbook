@@ -1,298 +1,121 @@
 import { expect, test } from "bun:test";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
-const BASELINE_A_COMMIT = "f983654297acb84c1e4005ef72a646c7b33ddcfe";
-const BASELINE_B_COMMIT = "6303870d1ad0e10a7ef9894ddf6f8e717f467ad3";
-const PROJECT_DEPENDENCY = "keenko-project-fixture";
-const TYPESCRIPT_API = "6.0.2";
-const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
-const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
-const WORKSPACE_MANIFESTS = [
-  "apps/web/package.json",
-  "packages/backend/package.json",
-  "packages/shared/package.json",
-  "packages/ui/package.json",
-] as const;
-const START = "<!-- keenko:start -->";
-const END = "<!-- keenko:end -->";
-const PROJECT_SOURCE = "export interface ProjectOwnedMarker {\n  readonly preserved: true;\n}\n";
-const PROJECT_DOCUMENTS = {
-  "CONTEXT.md": "# Project context\n\nProject-owned context must survive a Keenko upgrade byte-for-byte.\n",
-  "docs/project/architecture.md": "# Project architecture\n\nProject-owned architecture decision: preserve-this-architecture.\n",
-  "docs/project/overrides.md": "# Project overrides\n\nProject-owned override: preserve-this-override.\n",
-  "docs/project/ui.md": "# Project UI\n\nProject-owned UI decision: preserve-this-ui-guidance.\n",
-} as const;
+const TARGET_VERSION = "0.2.0";
+const LEGACY_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const CURRENT_CHECK =
+  "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const LEGACY_CODEGEN_CHECK = "keenko check --guidance --codegen";
+const CURRENT_CODEGEN_CHECK = "bun tools/check-generated.ts";
+const PROJECT_CONTEXT = "# Project context\n\nPreserve this project-owned context.\n";
 
-test("packed historical upgrades preserve project customizations and unrelated locked resolutions", async () => {
-  const temp = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? "/tmp", "keenko-upgrade-preservation-"));
+test("native Nx migration moves an existing generated project off keenko check while preserving project-owned state", async () => {
+  const temp = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? "/tmp", "keenko-native-migration-"));
   let registry: TestRegistry | undefined;
   try {
     const currentTarball = await packCurrent(temp);
-    const currentManifest = json(await readFile(path.join(ROOT, "package.json"), "utf-8"));
-    const currentVersion = string(currentManifest.version, "current version");
-    const baselineATarball = await historicalTarball(temp, BASELINE_A_COMMIT, "0.0.1", "baseline-a");
-    const baselineBTarball = await historicalTarball(temp, BASELINE_B_COMMIT, "0.0.2", "baseline-b");
-    const projectDependency101 = await projectDependencyTarball(temp, "1.0.1");
-    const projectDependency102 = await projectDependencyTarball(temp, "1.0.2");
-
-    registry = await startRegistry(temp, {
-      packages: {
-        keenko: {
-          manifest: currentManifest,
-          versions: {
-            "0.0.1": baselineATarball,
-            "0.0.2": baselineBTarball,
-            [currentVersion]: currentTarball,
-          },
-        },
-        [PROJECT_DEPENDENCY]: {
-          manifest: { main: "index.js", name: PROJECT_DEPENDENCY },
-          versions: { "1.0.1": projectDependency101 },
-        },
-      },
+    const packageJson = json(await readFile(path.join(ROOT, "package.json"), "utf-8"));
+    const currentVersion = string(packageJson.version, "package.json.version");
+    const targetTarball = await versionedTarball(currentTarball, path.join(temp, `keenko-${TARGET_VERSION}.tgz`), TARGET_VERSION);
+    registry = await startRegistry(temp, packageJson, {
+      [currentVersion]: currentTarball,
+      [TARGET_VERSION]: targetTarball,
     });
 
-    const baselineACli = await installPackedCli(temp, baselineATarball, "baseline-a");
-    const baselineBCli = await installPackedCli(temp, baselineBTarball, "baseline-b");
-    const currentCli = await installPackedCli(temp, currentTarball, "current");
+    run(
+      "bunx",
+      [
+        "--bun",
+        "create-nx-workspace@23.2.0",
+        "migration_app",
+        "--preset=keenko",
+        "--packageManager=bun",
+        "--nxCloud=skip",
+        "--interactive=false",
+        "--skipGit",
+        "--trustThirdPartyPreset",
+      ],
+      temp,
+      registry.env
+    );
 
-    const currentReference = path.join(temp, "current-reference");
-    run("node", [currentCli, "create", currentReference, "--no-install"], ROOT);
-    const canonicalRouting = {
-      agents: managedParts(await readFile(path.join(currentReference, "AGENTS.md"), "utf-8")).block,
-      claude: managedParts(await readFile(path.join(currentReference, "CLAUDE.md"), "utf-8")).block,
-    };
+    const project = path.join(temp, "migration_app");
+    await downgradeLifecycle(project);
+    await addProjectState(project);
+    run("bun", ["install"], project, registry.env);
 
-    const baselineA = path.join(temp, "baseline-a-project");
-    await makeBaseline(baselineACli, baselineA, "0.0.1", baselineATarball, registry.env, false);
-    const baselineB = path.join(temp, "baseline-b-project");
-    const baselineBCustomizations = await makeBaseline(baselineBCli, baselineB, "0.0.2", baselineBTarball, registry.env, true);
-    if (baselineBCustomizations === null) {
-      throw new Error("Expected baseline B customization snapshot");
-    }
+    run("bun", ["x", "nx", "migrate", `keenko@${TARGET_VERSION}`], project, registry.env);
+    const prepared = json(await readFile(path.join(project, "package.json"), "utf-8"));
+    expect(record(prepared.devDependencies, "prepared devDependencies").keenko).toBe(TARGET_VERSION);
+    expect(await readFile(path.join(project, "migrations.json"), "utf-8")).toContain("0.2.0-native-nx-lifecycle");
 
-    const beforeA = await baselineSnapshot(baselineA);
-    const beforeB = await baselineSnapshot(baselineB);
-    expect(beforeA.projectDependencyVersion).toBe("1.0.1");
-    expect(beforeB.projectDependencyVersion).toBe("1.0.1");
-    expect(beforeA.projectDependencyRange).toBe("^1.0.0");
-    expect(beforeB.projectDependencyRange).toBe("^1.0.0");
+    run("bun", ["install"], project, registry.env);
+    run("bun", ["x", "nx", "migrate", "--run-migrations"], project, registry.env);
+    run("bun", ["x", "nx", "sync"], project, registry.env);
 
-    await writeRegistryState(registry.statePath, {
-      packages: {
-        keenko: {
-          manifest: currentManifest,
-          versions: {
-            "0.0.1": baselineATarball,
-            "0.0.2": baselineBTarball,
-            [currentVersion]: currentTarball,
-          },
-        },
-        [PROJECT_DEPENDENCY]: {
-          manifest: { main: "index.js", name: PROJECT_DEPENDENCY },
-          versions: { "1.0.1": projectDependency101, "1.0.2": projectDependency102 },
-        },
-      },
-    });
-    const fixtureResponse = await fetch(`${registry.origin}/${PROJECT_DEPENDENCY}`);
-    const visibleFixture = object(await fixtureResponse.json(), "project dependency packument");
-    expect(Object.keys(object(visibleFixture.versions, "project dependency versions"))).toEqual(["1.0.1", "1.0.2"]);
+    const migrated = json(await readFile(path.join(project, "package.json"), "utf-8"));
+    const scripts = record(migrated.scripts, "migrated scripts");
+    expect(scripts.check).toBe(CURRENT_CHECK);
+    expect(scripts["codegen:check"]).toBe(CURRENT_CODEGEN_CHECK);
+    expect(scripts.custom).toBe("node custom-script.js");
+    expect(record(migrated.devDependencies, "migrated devDependencies").keenko).toBe(TARGET_VERSION);
+    const nx = json(await readFile(path.join(project, "nx.json"), "utf-8"));
+    expect(record(nx.sync, "nx sync").globalGenerators).toEqual(["project:sync", "keenko:sync"]);
+    expect(await readFile(path.join(project, "tools/check-generated.ts"), "utf-8")).toContain("Generated source has drifted at:");
+    expect(await readFile(path.join(project, "CONTEXT.md"), "utf-8")).toBe(PROJECT_CONTEXT);
+    expect(await readFile(path.join(project, "AGENTS.md"), "utf-8")).toContain("Human project tail.");
+    expect(await readFile(path.join(project, "packages/feature/src/index.ts"), "utf-8")).toBe("export const featureReady = true;\n");
 
-    const upgradeEnv = { ...registry.env, BUN_INSTALL_CACHE_DIR: path.join(temp, "bun-cache-upgrade") };
-    run("node", [currentCli, "upgrade", currentVersion], baselineA, upgradeEnv);
-    await assertUpgradedBaseline(baselineA, beforeA, currentVersion, upgradeEnv);
-
-    run("node", [currentCli, "upgrade", currentVersion], baselineB, upgradeEnv);
-    await assertUpgradedBaseline(baselineB, beforeB, currentVersion, upgradeEnv);
-    await assertCustomizationMatrix(baselineB, baselineBCustomizations, canonicalRouting);
+    run("bun", ["run", "format"], project);
+    run("bun", ["run", "check"], project, { NX_DAEMON: "false" });
   } finally {
     registry?.stop();
     await rm(temp, { force: true, recursive: true });
   }
 }, 600_000);
 
-interface RoutingExpectation {
-  after: string;
-  before: string;
-}
-
-interface CustomizationSnapshot {
-  agents: RoutingExpectation;
-  claude: RoutingExpectation;
-}
-
-interface BaselineSnapshot {
-  lockfile: Buffer;
-  projectDependencyRange: string;
-  projectDependencyVersion: string;
-}
-
-interface RegistryState {
-  packages: Record<
-    string,
-    {
-      manifest: Record<string, unknown>;
-      versions: Record<string, string>;
-    }
-  >;
-}
-
-interface TestRegistry {
-  env: Record<string, string>;
-  origin: string;
-  statePath: string;
-  stop: () => void;
-}
-
-async function makeBaseline(
-  cli: string,
-  target: string,
-  expectedVersion: string,
-  packageTarball: string,
-  registryEnv: Record<string, string>,
-  customize: boolean
-): Promise<CustomizationSnapshot | null> {
-  run("node", [cli, "create", target, "--no-install"], ROOT);
-
-  const packagePath = path.join(target, "package.json");
+async function downgradeLifecycle(project: string) {
+  const packagePath = path.join(project, "package.json");
   const pkg = json(await readFile(packagePath, "utf-8"));
-  const scripts = recordOrEmpty(pkg.scripts, "baseline scripts");
-  scripts.custom = "node -e \"console.log('preserved')\"";
+  const scripts = record(pkg.scripts, "legacy scripts");
+  scripts.check = LEGACY_CHECK;
+  scripts["codegen:check"] = LEGACY_CODEGEN_CHECK;
+  scripts.custom = "node custom-script.js";
   pkg.scripts = scripts;
-  const dependencies = recordOrEmpty(pkg.dependencies, "baseline dependencies");
-  dependencies[PROJECT_DEPENDENCY] = "^1.0.0";
-  pkg.dependencies = dependencies;
-  const devDependencies = recordOrEmpty(pkg.devDependencies, "baseline devDependencies");
-  devDependencies.keenko = `file:${packageTarball}`;
-  pkg.devDependencies = devDependencies;
   await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
 
-  let customizations: CustomizationSnapshot | null = null;
-  if (customize) {
-    const oxlintPath = path.join(target, "oxlint.config.ts");
-    const oxlint = await readFile(oxlintPath, "utf-8");
-    const customizedOxlint = oxlint.replace(
-      '    "eslint/no-plusplus": "off",',
-      '    "eslint/no-console": "off",\n    "eslint/no-plusplus": "off",'
-    );
-    if (customizedOxlint === oxlint) {
-      throw new Error("Historical Oxlint fixture is missing the expected project-rule anchor");
-    }
-    await writeFile(oxlintPath, customizedOxlint);
-    await writeFile(path.join(target, "packages/shared/src/project-owned.ts"), PROJECT_SOURCE);
-    await Promise.all(
-      Object.entries(PROJECT_DOCUMENTS).map(async ([relative, content]) => {
-        await writeFile(path.join(target, relative), content);
-      })
-    );
-    customizations = {
-      agents: await customizeRoutingFile(target, "AGENTS.md", "AGENTS"),
-      claude: await customizeRoutingFile(target, "CLAUDE.md", "CLAUDE"),
-    };
-  }
-
-  run("bun", ["install"], target, registryEnv);
-  run("bun", ["run", "codegen"], target);
-  expect(await installedVersion(target, "keenko")).toBe(expectedVersion);
-  expect(await installedVersion(target, PROJECT_DEPENDENCY)).toBe("1.0.1");
-  gitCommitAll(target, `fixture ${expectedVersion}`);
-  return customizations;
+  const nxPath = path.join(project, "nx.json");
+  const nx = json(await readFile(nxPath, "utf-8"));
+  nx.sync = { globalGenerators: ["project:sync"] };
+  await writeFile(nxPath, `${JSON.stringify(nx, null, 2)}\n`);
+  await rm(path.join(project, "tools/check-generated.ts"), { force: true });
 }
 
-async function customizeRoutingFile(root: string, file: string, label: string): Promise<RoutingExpectation> {
-  const target = path.join(root, file);
-  const original = await readFile(target, "utf-8");
-  const originalParts = managedParts(original);
-  const customized = `# Human ${label} preface\n\n${originalParts.before}${originalParts.block}${originalParts.after}\nHuman ${label} suffix must survive.\n`;
-  await writeFile(target, customized);
-  const parts = managedParts(customized);
-  return { after: parts.after, before: parts.before };
-}
-
-async function baselineSnapshot(root: string): Promise<BaselineSnapshot> {
-  const pkg = json(await readFile(path.join(root, "package.json"), "utf-8"));
-  const dependencies = recordOrEmpty(pkg.dependencies, "baseline dependencies");
-  return {
-    lockfile: await readFile(path.join(root, "bun.lock")),
-    projectDependencyRange: string(dependencies[PROJECT_DEPENDENCY], "project dependency range"),
-    projectDependencyVersion: await installedVersion(root, PROJECT_DEPENDENCY),
-  };
-}
-
-async function assertUpgradedBaseline(root: string, before: BaselineSnapshot, currentVersion: string, registryEnv: Record<string, string>) {
-  const pkg = json(await readFile(path.join(root, "package.json"), "utf-8"));
-  const dependencies = recordOrEmpty(pkg.dependencies, "upgraded dependencies");
-  const devDependencies = recordOrEmpty(pkg.devDependencies, "upgraded devDependencies");
-  const scripts = recordOrEmpty(pkg.scripts, "upgraded scripts");
-
-  expect(string(dependencies[PROJECT_DEPENDENCY], "upgraded project dependency range")).toBe(before.projectDependencyRange);
-  expect(scripts.custom).toBe("node -e \"console.log('preserved')\"");
-  expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
-  expect(devDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
-  expect(devDependencies["@nx/oxlint"]).toBe("23.2.0");
-  await Promise.all(
-    WORKSPACE_MANIFESTS.map(async (file) => {
-      const workspace = json(await readFile(path.join(root, file), "utf-8"));
-      const workspaceDevDependencies = recordOrEmpty(workspace.devDependencies, `${file} upgraded devDependencies`);
-      const workspaceScripts = recordOrEmpty(workspace.scripts, `${file} upgraded scripts`);
-      expect(workspaceDevDependencies.typescript).toBe(TYPESCRIPT_API);
-      expect(workspaceDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
-      expect(workspaceScripts.typecheck).toBe(TYPESCRIPT_NATIVE_TSC);
-      if (file !== "apps/web/package.json") {
-        expect(workspaceScripts.build).toBe(TYPESCRIPT_NATIVE_TSC);
-      }
-    })
+async function addProjectState(project: string) {
+  await writeFile(path.join(project, "CONTEXT.md"), PROJECT_CONTEXT);
+  const agentsPath = path.join(project, "AGENTS.md");
+  await writeFile(agentsPath, `${await readFile(agentsPath, "utf-8")}\nHuman project tail.\n`);
+  await mkdir(path.join(project, "packages/feature/src"), { recursive: true });
+  await writeFile(
+    path.join(project, "packages/feature/package.json"),
+    `${JSON.stringify(
+      {
+        name: "@migration_app/feature",
+        nx: { tags: ["type:lib", "scope:shared"] },
+        private: true,
+        scripts: {},
+        type: "module",
+        version: "0.0.0",
+      },
+      null,
+      2
+    )}\n`
   );
-  expect(await readFile(path.join(root, "bun.lock"))).not.toEqual(before.lockfile);
-  expect(await installedVersion(root, PROJECT_DEPENDENCY)).toBe(before.projectDependencyVersion);
-  expect(await installedVersion(root, "keenko")).toBe(currentVersion);
-
-  run("bun", ["install", "--frozen-lockfile"], root, registryEnv);
-  expect(await installedVersion(root, PROJECT_DEPENDENCY)).toBe("1.0.1");
-  expect(await installedVersion(root, "keenko")).toBe(currentVersion);
-  run("bun", ["run", "check"], root);
-}
-
-async function assertCustomizationMatrix(root: string, expected: CustomizationSnapshot, canonical: { agents: string; claude: string }) {
-  const oxlint = await readFile(path.join(root, "oxlint.config.ts"), "utf-8");
-  expect(oxlint).toContain('"eslint/no-console": "off"');
-  expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
-  expect(await readFile(path.join(root, "packages/shared/src/project-owned.ts"), "utf-8")).toBe(PROJECT_SOURCE);
-  await Promise.all(
-    Object.entries(PROJECT_DOCUMENTS).map(async ([relative, content]) => {
-      expect(await readFile(path.join(root, relative), "utf-8")).toBe(content);
-    })
-  );
-
-  await assertRoutingFile(root, "AGENTS.md", expected.agents, canonical.agents);
-  await assertRoutingFile(root, "CLAUDE.md", expected.claude, canonical.claude);
-}
-
-async function assertRoutingFile(root: string, file: string, expected: RoutingExpectation, canonicalBlock: string) {
-  const source = await readFile(path.join(root, file), "utf-8");
-  expect(occurrences(source, START)).toBe(1);
-  expect(occurrences(source, END)).toBe(1);
-  const parts = managedParts(source);
-  expect(parts.before).toBe(expected.before);
-  expect(parts.after).toBe(expected.after);
-  expect(parts.block).toBe(canonicalBlock);
-}
-
-function managedParts(source: string) {
-  const start = source.indexOf(START);
-  const end = source.indexOf(END);
-  if (start === -1 || end === -1 || end < start || occurrences(source, START) !== 1 || occurrences(source, END) !== 1) {
-    throw new Error("Expected exactly one Keenko managed block");
-  }
-  const blockEnd = end + END.length;
-  return { after: source.slice(blockEnd), before: source.slice(0, start), block: source.slice(start, blockEnd) };
-}
-
-function occurrences(source: string, marker: string) {
-  return source.split(marker).length - 1;
+  await writeFile(path.join(project, "packages/feature/src/index.ts"), "export const featureReady = true;\n");
+  await writeFile(path.join(project, "custom-script.js"), "console.log('project-owned');\n");
 }
 
 async function packCurrent(root: string) {
@@ -300,81 +123,42 @@ async function packCurrent(root: string) {
   await mkdir(packDir);
   const name = runOut("npm", ["pack", "--pack-destination", packDir, "--silent"], ROOT).trim().split("\n").at(-1);
   if (name === undefined) {
-    throw new Error("npm pack did not return the current Keenko tarball name");
+    throw new Error("npm pack did not return a Keenko tarball name");
   }
   return path.join(packDir, name);
-}
-
-async function historicalTarball(root: string, commit: string, version: string, label: string) {
-  const worktree = path.join(root, `${label}-source`);
-  const packDir = path.join(root, `${label}-pack`);
-  const target = path.join(root, `${label}.tgz`);
-  await mkdir(packDir);
-  run("git", ["worktree", "add", "--detach", worktree, commit], ROOT);
-  try {
-    await symlink(path.join(ROOT, "node_modules"), path.join(worktree, "node_modules"), process.platform === "win32" ? "junction" : "dir");
-    run("bun", ["run", "build"], worktree);
-    const name = runOut("npm", ["pack", "--ignore-scripts", "--pack-destination", packDir, "--silent"], worktree).trim().split("\n").at(-1);
-    if (name === undefined) {
-      throw new Error(`npm pack did not return a tarball name for ${commit}`);
-    }
-    return await versionedTarball(path.join(packDir, name), target, version);
-  } finally {
-    run("git", ["worktree", "remove", "--force", worktree], ROOT);
-  }
 }
 
 async function versionedTarball(source: string, target: string, version: string) {
   const unpack = await mkdtemp(path.join(path.dirname(target), "versioned-"));
-  run("tar", ["-xzf", source, "-C", unpack], path.dirname(target));
-  const packagePath = path.join(unpack, "package/package.json");
-  const pkg = json(await readFile(packagePath, "utf-8"));
-  pkg.version = version;
-  await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
-  run("tar", ["-czf", target, "-C", unpack, "package"], path.dirname(target));
-  await rm(unpack, { force: true, recursive: true });
-  return target;
-}
-
-async function projectDependencyTarball(root: string, version: string) {
-  const source = path.join(root, `project-dependency-${version}`);
-  const packDir = path.join(root, `project-dependency-${version}-pack`);
-  await mkdir(source);
-  await mkdir(packDir);
-  await writeFile(
-    path.join(source, "package.json"),
-    `${JSON.stringify({ main: "index.js", name: PROJECT_DEPENDENCY, version }, null, 2)}\n`
-  );
-  await writeFile(path.join(source, "index.js"), `module.exports = ${JSON.stringify(version)};\n`);
-  const name = runOut("npm", ["pack", "--ignore-scripts", "--pack-destination", packDir, "--silent"], source).trim().split("\n").at(-1);
-  if (name === undefined) {
-    throw new Error(`npm pack did not return the project dependency ${version} tarball name`);
+  try {
+    run("tar", ["-xzf", source, "-C", unpack], path.dirname(target));
+    const packagePath = path.join(unpack, "package/package.json");
+    const pkg = json(await readFile(packagePath, "utf-8"));
+    pkg.version = version;
+    await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+    run("tar", ["-czf", target, "-C", unpack, "package"], path.dirname(target));
+    return target;
+  } finally {
+    await rm(unpack, { force: true, recursive: true });
   }
-  return path.join(packDir, name);
 }
 
-async function installPackedCli(root: string, tarball: string, label: string) {
-  const runner = path.join(root, `${label}-runner`);
-  await mkdir(runner);
-  await writeFile(
-    path.join(runner, "package.json"),
-    `${JSON.stringify({ dependencies: { keenko: `file:${tarball}` }, private: true }, null, 2)}\n`
-  );
-  run("bun", ["install"], runner);
-  return path.join(runner, "node_modules/keenko/dist/cli/keenko.js");
+interface TestRegistry {
+  env: Record<string, string>;
+  stop: () => void;
 }
 
-async function startRegistry(root: string, state: RegistryState): Promise<TestRegistry> {
-  const statePath = path.join(root, "upgrade-registry-state.json");
-  await writeRegistryState(statePath, state);
-  const child = spawn("bun", [path.join(ROOT, "tests/upgrade-registry-server.ts"), statePath], {
+async function startRegistry(root: string, manifest: Record<string, unknown>, packages: Record<string, string>): Promise<TestRegistry> {
+  const statePath = path.join(root, "registry-state.json");
+  await writeFile(statePath, JSON.stringify({ manifest, packages }));
+
+  const child = spawn("bun", [path.join(ROOT, "tests/registry-server.ts"), statePath], {
     stdio: ["ignore", "pipe", "inherit"],
   });
-  // oxlint-disable-next-line promise/avoid-new -- Child-process startup is exposed through events.
   const origin = await new Promise<string>((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", (code) => {
-      reject(new Error(`Upgrade test registry exited before startup with code ${code ?? 1}`));
+      reject(new Error(`Test registry exited before startup with code ${code ?? 1}`));
     });
     child.stdout.once("data", (chunk) => {
       resolve(String(chunk).trim());
@@ -384,31 +168,13 @@ async function startRegistry(root: string, state: RegistryState): Promise<TestRe
   return {
     env: {
       BUN_CONFIG_REGISTRY: origin,
-      BUN_INSTALL_CACHE_DIR: path.join(root, "bun-cache-initial"),
+      BUN_INSTALL_CACHE_DIR: path.join(root, "bun-cache"),
       NPM_CONFIG_REGISTRY: origin,
     },
-    origin,
-    statePath,
     stop() {
       child.kill();
     },
   };
-}
-
-async function writeRegistryState(statePath: string, state: RegistryState) {
-  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
-}
-
-async function installedVersion(root: string, packageName: string) {
-  const pkg = json(await readFile(path.join(root, "node_modules", packageName, "package.json"), "utf-8"));
-  return string(pkg.version, `${packageName} installed version`);
-}
-
-function gitCommitAll(cwd: string, message: string) {
-  run("git", ["config", "user.name", "Keenko fixture"], cwd);
-  run("git", ["config", "user.email", "fixture@keenko.invalid"], cwd);
-  run("git", ["add", "-A"], cwd);
-  run("git", ["commit", "--quiet", "-m", message, "--allow-empty"], cwd);
 }
 
 function run(command: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
@@ -420,25 +186,15 @@ function runOut(command: string, args: string[], cwd: string, extraEnv: Record<s
 }
 
 function json(text: string): Record<string, unknown> {
-  return object(JSON.parse(text), "JSON object");
+  const value: unknown = JSON.parse(text);
+  return record(value, "JSON object");
 }
 
-function object(value: unknown, label: string): Record<string, unknown> {
+function record(value: unknown, label: string): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`${label} must be an object`);
   }
   return Object.fromEntries(Object.entries(value));
-}
-
-function recordOrEmpty(value: unknown, label: string): Record<string, string> {
-  if (value === undefined) {
-    return {};
-  }
-  const record = object(value, label);
-  if (!Object.values(record).every((entry) => typeof entry === "string")) {
-    throw new TypeError(`${label} must contain only strings`);
-  }
-  return Object.fromEntries(Object.entries(record).map(([key, entry]) => [key, String(entry)]));
 }
 
 function string(value: unknown, label: string) {
