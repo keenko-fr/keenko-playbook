@@ -60,25 +60,42 @@ describe("public package contract", () => {
     expect(migrations).not.toContain("refresh-guidance");
   }, 30_000);
 
-  test("uses Nx version plans and attaches exact reviewed main before provenance publication", async () => {
+  test("uses one explicitly dispatched native Nx release flow", async () => {
     const nx = object(JSON.parse(await readFile(path.join(ROOT, "nx.json"), "utf-8")));
-    expect(object(nx.release).versionPlans).toBe(true);
+    const releaseConfig = object(nx.release);
+    expect(releaseConfig.versionPlans).toBe(true);
+    const version = object(releaseConfig.version);
+    expect(version.adjustSemverBumpsForZeroMajorVersion).toBe(false);
+    expect(version.git).toBeUndefined();
+    const changelog = object(releaseConfig.changelog);
+    expect(changelog.automaticFromRef).toBe(true);
+    expect(changelog.git).toBeUndefined();
+    expect(object(changelog.workspaceChangelog).createRelease).toBe("github");
+
     const plan = await readFile(path.join(ROOT, ".nx/version-plans/kee-14.md"), "utf-8");
     expect(plan).toContain("keenko: minor");
     expect(plan).toContain("native Nx");
-    const release = await readFile(path.join(ROOT, ".github/workflows/release.yml"), "utf-8");
-    expect(release).toContain("Prepare reviewable Nx release commit");
-    expect(release).toContain("Verify exact reviewed main commit");
-    expect(release).toContain(`test "$(git rev-parse origin/main)" = "${EXPECTED_SHA}"`);
-    expect(release).toContain(`git checkout -B main "${EXPECTED_SHA}"`);
-    expect(release).toContain("git branch --set-upstream-to=origin/main main");
-    expect(release).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
-    expect(release).toContain(`test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"`);
-    expect(release).toContain(`run: bun cli/release-tag.ts "${EXPECTED_SHA}"`);
-    expect(release).toContain("id-token: write");
-    expect(release).toContain("registry-url: https://registry.npmjs.org");
-    expect(release).toContain("NPM_CONFIG_PROVENANCE: true");
-    expect(release).toContain("nx release publish");
+
+    const workflow = await readFile(path.join(ROOT, ".github/workflows/release.yml"), "utf-8");
+    expect(workflow).toContain("Verify exact releasable main commit");
+    expect(workflow).toContain(`test "$(git rev-parse origin/main)" = "${EXPECTED_SHA}"`);
+    expect(workflow).toContain(`git checkout -B main "${EXPECTED_SHA}"`);
+    expect(workflow).toContain("git branch --set-upstream-to=origin/main main");
+    expect(workflow).toContain('test "$(git symbolic-ref --short HEAD)" = "main"');
+    expect(workflow).toContain(`test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"`);
+    expect(workflow).toContain("bun run check:release");
+    expect(workflow).toContain("run: bun x nx release --yes");
+    expect(workflow).toContain("GITHUB_TOKEN: ${{ github.token }}");
+    expect(workflow).toContain("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
+    expect(workflow).toContain("id-token: write");
+    expect(workflow).toContain("registry-url: https://registry.npmjs.org");
+    expect(workflow).toContain("NPM_CONFIG_PROVENANCE: true");
+    expect(workflow).not.toContain("inputs.mode");
+    expect(workflow).not.toContain("Prepare reviewable Nx release commit");
+    expect(workflow).not.toContain("cli/release-tag.ts");
+    expect(workflow).not.toContain("nx release version");
+    expect(workflow).not.toContain("nx release changelog");
+    expect(workflow).not.toContain("nx release publish");
   });
 });
 
