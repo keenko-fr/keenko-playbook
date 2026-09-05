@@ -280,8 +280,12 @@ async function startRegistry(root: string, state: RegistryState): Promise<TestRe
   // oxlint-disable-next-line promise/avoid-new -- Test registry startup is exposed through child-process events.
   const origin = await new Promise<string>((resolve, reject) => {
     child.once("error", reject);
-    child.once("exit", (code) => reject(new Error(`Upgrade registry exited before startup with code ${code ?? 1}`)));
-    child.stdout.once("data", (chunk) => resolve(String(chunk).trim()));
+    child.once("exit", (code) => {
+      reject(new Error(`Upgrade registry exited before startup with code ${code ?? 1}`));
+    });
+    child.stdout.once("data", (chunk) => {
+      resolve(String(chunk).trim());
+    });
   });
   return {
     env: {
