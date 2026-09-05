@@ -19,7 +19,7 @@ const REPOSITORY = {
 };
 
 describe("public package contract", () => {
-  test("packs the Nx plugin runtime, generators, migrations, and guidance assets without a public Keenko executable", async () => {
+  test("packs the Nx plugin runtime, generator templates, supported migrations, and guidance assets without a public Keenko executable", async () => {
     const packed = await packedPackage();
     const pkg = packed.manifest;
     expect(pkg.name).toBe("keenko");
@@ -36,12 +36,13 @@ describe("public package contract", () => {
     expect(scripts.check).toContain("bun run test");
     expect(scripts["check:release"]).toBe("bun run check && bun run vendor:check && bun pm pack --dry-run");
     for (const file of [
-      "package/dist/src/generated-code-check.js",
+      "package/dist/src/generators/preset/files/.gitignore__tmpl__",
+      "package/dist/src/generators/preset/files/oxfmt.config.ts__tmpl__",
+      "package/dist/src/generators/preset/files/tools/keenko-ui.ts__tmpl__",
       "package/dist/src/generators/preset/generator.js",
       "package/dist/src/generators/sync/generator.js",
       "package/dist/src/index.js",
-      "package/dist/src/migrations/native-nx-lifecycle.js",
-      "package/dist/src/migrations/normalize-check.js",
+      "package/dist/src/migrations/remove-editorconfig.js",
       "package/docs/core/verification.md",
       "package/generators.json",
       "package/migrations.json",
@@ -55,17 +56,23 @@ describe("public package contract", () => {
     expect(packed.files).not.toContain("package/dist/cli/keenko.js");
     expect(packed.files).not.toContain("package/dist/cli/vendor-sync.js");
     expect(packed.files).not.toContain("package/dist/cli/vendor-sync.d.ts");
+    expect(packed.files).not.toContain("package/dist/src/migrations/native-nx-lifecycle.js");
+    expect(packed.files).not.toContain("package/dist/src/migrations/normalize-check.js");
 
     const versions = await readFile(path.join(ROOT, "src/versions.ts"), "utf-8");
     expect(versions).not.toContain("keenko:");
     const generator = await readFile(path.join(ROOT, "src/generators/preset/generator.ts"), "utf-8");
+    expect(generator).toContain("generateFiles(");
+    expect(generator).toContain("joinPathFragments(import.meta.dirname, \"files\")");
     expect(generator).toContain("keenko: keenkoVersion()");
     expect(generator).toContain('globalGenerators: ["keenko:sync"]');
+    expect(generator).not.toContain("JSON.parse");
+    expect(generator).not.toContain("JSON.stringify(value, null, 2)");
     expect(await readFile(path.join(ROOT, "generators.json"), "utf-8")).toContain("dist/src/generators/preset/generator.js");
     const migrations = await readFile(path.join(ROOT, "migrations.json"), "utf-8");
-    expect(migrations).toContain("dist/src/migrations/normalize-check.js");
-    expect(migrations).toContain("dist/src/migrations/native-nx-lifecycle.js");
-    expect(migrations).not.toContain("refresh-guidance");
+    expect(migrations).toContain("dist/src/migrations/remove-editorconfig.js");
+    expect(migrations).not.toContain("normalize-check");
+    expect(migrations).not.toContain("native-nx-lifecycle");
   }, 30_000);
 
   test("uses one explicitly dispatched native Nx release flow", async () => {
@@ -80,9 +87,10 @@ describe("public package contract", () => {
     expect(changelog.git).toBeUndefined();
     expect(object(changelog.workspaceChangelog).createRelease).toBe("github");
 
-    const plan = await readFile(path.join(ROOT, ".nx/version-plans/kee-14.md"), "utf-8");
+    const plan = await readFile(path.join(ROOT, ".nx/version-plans/kee-14-generator-architecture.md"), "utf-8");
     expect(plan).toContain("keenko: minor");
-    expect(plan).toContain("native Nx");
+    expect(plan).toContain("Oxfmt");
+    expect(plan).toContain("0.2.0");
 
     const workflow = await readFile(path.join(ROOT, ".github/workflows/release.yml"), "utf-8");
     expect(workflow).toContain("Verify exact releasable main commit");

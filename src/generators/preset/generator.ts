@@ -1,17 +1,30 @@
-import { installPackagesTask, type Tree } from "@nx/devkit";
+import {
+  generateFiles,
+  installPackagesTask,
+  joinPathFragments,
+  readJsonFile,
+  runTasksInSerial,
+  type PackageJson,
+  type Tree,
+  updateJson,
+  writeJson,
+} from "@nx/devkit";
 import { createApp, createMemoryEnvironment, finalizeAddOns, getFrameworkById, populateAddOnOptionsDefaults } from "@tanstack/create";
-import { readFileSync } from "node:fs";
 import path from "node:path";
-import { format } from "oxfmt";
 
 import { KEENKO_BOUNDARY_CONSTRAINTS } from "../../boundaries.ts";
-import { GENERATED_CODE_CHECK } from "../../generated-code-check.ts";
 import { syncGuidance } from "../../guidance.ts";
 import { normalizeStartRouteGeneration } from "../../start-route-generation.ts";
 import { versions } from "../../versions.ts";
 
 interface PresetSchema {
   name: string;
+}
+
+interface GeneratedPackageJson extends PackageJson {
+  imports?: Record<string, string>;
+  nx?: { tags: string[] };
+  pnpm?: unknown;
 }
 
 const TANSTACK_PINS: Record<string, string> = {
@@ -33,47 +46,25 @@ const TANSTACK_PINS: Record<string, string> = {
   "react-dom": versions.react,
   tailwindcss: versions.tailwind,
 };
-const TYPESCRIPT_API = "6.0.2";
-const TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
-const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
-const NX_TYPESCRIPT_PATCH = `import { readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-
-const target = path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js");
-const source = await readFile(target, "utf-8");
-const original = /require\\(["']typescript["']\\)/gu;
-const patched = /require\\(["']typescript-api["']\\)/gu;
-const originalCount = [...source.matchAll(original)].length;
-const patchedCount = [...source.matchAll(patched)].length;
-
-if (originalCount === 2 && patchedCount === 0) {
-  await writeFile(target, source.replace(original, "require('typescript-api')"));
-} else if (originalCount !== 0 || patchedCount !== 2) {
-  throw new Error(
-    \`Expected Nx 23.2.0 TypeScript bridge at \${target} to contain two unpatched or two patched TypeScript requires; found \${originalCount} unpatched and \${patchedCount} patched\`
-  );
-}
-`;
 
 export default async function presetGenerator(tree: Tree, options: PresetSchema) {
   const projectName = validateProjectName(options.name);
-  await generateWeb(tree, projectName);
+  await generateWeb(tree);
+  materializeKeenkoFiles(tree, projectName);
+  writeStructuredWorkspaceConfig(tree, projectName);
+  applyWebConfiguration(tree, projectName);
   normalizeStartRouteGeneration(tree);
-  writeWorkspaceFiles(tree, projectName);
-  writeBackend(tree, projectName);
-  writeUi(tree, projectName);
-  writeShared(tree, projectName);
-  await formatAuthoredFiles(tree);
+  applyWebCorrections(tree);
   syncGuidance(tree);
-  return async () => {
-    installPackagesTask(tree);
+
+  return runTasksInSerial(installPackagesTask(tree), async () => {
     const { execFileSync } = await import("node:child_process");
     execFileSync("bun", ["run", "codegen"], { cwd: tree.root, stdio: "inherit" });
-  };
+  });
 }
 
-async function generateWeb(tree: Tree, projectName: string) {
+async function generateWeb(tree: Tree) {
   const framework = getFrameworkById("react");
   if (framework === undefined) {
     throw new Error("@tanstack/create did not expose its React framework");
@@ -110,37 +101,199 @@ async function generateWeb(tree: Tree, projectName: string) {
     }
     tree.write(`apps/web/${normalized.slice(index + marker.length)}`, content);
   }
+}
 
-  const pkg = readJson(tree, "apps/web/package.json");
-  pkg.name = `@${projectName}/web`;
-  pkg.nx = { tags: ["type:app", "scope:web"] };
-  pkg.imports = {
-    "#/*": "./src/*",
-    "#components/*": "./src/components/*.tsx",
-    "#hooks/*": "./src/hooks/*.ts",
-    "#lib/*": "./src/lib/*.ts",
-  };
-  delete pkg.pnpm;
-  pkg.scripts = {
-    ...stringRecord(pkg.scripts, "apps/web/package.json.scripts"),
-    codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate",
-    typecheck: TYPESCRIPT_NATIVE_TSC,
-  };
-  pkg.dependencies = {
-    ...stringRecord(pkg.dependencies, "apps/web/package.json.dependencies"),
-    "@confect/react": versions.confect,
-    [`@${projectName}/backend`]: "workspace:*",
-    [`@${projectName}/shared`]: "workspace:*",
-    [`@${projectName}/ui`]: "workspace:*",
-  };
-  pkg.devDependencies = {
-    ...stringRecord(pkg.devDependencies, "apps/web/package.json.devDependencies"),
-    "@typescript/native": TYPESCRIPT_NATIVE,
-    typescript: TYPESCRIPT_API,
-  };
-  pinDependencies(pkg);
-  tree.write("apps/web/package.json", json(pkg));
-  tree.write("apps/web/components.json", json(componentsConfig(projectName, "web")));
+function materializeKeenkoFiles(tree: Tree, projectName: string) {
+  const boundaryConstraints = KEENKO_BOUNDARY_CONSTRAINTS.map(
+    ({ onlyDependOnLibsWithTags, sourceTag }) =>
+      `          { onlyDependOnLibsWithTags: ${JSON.stringify(onlyDependOnLibsWithTags)}, sourceTag: ${JSON.stringify(sourceTag)} },`
+  ).join("\n");
+
+  generateFiles(tree, joinPathFragments(import.meta.dirname, "files"), ".", {
+    boundaryConstraints,
+    bunVersion: versions.bun,
+    projectName,
+    shadcnVersion: versions.shadcn,
+    tmpl: "",
+  });
+}
+
+function writeStructuredWorkspaceConfig(tree: Tree, projectName: string) {
+  writeJson(tree, "package.json", {
+    devDependencies: {
+      "@effect/tsgo": versions.effectTsgo,
+      "@nx/oxlint": versions.nx,
+      "@types/bun": versions.bun,
+      "@typescript/native": versions.typescriptNative,
+      keenko: keenkoVersion(),
+      nx: versions.nx,
+      oxfmt: versions.oxfmt,
+      oxlint: versions.oxlint,
+      "oxlint-plugin-effect": versions.oxlintPluginEffect,
+      "oxlint-tsgolint": versions.oxlintTsgolint,
+      typescript: versions.typescriptApi,
+      "typescript-api": versions.typescriptApiBridge,
+      ultracite: versions.ultracite,
+    },
+    engines: { bun: ">=1.4.0 <2", node: ">=24 <25" },
+    name: projectName,
+    packageManager: `bun@${versions.bun}`,
+    private: true,
+    scripts: {
+      build: "nx run-many -t build",
+      check: "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
+      codegen: "nx run-many -t codegen",
+      "codegen:check": "bun tools/check-generated.ts",
+      dev: `nx run @${projectName}/web:dev`,
+      format: "oxfmt .",
+      "format:check": "oxfmt --check .",
+      lint: "nx show projects && oxlint .",
+      "lint:fix": "oxlint --fix .",
+      postinstall: "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts",
+      test: "bun test --pass-with-no-tests",
+      typecheck: "nx run-many -t typecheck",
+      ui: "bun tools/keenko-ui.ts",
+    },
+    type: "module",
+    version: "0.0.0",
+    workspaces: ["apps/*", "packages/*"],
+  });
+  writeJson(tree, "nx.json", {
+    $schema: "./node_modules/nx/schemas/nx-schema.json",
+    defaultBase: "main",
+    neverConnectToCloud: true,
+    sync: { globalGenerators: ["keenko:sync"] },
+    targetDefaults: {
+      build: { cache: true, dependsOn: ["^build"] },
+      typecheck: { cache: true, dependsOn: ["^typecheck"] },
+    },
+  });
+  writeJson(tree, "tsconfig.json", {
+    compilerOptions: {
+      allowImportingTsExtensions: true,
+      module: "ESNext",
+      moduleResolution: "Bundler",
+      noEmit: true,
+      plugins: [{ diagnostics: false, name: "@effect/language-service" }],
+      resolvePackageJsonImports: true,
+      skipLibCheck: true,
+      strict: true,
+      target: "ES2023",
+      verbatimModuleSyntax: true,
+    },
+  });
+
+  writeJson(tree, "packages/backend/package.json", {
+    dependencies: {
+      [`@${projectName}/shared`]: "workspace:*",
+      "@confect/core": versions.confect,
+      "@confect/server": versions.confect,
+      "@effect/platform-node": versions.effect,
+      convex: versions.convex,
+      effect: versions.effect,
+    },
+    devDependencies: {
+      "@confect/cli": versions.confect,
+      "@typescript/native": versions.typescriptNative,
+      typescript: versions.typescriptApi,
+    },
+    exports: { ".": "./src/index.ts" },
+    imports: { "#lib/*": "./src/lib/*.ts" },
+    name: `@${projectName}/backend`,
+    nx: { tags: ["type:lib", "scope:backend"] },
+    private: true,
+    scripts: { build: TYPESCRIPT_NATIVE_TSC, codegen: "confect codegen", typecheck: TYPESCRIPT_NATIVE_TSC },
+    type: "module",
+    version: "0.0.0",
+  });
+  writeJson(tree, "packages/backend/convex/tsconfig.json", { compilerOptions: { allowJs: true }, extends: "../tsconfig.json" });
+  writeJson(tree, "packages/backend/tsconfig.json", packageTsconfig("src/**/*.ts", "convex/**/*.ts"));
+
+  writeJson(tree, "packages/ui/package.json", {
+    dependencies: {
+      "@base-ui/react": versions.baseUi,
+      "class-variance-authority": "0.7.1",
+      [`@${projectName}/shared`]: "workspace:*",
+      clsx: "2.1.1",
+      "tailwind-merge": "3.3.1",
+    },
+    devDependencies: {
+      "@types/react": "19.2.0",
+      "@types/react-dom": "19.2.0",
+      "@typescript/native": versions.typescriptNative,
+      typescript: versions.typescriptApi,
+    },
+    exports: {
+      "./components/*": "./src/components/*.tsx",
+      "./globals.css": "./src/styles/globals.css",
+      "./hooks/*": "./src/hooks/*.ts",
+      "./lib/*": "./src/lib/*.ts",
+    },
+    imports: { "#components/*": "./src/components/*.tsx", "#hooks/*": "./src/hooks/*.ts", "#lib/*": "./src/lib/*.ts" },
+    name: `@${projectName}/ui`,
+    nx: { tags: ["type:lib", "scope:ui"] },
+    peerDependencies: { react: versions.react, "react-dom": versions.react },
+    private: true,
+    scripts: { build: TYPESCRIPT_NATIVE_TSC, typecheck: TYPESCRIPT_NATIVE_TSC },
+    type: "module",
+    version: "0.0.0",
+  });
+  writeJson(tree, "packages/ui/components.json", componentsConfig(projectName, "ui"));
+  writeJson(tree, "packages/ui/tsconfig.json", {
+    compilerOptions: { composite: false, jsx: "react-jsx" },
+    extends: "../../tsconfig.json",
+    include: ["src/**/*.ts", "src/**/*.tsx"],
+  });
+
+  writeJson(tree, "packages/shared/package.json", {
+    devDependencies: { "@typescript/native": versions.typescriptNative, typescript: versions.typescriptApi },
+    exports: { ".": "./src/index.ts" },
+    imports: { "#lib/*": "./src/lib/*.ts" },
+    name: `@${projectName}/shared`,
+    nx: { tags: ["type:lib", "scope:shared"] },
+    private: true,
+    scripts: { build: TYPESCRIPT_NATIVE_TSC, typecheck: TYPESCRIPT_NATIVE_TSC },
+    type: "module",
+    version: "0.0.0",
+  });
+  writeJson(tree, "packages/shared/tsconfig.json", packageTsconfig("src/**/*.ts"));
+}
+
+function applyWebConfiguration(tree: Tree, projectName: string) {
+  updateJson<GeneratedPackageJson>(tree, "apps/web/package.json", (pkg) => {
+    pkg.name = `@${projectName}/web`;
+    pkg.nx = { tags: ["type:app", "scope:web"] };
+    pkg.imports = {
+      "#/*": "./src/*",
+      "#components/*": "./src/components/*.tsx",
+      "#hooks/*": "./src/hooks/*.ts",
+      "#lib/*": "./src/lib/*.ts",
+    };
+    delete pkg.pnpm;
+    pkg.scripts = {
+      ...(pkg.scripts ?? {}),
+      codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate",
+      typecheck: TYPESCRIPT_NATIVE_TSC,
+    };
+    pkg.dependencies = {
+      ...(pkg.dependencies ?? {}),
+      "@confect/react": versions.confect,
+      [`@${projectName}/backend`]: "workspace:*",
+      [`@${projectName}/shared`]: "workspace:*",
+      [`@${projectName}/ui`]: "workspace:*",
+    };
+    pkg.devDependencies = {
+      ...(pkg.devDependencies ?? {}),
+      "@typescript/native": versions.typescriptNative,
+      typescript: versions.typescriptApi,
+    };
+    pinDependencies(pkg);
+    return pkg;
+  });
+  writeJson(tree, "apps/web/components.json", componentsConfig(projectName, "web"));
+}
+
+function applyWebCorrections(tree: Tree) {
   tree.rename("apps/web/src/components/LocaleSwitcher.tsx", "apps/web/src/components/locale-switcher.tsx");
   const localeSwitcher = tree.read("apps/web/src/components/locale-switcher.tsx", "utf-8");
   if (localeSwitcher !== null) {
@@ -153,218 +306,6 @@ async function generateWeb(tree: Tree, projectName: string) {
   tree.delete("apps/web/README.md");
   tree.delete("apps/web/.cursorrules");
   tree.delete("apps/web/.cta.json");
-}
-
-function writeWorkspaceFiles(tree: Tree, projectName: string) {
-  const boundaryConstraints = KEENKO_BOUNDARY_CONSTRAINTS.map(
-    ({ onlyDependOnLibsWithTags, sourceTag }) =>
-      `          { onlyDependOnLibsWithTags: [${onlyDependOnLibsWithTags.map((tag) => `"${tag}"`).join(", ")}], sourceTag: "${sourceTag}" },`
-  ).join("\n");
-  tree.write(
-    "package.json",
-    json({
-      devDependencies: {
-        "@effect/tsgo": "0.39.1",
-        "@nx/oxlint": versions.nx,
-        "@types/bun": versions.bun,
-        "@typescript/native": TYPESCRIPT_NATIVE,
-        keenko: keenkoVersion(),
-        nx: versions.nx,
-        oxfmt: "0.65.0",
-        oxlint: "1.81.0",
-        "oxlint-plugin-effect": "0.12.0",
-        "oxlint-tsgolint": "7.0.2001",
-        typescript: TYPESCRIPT_API,
-        "typescript-api": TYPESCRIPT_API_BRIDGE,
-        ultracite: "7.10.7",
-      },
-      engines: { bun: ">=1.4.0 <2", node: ">=24 <25" },
-      name: projectName,
-      packageManager: `bun@${versions.bun}`,
-      private: true,
-      scripts: {
-        build: "nx run-many -t build",
-        check:
-          "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
-        codegen: "nx run-many -t codegen",
-        "codegen:check": "bun tools/check-generated.ts",
-        dev: `nx run @${projectName}/web:dev`,
-        format: "oxfmt .",
-        "format:check": "oxfmt --check .",
-        lint: "nx show projects && oxlint .",
-        "lint:fix": "oxlint --fix .",
-        postinstall: "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts",
-        test: "bun test --pass-with-no-tests",
-        typecheck: "nx run-many -t typecheck",
-        ui: "bun tools/keenko-ui.ts",
-      },
-      type: "module",
-      version: "0.0.0",
-      workspaces: ["apps/*", "packages/*"],
-    })
-  );
-  tree.write("tools/check-generated.ts", GENERATED_CODE_CHECK);
-  tree.write(
-    "tools/keenko-ui.ts",
-    `const args = process.argv.slice(2);\n\nif (args.length === 0) {\n  throw new Error("Pass at least one shadcn component name.");\n}\n\nconst options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;\nconst add = Bun.spawnSync(["bunx", "--bun", "shadcn@${versions.shadcn}", "add", "-c", "apps/web", ...args], options);\nif (add.exitCode !== 0) {\n  throw new Error("shadcn failed");\n}\n\nconst install = Bun.spawnSync(["bun", "install"], options);\nif (install.exitCode !== 0) {\n  throw new Error("bun install failed after shadcn updated workspace dependencies");\n}\n\nconst codegen = Bun.spawnSync(["bun", "run", "codegen"], options);\nif (codegen.exitCode !== 0) {\n  throw new Error("Keenko codegen failed after shadcn updated dependencies");\n}\n\nconst format = Bun.spawnSync(["bun", "run", "format"], options);\nif (format.exitCode !== 0) {\n  throw new Error("Keenko format failed after shadcn generated components");\n}\n\nconst lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], options);\nif (lintFix.exitCode !== 0) {\n  throw new Error("Keenko lint fixes failed after shadcn generated components");\n}\n\nconst reformat = Bun.spawnSync(["bun", "run", "format"], options);\nif (reformat.exitCode !== 0) {\n  throw new Error("Keenko format failed after lint fixes");\n}\n`
-  );
-  tree.write("tools/keenko-patch-nx-typescript.ts", NX_TYPESCRIPT_PATCH);
-  tree.write(
-    "nx.json",
-    json({
-      $schema: "./node_modules/nx/schemas/nx-schema.json",
-      defaultBase: "main",
-      neverConnectToCloud: true,
-      sync: { globalGenerators: ["keenko:sync"] },
-      targetDefaults: {
-        build: { cache: true, dependsOn: ["^build"] },
-        typecheck: { cache: true, dependsOn: ["^typecheck"] },
-      },
-    })
-  );
-  tree.write(
-    "tsconfig.json",
-    json({
-      compilerOptions: {
-        allowImportingTsExtensions: true,
-        module: "ESNext",
-        moduleResolution: "Bundler",
-        noEmit: true,
-        plugins: [{ diagnostics: false, name: "@effect/language-service" }],
-        resolvePackageJsonImports: true,
-        skipLibCheck: true,
-        strict: true,
-        target: "ES2023",
-        verbatimModuleSyntax: true,
-      },
-    })
-  );
-  tree.write(
-    ".editorconfig",
-    "root = true\n\n[*]\ncharset = utf-8\nend_of_line = lf\nindent_size = 2\nindent_style = space\ninsert_final_newline = true\n"
-  );
-  tree.write(".gitignore", "node_modules/\n.nx/cache/\n.nx/workspace-data/\n.env\n.env.local\ndist/\ncoverage/\n");
-  tree.write(
-    "oxfmt.config.ts",
-    `import { defineConfig } from "oxfmt";\nimport ultracite from "ultracite/oxfmt";\n\nconst { endOfLine: _endOfLine, tabWidth: _tabWidth, useTabs: _useTabs, ...formatting } = ultracite;\n\nexport default defineConfig({\n  ...formatting,\n  ignorePatterns: [...(formatting.ignorePatterns ?? []), ".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  printWidth: 140,\n});\n`
-  );
-  tree.write(
-    "oxlint.config.ts",
-    `import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";\nimport { defineConfig } from "oxlint";\nimport { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";\nimport core from "ultracite/oxlint/core";\n\nexport default defineConfig({\n  extends: [core],\n  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  jsPlugins: ["@nx/oxlint/boundaries-plugin", "oxlint-plugin-effect/plugin"],\n  options: { typeAware: true },\n  overrides: [\n    {\n      files: ["apps/web/**/*"],\n      rules: {\n        "eslint/no-empty-function": "off",\n        "eslint/no-use-before-define": "off",\n        "eslint/require-await": "off",\n        "eslint/sort-keys": "off",\n      },\n    },\n    {\n      files: ["packages/ui/**/*"],\n      rules: { "eslint/sort-keys": "off" },\n    },\n    {\n      files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectTsgoRecommended.rules,\n        ...effectRecommended,\n        "effect/noTernary": "off",\n      },\n    },\n  ],\n  plugins: ["effecttsgo"],\n  rules: {\n    "@nx/enforce-module-boundaries": [\n      "error",\n      {\n        allow: [],\n        allowCircularSelfDependency: true,\n        depConstraints: [\n${boundaryConstraints}\n        ],\n      },\n    ],\n    "eslint/no-plusplus": "off",\n    "func-style": "off",\n    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],\n  },\n});\n`
-  );
-  tree.write(
-    ".github/workflows/ci.yml",
-    `name: CI\n\non:\n  pull_request:\n  push:\n    branches: [main]\n\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5\n      - uses: actions/setup-node@v5\n        with:\n          node-version: 24\n      - uses: oven-sh/setup-bun@v2\n        with:\n          bun-version: ${versions.bun}\n      - run: bun install --frozen-lockfile\n      - run: bun run check\n`
-  );
-  tree.write(
-    "README.md",
-    `# ${projectName}\n\nKeenko application workspace. Node 24 runs Nx and tooling that requires Node; Bun ${versions.bun} owns packages, scripts, the lockfile, and supported application execution.\n\n## Commands\n\n\`\`\`sh\nbun install\nbun x nx sync\nbun run check\nbun run dev\n\`\`\`\n\nAdd shadcn components from the app boundary: \`bun run ui -- button\`. The CLI routes reusable UI into \`packages/ui\`.\n`
-  );
-}
-
-function writeBackend(tree: Tree, projectName: string) {
-  tree.write(
-    "packages/backend/package.json",
-    json({
-      dependencies: {
-        [`@${projectName}/shared`]: "workspace:*",
-        "@confect/core": versions.confect,
-        "@confect/server": versions.confect,
-        "@effect/platform-node": versions.effect,
-        convex: versions.convex,
-        effect: versions.effect,
-      },
-      devDependencies: {
-        "@confect/cli": versions.confect,
-        "@typescript/native": TYPESCRIPT_NATIVE,
-        typescript: TYPESCRIPT_API,
-      },
-      exports: { ".": "./src/index.ts" },
-      imports: { "#lib/*": "./src/lib/*.ts" },
-      name: `@${projectName}/backend`,
-      nx: { tags: ["type:lib", "scope:backend"] },
-      private: true,
-      scripts: { build: TYPESCRIPT_NATIVE_TSC, codegen: "confect codegen", typecheck: TYPESCRIPT_NATIVE_TSC },
-      type: "module",
-      version: "0.0.0",
-    })
-  );
-  tree.write("packages/backend/src/index.ts", "export const backendReady = true;\n");
-  tree.write("packages/backend/confect/.gitkeep", "");
-  tree.write("packages/backend/convex/tsconfig.json", json({ compilerOptions: { allowJs: true }, extends: "../tsconfig.json" }));
-  tree.write("packages/backend/convex/convex.config.ts", 'import { defineApp } from "convex/server";\n\nexport default defineApp();\n');
-  tree.write("packages/backend/tsconfig.json", packageTsconfig("src/**/*.ts", "convex/**/*.ts"));
-}
-
-function writeUi(tree: Tree, projectName: string) {
-  tree.write(
-    "packages/ui/package.json",
-    json({
-      dependencies: {
-        "@base-ui/react": versions.baseUi,
-        "class-variance-authority": "0.7.1",
-        [`@${projectName}/shared`]: "workspace:*",
-        clsx: "2.1.1",
-        "tailwind-merge": "3.3.1",
-      },
-      devDependencies: {
-        "@types/react": "19.2.0",
-        "@types/react-dom": "19.2.0",
-        "@typescript/native": TYPESCRIPT_NATIVE,
-        typescript: TYPESCRIPT_API,
-      },
-      exports: {
-        "./components/*": "./src/components/*.tsx",
-        "./globals.css": "./src/styles/globals.css",
-        "./hooks/*": "./src/hooks/*.ts",
-        "./lib/*": "./src/lib/*.ts",
-      },
-      imports: { "#components/*": "./src/components/*.tsx", "#hooks/*": "./src/hooks/*.ts", "#lib/*": "./src/lib/*.ts" },
-      name: `@${projectName}/ui`,
-      nx: { tags: ["type:lib", "scope:ui"] },
-      peerDependencies: { react: versions.react, "react-dom": versions.react },
-      private: true,
-      scripts: { build: TYPESCRIPT_NATIVE_TSC, typecheck: TYPESCRIPT_NATIVE_TSC },
-      type: "module",
-      version: "0.0.0",
-    })
-  );
-  tree.write("packages/ui/components.json", json(componentsConfig(projectName, "ui")));
-  tree.write(
-    "packages/ui/src/lib/utils.ts",
-    'import { clsx, type ClassValue } from "clsx";\nimport { twMerge } from "tailwind-merge";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n'
-  );
-  tree.write(
-    "packages/ui/src/styles/globals.css",
-    '@import "tailwindcss";\n@source "../../../apps/**/*.{ts,tsx}";\n@source "../**/*.{ts,tsx}";\n'
-  );
-  tree.write(
-    "packages/ui/tsconfig.json",
-    json({
-      compilerOptions: { composite: false, jsx: "react-jsx" },
-      extends: "../../tsconfig.json",
-      include: ["src/**/*.ts", "src/**/*.tsx"],
-    })
-  );
-}
-
-function writeShared(tree: Tree, projectName: string) {
-  tree.write(
-    "packages/shared/package.json",
-    json({
-      devDependencies: { "@typescript/native": TYPESCRIPT_NATIVE, typescript: TYPESCRIPT_API },
-      exports: { ".": "./src/index.ts" },
-      imports: { "#lib/*": "./src/lib/*.ts" },
-      name: `@${projectName}/shared`,
-      nx: { tags: ["type:lib", "scope:shared"] },
-      private: true,
-      scripts: { build: TYPESCRIPT_NATIVE_TSC, typecheck: TYPESCRIPT_NATIVE_TSC },
-      type: "module",
-      version: "0.0.0",
-    })
-  );
-  tree.write("packages/shared/src/index.ts", "export const sharedReady = true;\n");
-  tree.write("packages/shared/tsconfig.json", packageTsconfig("src/**/*.ts"));
 }
 
 function componentsConfig(projectName: string, owner: "web" | "ui") {
@@ -393,12 +334,12 @@ function componentsConfig(projectName: string, owner: "web" | "ui") {
   };
 }
 
-function pinDependencies(pkg: Record<string, unknown>) {
-  for (const field of ["dependencies", "devDependencies"]) {
-    if (pkg[field] === undefined) {
+function pinDependencies(pkg: PackageJson) {
+  for (const field of ["dependencies", "devDependencies"] as const) {
+    const dependencies = pkg[field];
+    if (dependencies === undefined) {
       continue;
     }
-    const dependencies = stringRecord(pkg[field], `package.json.${field}`);
     for (const [name, value] of Object.entries(dependencies)) {
       dependencies[name] = value.replace(/^[~^]/u, "");
     }
@@ -407,12 +348,11 @@ function pinDependencies(pkg: Record<string, unknown>) {
         dependencies[name] = version;
       }
     }
-    pkg[field] = dependencies;
   }
 }
 
 function packageTsconfig(...include: string[]) {
-  return json({ compilerOptions: { composite: false }, extends: "../../tsconfig.json", include });
+  return { compilerOptions: { composite: false }, extends: "../../tsconfig.json", include };
 }
 
 function validateProjectName(name: string) {
@@ -429,58 +369,12 @@ function validateProjectName(name: string) {
   return name;
 }
 
-function readJson(tree: Tree, file: string): Record<string, unknown> {
-  const content = tree.read(file, "utf-8");
-  if (content === null) {
-    throw new Error(`Missing generated file: ${file}`);
-  }
-  return object(JSON.parse(content), file);
-}
-
-function stringRecord(value: unknown, label: string) {
-  const record = object(value, label);
-  for (const [key, item] of Object.entries(record)) {
-    if (typeof item !== "string") {
-      throw new TypeError(`${label}.${key} must be a string`);
-    }
-  }
-  return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, String(item)]));
-}
-
-function object(value: unknown, label: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError(`${label} must be an object`);
-  }
-  return Object.fromEntries(Object.entries(value));
-}
-
-async function formatAuthoredFiles(tree: Tree) {
-  const supported = /\.(?:css|json|md|ts|tsx|ya?ml)$/u;
-  await Promise.all(
-    tree.listChanges().map(async (change) => {
-      if (change.content === null || !supported.test(change.path)) {
-        return;
-      }
-      const result = await format(change.path, change.content.toString("utf-8"), {
-        printWidth: 140,
-        sortImports: true,
-        sortPackageJson: true,
-        trailingComma: "es5",
-      });
-      if (result.errors.length > 0) {
-        throw new Error(`Oxfmt could not format generated ${change.path}: ${result.errors.map(({ message }) => message).join(", ")}`);
-      }
-      tree.write(change.path, result.code);
-    })
-  );
-}
-
 function keenkoVersion() {
   let current = path.resolve(import.meta.dirname);
   for (let depth = 0; depth < 8; depth += 1) {
     const packagePath = path.join(current, "package.json");
     try {
-      const pkg = object(JSON.parse(readFileSync(packagePath, "utf-8")), packagePath);
+      const pkg = readJsonFile<PackageJson>(packagePath);
       if (pkg.name === "keenko" && typeof pkg.version === "string") {
         return pkg.version;
       }
@@ -494,8 +388,4 @@ function keenkoVersion() {
     current = parent;
   }
   throw new Error("Could not resolve the running Keenko package version");
-}
-
-function json(value: unknown) {
-  return `${JSON.stringify(value, null, 2)}\n`;
 }
