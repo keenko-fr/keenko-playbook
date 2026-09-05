@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
@@ -66,6 +66,21 @@ test("packed Keenko enforces release-reviewer contracts through the production C
         }
       })
     );
+
+    run("git", ["config", "user.name", "Keenko fixture"], project);
+    run("git", ["config", "user.email", "fixture@keenko.invalid"], project);
+    run("git", ["add", "-A"], project);
+    run("git", ["commit", "--quiet", "-m", "fresh create"], project);
+    expect(runOut("git", ["ls-files", "apps/web/src/paraglide"], project).trim()).toBe("");
+    const cleanCheckout = path.join(temp, "clean-checkout");
+    run("git", ["clone", "--quiet", project, cleanCheckout], temp);
+    const cleanParaglide = path.join(cleanCheckout, "apps/web/src/paraglide");
+    expect(await stat(cleanParaglide).catch(() => null)).toBeNull();
+    run("bun", ["install", "--frozen-lockfile"], cleanCheckout);
+    expect(await stat(cleanParaglide).catch(() => null)).toBeNull();
+    run("bun", ["run", "check"], cleanCheckout);
+    expect((await stat(cleanParaglide)).isDirectory()).toBe(true);
+    expect(runOut("git", ["status", "--porcelain"], cleanCheckout)).toBe("");
 
     const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
     const installedManifest = path.join(project, "node_modules/keenko/package.json");
