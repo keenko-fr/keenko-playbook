@@ -114,7 +114,7 @@ describe("Keenko Nx preset", () => {
 
     first.write("CONTEXT.md", "# Product context\n\nKeep me.\n");
     first.write("AGENTS.md", `${first.read("AGENTS.md", "utf-8")}\nHuman-owned tail.\n`);
-    expect(sync(first).outOfSyncMessage).toContain("nx sync");
+    expect(sync(first).outOfSyncMessage).toBe("Keenko generated guidance is out of sync. Run 'bun x nx sync'.");
     expect(first.read("CONTEXT.md", "utf-8")).toBe("# Product context\n\nKeep me.\n");
     expect(first.read("AGENTS.md", "utf-8")).toContain("Human-owned tail.");
   });
