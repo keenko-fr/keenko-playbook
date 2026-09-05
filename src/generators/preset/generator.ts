@@ -66,8 +66,10 @@ export default async function presetGenerator(tree: Tree, options: PresetSchema)
   writeShared(tree, projectName);
   await formatAuthoredFiles(tree);
   syncGuidance(tree);
-  return () => {
+  return async () => {
     installPackagesTask(tree);
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("bun", ["run", "codegen"], { cwd: tree.root, stdio: "inherit" });
   };
 }
 
