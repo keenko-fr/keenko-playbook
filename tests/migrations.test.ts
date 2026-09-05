@@ -4,10 +4,9 @@ import { describe, expect, test } from "bun:test";
 
 import preset from "../src/generators/preset/generator.ts";
 import normalizeCheck from "../src/migrations/normalize-check.ts";
-import { normalizeStartRouteGeneration } from "../src/start-route-generation.ts";
 
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
-const CURRENT_LINT = "oxlint .";
+const CURRENT_LINT = "nx show projects && oxlint .";
 const CURRENT_LINT_FIX = "oxlint --fix .";
 const CURRENT_POSTINSTALL = "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts";
 const CURRENT_START_CALL = "tanstackStart({ router: { routeTreeFileFooter: [] } })";
@@ -35,7 +34,6 @@ describe("Keenko migrations", () => {
   test("leaves the current generated tooling baseline unchanged", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "current" });
-    normalizeStartRouteGeneration(tree);
     const before = snapshot(tree);
     await normalizeCheck(tree);
     expect(snapshot(tree)).toEqual(before);
@@ -131,7 +129,10 @@ describe("Keenko migrations", () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom-start-router" });
     const vite = tree.read("apps/web/vite.config.ts", "utf-8") ?? "";
-    tree.write("apps/web/vite.config.ts", vite.replace("tanstackStart()", "tanstackStart({ router: { autoCodeSplitting: false } })"));
+    tree.write(
+      "apps/web/vite.config.ts",
+      vite.replace(CURRENT_START_CALL, "tanstackStart({ router: { autoCodeSplitting: false } })")
+    );
 
     await expectMigrationFailure(tree, "Keenko-owned Router integration was customized");
   });
@@ -194,6 +195,12 @@ function downgradeBoundaryBridge(tree: Tree) {
     workspace.scripts = workspaceScripts;
     tree.write(file, `${JSON.stringify(workspace, null, 2)}\n`);
   }
+
+  const routerConfig = readJson(tree, "apps/web/tsr.config.json");
+  delete routerConfig.routeTreeFileFooter;
+  tree.write("apps/web/tsr.config.json", `${JSON.stringify(routerConfig, null, 2)}\n`);
+  const vite = tree.read("apps/web/vite.config.ts", "utf-8") ?? "";
+  tree.write("apps/web/vite.config.ts", vite.replace(CURRENT_START_CALL, "tanstackStart()"));
 
   const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
   const start = source.indexOf('    "@nx/enforce-module-boundaries": [');
