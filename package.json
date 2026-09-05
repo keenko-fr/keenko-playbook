@@ -1,6 +1,6 @@
 {
   "name": "keenko",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "Opinionated Nx-based Keenko TypeScript application distribution.",
   "license": "MIT",
