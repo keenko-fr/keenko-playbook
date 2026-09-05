@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -15,7 +15,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -23,116 +22,7 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Apply reviewer lifecycle coverage fixes
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              source = file.read_text()
-              if source.count(old) != 1:
-                  raise SystemExit(f"{path}: expected one replacement anchor, found {source.count(old)}")
-              file.write_text(source.replace(old, new, 1))
-
-          replace_once(
-              "README.md",
-              """Create a project with the Keenko Nx preset:\n\n```sh\ncreate-nx-workspace my-project --preset=keenko\ncd my-project\nbun run check\n```""",
-              """Create a project with the canonical exact-pinned Nx command. Bun is the fixed package manager and Nx Cloud is skipped:\n\n```sh\nbunx create-nx-workspace@23.2.0 my-project \\\n  --preset=keenko \\\n  --packageManager=bun \\\n  --nxCloud=skip \\\n  --interactive=false \\\n  --trustThirdPartyPreset\ncd my-project\nbun run check\n```""",
-          )
-          replace_once(
-              "README.md",
-              "There is no Keenko wrapper that chooses a release, imposes Git policy, performs downgrade preflight, or runs a generic post-migration dependency update.",
-              "There is no Keenko wrapper that chooses a release or adds clean-tree, downgrade, prerelease, future-major, or same-version policy. Native Nx owns those invocation semantics.",
-          )
-
-          replace_once(
-              "tests/packed-product.test.ts",
-              'import { mkdir, mkdtemp, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";',
-              'import { mkdir, mkdtemp, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";',
-          )
-          replace_once(
-              "tests/packed-product.test.ts",
-              'const CURRENT_CODEGEN_CHECK = "bun tools/check-generated.ts";\n',
-              '''const CURRENT_CODEGEN_CHECK = "bun tools/check-generated.ts";\nconst CREATE_NX_WORKSPACE_VERSION = "23.2.0";\n\nfunction createWorkspaceArgs(name: string) {\n  return [\n    `create-nx-workspace@${CREATE_NX_WORKSPACE_VERSION}`,\n    name,\n    "--preset=keenko",\n    "--packageManager=bun",\n    "--nxCloud=skip",\n    "--interactive=false",\n    "--trustThirdPartyPreset",\n  ];\n}\n''',
-          )
-          replace_once(
-              "tests/packed-product.test.ts",
-              '''    run(\n      "bunx",\n      [\n        "--bun",\n        "create-nx-workspace@23.2.0",\n        "my_app",\n        "--preset=keenko",\n        "--packageManager=bun",\n        "--nxCloud=skip",\n        "--interactive=false",\n        "--skipGit",\n        "--trustThirdPartyPreset",\n      ],\n      temp,\n      registry.env\n    );\n\n    const project = path.join(temp, "my_app");\n''',
-              '''    const occupied = path.join(temp, "occupied");\n    await mkdir(occupied);\n    await writeFile(path.join(occupied, "sentinel.txt"), "keep me\\n");\n    const occupiedFailure = runFailure("bunx", createWorkspaceArgs("occupied"), temp, registry.env);\n    expect(occupiedFailure).toContain("already exists");\n    expect(await readFile(path.join(occupied, "sentinel.txt"), "utf-8")).toBe("keep me\\n");\n    expect((await readdir(occupied)).toSorted()).toEqual(["sentinel.txt"]);\n\n    run("bunx", createWorkspaceArgs("my_app"), temp, registry.env);\n\n    const project = path.join(temp, "my_app");\n    expect(await exists(path.join(project, ".git"))).toBe(true);\n    expect(runOut("git", ["symbolic-ref", "--short", "HEAD"], project).trim()).toBe("main");\n    expect(spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd: project, encoding: "utf-8" }).status).not.toBe(0);\n''',
-          )
-          replace_once(
-              "tests/packed-product.test.ts",
-              '    run("git", ["init", "--quiet", "--initial-branch=main"], project);\n    run("git", ["config", "user.name", "Keenko fixture"], project);',
-              '    run("git", ["config", "user.name", "Keenko fixture"], project);',
-          )
-
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              'const TARGET_VERSION = "0.2.0";\nconst PROJECT_DEPENDENCY = "keenko-project-fixture";',
-              '''const TARGET_VERSION = "0.2.0";\nconst GUIDANCE_VERSION = "0.2.1";\nconst GUIDANCE_MARKER = "Guidance-only packed fixture marker.";\nconst PROJECT_DEPENDENCY = "keenko-project-fixture";''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              'const PROJECT_CONTEXT = "# Project context\\n\\nPreserve this project-owned context byte-for-byte.\\n";\nconst PROJECT_SOURCE = "export const projectOwned = true;\\n";',
-              '''const PROJECT_CONTEXT = "# Project context\\n\\nPreserve this project-owned context byte-for-byte.\\n";\nconst PROJECT_ARCHITECTURE = "# Project architecture\\n\\nPreserve this project-owned architecture byte-for-byte.\\n";\nconst PROJECT_OVERRIDES = "# Project overrides\\n\\nPreserve this project-owned override byte-for-byte.\\n";\nconst PROJECT_UI = "# Project UI\\n\\nPreserve this project-owned UI guidance byte-for-byte.\\n";\nconst PROJECT_SOURCE = "export const projectOwned = true;\\n";''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '''interface BaselineSnapshot {\n  agentsTail: string;\n  context: string;\n  dependencyRange: string;\n  dependencyVersion: string;\n  featureSource: string;\n}''',
-              '''interface BaselineSnapshot {\n  agentsTail: string;\n  architecture: string;\n  claudeTail: string;\n  context: string;\n  dependencyRange: string;\n  dependencyVersion: string;\n  featureSource: string;\n  overrides: string;\n  ui: string;\n}''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '    const targetTarball = await versionedTarball(currentTarball, path.join(temp, `keenko-${TARGET_VERSION}.tgz`), TARGET_VERSION);\n',
-              '''    const targetTarball = await versionedTarball(currentTarball, path.join(temp, `keenko-${TARGET_VERSION}.tgz`), TARGET_VERSION);\n    const guidanceTarball = await guidanceOnlyTarball(currentTarball, path.join(temp, `keenko-${GUIDANCE_VERSION}.tgz`), GUIDANCE_VERSION);\n''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '''            "0.0.2": baselineBTarball,\n            [TARGET_VERSION]: targetTarball,\n''',
-              '''            "0.0.2": baselineBTarball,\n            [TARGET_VERSION]: targetTarball,\n            [GUIDANCE_VERSION]: guidanceTarball,\n''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '    await migrateBaseline(baselineA, beforeA, registry.env);\n    await migrateBaseline(baselineB, beforeB, registry.env);',
-              '    await migrateBaseline(baselineA, beforeA, registry.env);\n    await migrateBaseline(baselineB, beforeB, registry.env);\n    await verifyNativeNoopAndGuidanceOnly(baselineB, beforeB, registry.env);',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '''  await writeFile(path.join(target, "CONTEXT.md"), PROJECT_CONTEXT);\n  const agentsPath = path.join(target, "AGENTS.md");\n  const agentsTail = "\\nHuman project tail must survive.\\n";\n  await writeFile(agentsPath, `${await readFile(agentsPath, "utf-8")}${agentsTail}`);\n  await writeFile(path.join(target, "custom-script.js"), 'console.log("project-owned");\\n');\n''',
-              '''  await writeFile(path.join(target, "CONTEXT.md"), PROJECT_CONTEXT);\n  await mkdir(path.join(target, "docs/project"), { recursive: true });\n  await writeFile(path.join(target, "docs/project/architecture.md"), PROJECT_ARCHITECTURE);\n  await writeFile(path.join(target, "docs/project/overrides.md"), PROJECT_OVERRIDES);\n  await writeFile(path.join(target, "docs/project/ui.md"), PROJECT_UI);\n  const agentsPath = path.join(target, "AGENTS.md");\n  const agentsTail = "\\nHuman project tail must survive.\\n";\n  await writeFile(agentsPath, `${await readFile(agentsPath, "utf-8")}${agentsTail}`);\n  const claudePath = path.join(target, "CLAUDE.md");\n  const claudeTail = "\\nHuman Claude tail must survive.\\n";\n  const claudeSource = await readFile(claudePath, "utf-8").catch(() => "");\n  await writeFile(claudePath, `${claudeSource}${claudeTail}`);\n  await writeFile(path.join(target, "custom-script.js"), 'console.log("project-owned");\\n');\n''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '''  return {\n    agentsTail,\n    context: await readFile(path.join(target, "CONTEXT.md"), "utf-8"),\n    dependencyRange: string(''',
-              '''  return {\n    agentsTail,\n    architecture: await readFile(path.join(target, "docs/project/architecture.md"), "utf-8"),\n    claudeTail,\n    context: await readFile(path.join(target, "CONTEXT.md"), "utf-8"),\n    dependencyRange: string(''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '''    dependencyVersion: await installedVersion(target, PROJECT_DEPENDENCY),\n    featureSource: await readFile(path.join(target, "packages/feature/src/index.ts"), "utf-8"),\n  };''',
-              '''    dependencyVersion: await installedVersion(target, PROJECT_DEPENDENCY),\n    featureSource: await readFile(path.join(target, "packages/feature/src/index.ts"), "utf-8"),\n    overrides: await readFile(path.join(target, "docs/project/overrides.md"), "utf-8"),\n    ui: await readFile(path.join(target, "docs/project/ui.md"), "utf-8"),\n  };''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '''  expect(await readFile(path.join(root, "CONTEXT.md"), "utf-8")).toBe(before.context);\n  expect(await readFile(path.join(root, "AGENTS.md"), "utf-8")).toContain(before.agentsTail.trim());\n  expect(await readFile(path.join(root, "packages/feature/src/index.ts"), "utf-8")).toBe(before.featureSource);''',
-              '''  expect(await readFile(path.join(root, "CONTEXT.md"), "utf-8")).toBe(before.context);\n  expect(await readFile(path.join(root, "docs/project/architecture.md"), "utf-8")).toBe(before.architecture);\n  expect(await readFile(path.join(root, "docs/project/overrides.md"), "utf-8")).toBe(before.overrides);\n  expect(await readFile(path.join(root, "docs/project/ui.md"), "utf-8")).toBe(before.ui);\n  expect(await readFile(path.join(root, "AGENTS.md"), "utf-8")).toContain(before.agentsTail.trim());\n  expect(await readFile(path.join(root, "CLAUDE.md"), "utf-8")).toContain(before.claudeTail.trim());\n  expect(await readFile(path.join(root, "packages/feature/src/index.ts"), "utf-8")).toBe(before.featureSource);''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '''  run("bun", ["run", "check"], root, { ...registryEnv, NX_DAEMON: "false" });\n}\n\nasync function packCurrent(root: string) {''',
-              '''  run("bun", ["run", "check"], root, { ...registryEnv, NX_DAEMON: "false" });\n}\n\nasync function verifyNativeNoopAndGuidanceOnly(root: string, before: BaselineSnapshot, registryEnv: Record<string, string>) {\n  gitCommitAll(root, "native migration baseline");\n  expect(runOut("git", ["status", "--porcelain"], root)).toBe("");\n\n  run("bun", ["x", "nx", "migrate", `keenko@${TARGET_VERSION}`], root, registryEnv);\n  expect(runOut("git", ["status", "--porcelain"], root)).toBe("");\n\n  run("bun", ["x", "nx", "migrate", `keenko@${GUIDANCE_VERSION}`], root, registryEnv);\n  const prepared = json(await readFile(path.join(root, "package.json"), "utf-8"));\n  expect(record(prepared.devDependencies, "guidance devDependencies").keenko).toBe(GUIDANCE_VERSION);\n  run("bun", ["install"], root, registryEnv);\n  run("bun", ["x", "nx", "sync"], root, registryEnv);\n  run("bun", ["run", "codegen"], root, registryEnv);\n\n  expect(await readFile(path.join(root, ".keenko/docs/core/verification.md"), "utf-8")).toContain(GUIDANCE_MARKER);\n  expect(await readFile(path.join(root, "CONTEXT.md"), "utf-8")).toBe(before.context);\n  expect(await readFile(path.join(root, "docs/project/architecture.md"), "utf-8")).toBe(before.architecture);\n  expect(await readFile(path.join(root, "docs/project/overrides.md"), "utf-8")).toBe(before.overrides);\n  expect(await readFile(path.join(root, "docs/project/ui.md"), "utf-8")).toBe(before.ui);\n  expect(await readFile(path.join(root, "AGENTS.md"), "utf-8")).toContain(before.agentsTail.trim());\n  expect(await readFile(path.join(root, "CLAUDE.md"), "utf-8")).toContain(before.claudeTail.trim());\n  expect(await installedVersion(root, "keenko")).toBe(GUIDANCE_VERSION);\n\n  run("bun", ["install", "--frozen-lockfile"], root, registryEnv);\n  run("bun", ["run", "check"], root, { ...registryEnv, NX_DAEMON: "false" });\n}\n\nasync function packCurrent(root: string) {''',
-          )
-          replace_once(
-              "tests/packed-upgrade-preservation.test.ts",
-              '''async function startRegistry(root: string, state: RegistryState): Promise<TestRegistry> {''',
-              '''async function guidanceOnlyTarball(source: string, target: string, version: string) {\n  const unpack = await mkdtemp(path.join(path.dirname(target), "guidance-versioned-"));\n  try {\n    run("tar", ["-xzf", source, "-C", unpack], path.dirname(target));\n    const packagePath = path.join(unpack, "package/package.json");\n    const pkg = json(await readFile(packagePath, "utf-8"));\n    pkg.version = version;\n    await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\\n`);\n    const guidancePath = path.join(unpack, "package/docs/core/verification.md");\n    await writeFile(guidancePath, `${await readFile(guidancePath, "utf-8")}\\n${GUIDANCE_MARKER}\\n`);\n    run("tar", ["-czf", target, "-C", unpack, "package"], path.dirname(target));\n    return target;\n  } finally {\n    await rm(unpack, { force: true, recursive: true });\n  }\n}\n\nasync function startRegistry(root: string, state: RegistryState): Promise<TestRegistry> {''',
-          )
-          PY
-          bun x oxfmt README.md tests/packed-product.test.ts tests/packed-upgrade-preservation.test.ts
-          bun run format:check
-          bun run typecheck
-          git add README.md tests/packed-product.test.ts tests/packed-upgrade-preservation.test.ts
-          git config user.name "Keenko CI reviewer rework"
-          git config user.email "actions@users.noreply.github.com"
-          git commit -m "KEE-14 cover canonical native lifecycle"
-          git push origin HEAD:${{ github.head_ref }}
+      - name: Release-grade check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
