@@ -122,6 +122,7 @@ export default async function normalizeCheck(tree: Tree) {
     migrateWorkspaceTypescript(tree, file, previousTypescript);
   }
   migrateWebPackage(tree);
+  migrateRouterConfig(tree);
   migrateUiPackage(tree);
   migrateComponentsConfig(tree, "apps/web/components.json");
   migrateComponentsConfig(tree, "packages/ui/components.json");
@@ -211,6 +212,18 @@ function migrateWebPackage(tree: Tree) {
   migrateKnownString(scripts, "codegen", [PREVIOUS_WEB_CODEGEN], CURRENT_WEB_CODEGEN, "apps/web package.json scripts.codegen");
   pkg.scripts = scripts;
   writeJson(tree, "apps/web/package.json", pkg);
+}
+
+function migrateRouterConfig(tree: Tree) {
+  const config = readJson(tree, "apps/web/tsr.config.json");
+  if (config.autoCodeSplitting === undefined) {
+    config.autoCodeSplitting = true;
+  } else if (config.autoCodeSplitting !== true) {
+    throw new Error(
+      "Cannot migrate apps/web/tsr.config.json autoCodeSplitting because the Keenko-owned router setting was customized; reconcile it manually"
+    );
+  }
+  writeJson(tree, "apps/web/tsr.config.json", config);
 }
 
 function migrateUiPackage(tree: Tree) {
@@ -349,6 +362,7 @@ async function formatMigratedFiles(tree: Tree) {
   const paths = [
     "package.json",
     "apps/web/package.json",
+    "apps/web/tsr.config.json",
     "packages/backend/package.json",
     "packages/shared/package.json",
     "packages/ui/package.json",
