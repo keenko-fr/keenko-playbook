@@ -5,7 +5,11 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const EXPECTED_SHA = `\${{ inputs.expected_sha }}`;
-const GITHUB_TOKEN = `GITHUB_TOKEN: \${{ github.token }}`;
+const CHECK_GITHUB_TOKEN = `GITHUB_TOKEN: \${{ github.token }}`;
+const RELEASE_APP_TOKEN = `GITHUB_TOKEN: \${{ steps.release-app.outputs.token }}`;
+const RELEASE_APP_CHECKOUT_TOKEN = `token: \${{ steps.release-app.outputs.token }}`;
+const RELEASE_APP_CLIENT_ID = `client-id: \${{ vars.KEENKO_RELEASE_APP_CLIENT_ID }}`;
+const RELEASE_APP_PRIVATE_KEY = `private-key: \${{ secrets.KEENKO_RELEASE_APP_PRIVATE_KEY }}`;
 const NODE_AUTH_TOKEN = `NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}`;
 const REPOSITORY = {
   type: "git",
@@ -87,8 +91,17 @@ describe("public package contract", () => {
     expect(workflow).toContain(`test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"`);
     expect(workflow).toContain("bun run check:release");
     expect(workflow).toContain("run: bun x nx release --yes");
-    expect(workflow).toContain(GITHUB_TOKEN);
+    expect(workflow).toContain("uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0");
+    expect(workflow).toContain(RELEASE_APP_CLIENT_ID);
+    expect(workflow).toContain(RELEASE_APP_PRIVATE_KEY);
+    expect(workflow).toContain("permission-contents: write");
+    expect(workflow).toContain(RELEASE_APP_CHECKOUT_TOKEN);
+    expect(workflow).toContain(CHECK_GITHUB_TOKEN);
+    expect(workflow).toContain(RELEASE_APP_TOKEN);
+    expect(workflow).toContain('RELEASE_APP_SLUG: ${{ steps.release-app.outputs.app-slug }}');
+    expect(workflow).toContain("git config user.name \"${RELEASE_APP_SLUG}[bot]\"");
     expect(workflow).toContain(NODE_AUTH_TOKEN);
+    expect(workflow).toContain("contents: read");
     expect(workflow).toContain("id-token: write");
     expect(workflow).toContain("registry-url: https://registry.npmjs.org");
     expect(workflow).toContain("NPM_CONFIG_PROVENANCE: true");
@@ -98,6 +111,14 @@ describe("public package contract", () => {
     expect(workflow).not.toContain("nx release version");
     expect(workflow).not.toContain("nx release changelog");
     expect(workflow).not.toContain("nx release publish");
+    expect(workflow).not.toContain("git config user.name github-actions[bot]");
+
+    const gitGuidance = await readFile(path.join(ROOT, "docs/core/git.md"), "utf-8");
+    expect(gitGuidance).toContain("Protect main history");
+    expect(gitGuidance).toContain("Require reviewed main changes");
+    expect(gitGuidance).toContain("Keenko Release");
+    expect(gitGuidance).toContain("No human or automation identity may bypass it.");
+    expect(gitGuidance).toContain("Do not add a human bypass.");
   });
 });
 
