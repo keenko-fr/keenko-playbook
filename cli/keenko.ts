@@ -11,7 +11,6 @@ import { format } from "oxfmt";
 import { allowedProjectScopes, type ProjectScope } from "../src/boundaries.ts";
 import presetGenerator from "../src/generators/preset/generator.ts";
 import { verifyGuidance } from "../src/guidance.ts";
-import { normalizeStartRouteGeneration } from "../src/start-route-generation.ts";
 
 interface SemverApi {
   compare: (left: string, right: string) => number;
@@ -62,7 +61,6 @@ async function create(args: string[]) {
   try {
     const tree = new FsTree(stage, false);
     await presetGenerator(tree, { name: path.basename(target) });
-    normalizeStartRouteGeneration(tree);
     await applyChanges(stage, tree);
     if (!args.includes("--no-install")) {
       await useLocalPackageWhenUnpublished(stage);
