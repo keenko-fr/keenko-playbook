@@ -25,7 +25,7 @@ describe("Nx release publication", () => {
     expect(output(result)).not.toContain("A specifier option cannot be provided when using version plans");
     assertNxSuccess(result);
 
-    const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf-8")) as { version: string };
+    const pkg = object(JSON.parse(await readFile(path.join(root, "package.json"), "utf-8")));
     expect(pkg.version).toBe("0.2.0");
     expect(await exists(path.join(root, ".nx/version-plans/release.md"))).toBe(false);
 
@@ -42,25 +42,17 @@ describe("Nx release publication", () => {
   }, 30_000);
 
   test("the repository config uses the top-level Nx release contract", async () => {
-    const nxJson = JSON.parse(await readFile(path.join(ROOT, "nx.json"), "utf-8")) as {
-      release: {
-        changelog: {
-          automaticFromRef: boolean;
-          git?: unknown;
-          workspaceChangelog: { createRelease: string; file: string };
-        };
-        projects: string[];
-        version: { adjustSemverBumpsForZeroMajorVersion: boolean; git?: unknown };
-        versionPlans: boolean;
-      };
-    };
-    expect(nxJson.release.projects).toEqual(["keenko"]);
-    expect(nxJson.release.versionPlans).toBe(true);
-    expect(nxJson.release.version.adjustSemverBumpsForZeroMajorVersion).toBe(false);
-    expect(nxJson.release.version.git).toBeUndefined();
-    expect(nxJson.release.changelog.automaticFromRef).toBe(true);
-    expect(nxJson.release.changelog.git).toBeUndefined();
-    expect(nxJson.release.changelog.workspaceChangelog).toEqual({
+    const nxJson = object(JSON.parse(await readFile(path.join(ROOT, "nx.json"), "utf-8")));
+    const release = object(nxJson.release);
+    expect(release.projects).toEqual(["keenko"]);
+    expect(release.versionPlans).toBe(true);
+    const version = object(release.version);
+    expect(version.adjustSemverBumpsForZeroMajorVersion).toBe(false);
+    expect(version.git).toBeUndefined();
+    const changelog = object(release.changelog);
+    expect(changelog.automaticFromRef).toBe(true);
+    expect(changelog.git).toBeUndefined();
+    expect(changelog.workspaceChangelog).toEqual({
       createRelease: "github",
       file: "{workspaceRoot}/CHANGELOG.md",
     });
@@ -148,4 +140,11 @@ async function exists(filePath: string) {
 
 function output(result: ReturnType<typeof nx>) {
   return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+}
+
+function object(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Expected object");
+  }
+  return Object.fromEntries(Object.entries(value));
 }
