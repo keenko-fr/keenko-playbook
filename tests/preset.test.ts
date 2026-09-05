@@ -93,10 +93,13 @@ describe("Keenko Nx preset", () => {
     expect(readJson(tree, "apps/web/package.json").name).toBe("@my_app.v2/web");
   });
 
-  test.each(["Example App", "Example", "my app", "-demo", "demo@scope", " demo", "demo/"])("rejects invalid shared identity %s", async (name) => {
-    const tree = createTreeWithEmptyWorkspace();
-    await expect(preset(tree, { name })).rejects.toThrow("Keenko workspace name");
-  });
+  test.each(["Example App", "Example", "my app", "-demo", "demo@scope", " demo", "demo/"])(
+    "rejects invalid shared identity %s",
+    async (name) => {
+      const tree = createTreeWithEmptyWorkspace();
+      await expect(preset(tree, { name })).rejects.toThrow("Keenko workspace name");
+    }
+  );
 
   test("rejects an identity that makes a scoped package exceed the npm name limit", async () => {
     const tree = createTreeWithEmptyWorkspace();
