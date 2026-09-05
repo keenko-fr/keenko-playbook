@@ -206,7 +206,7 @@ async function expectManifestBoundary(
 
 async function expectForward(project: string, cli: string, manifest: string, installed: string, target: string) {
   await setInstalledVersion(manifest, installed);
-  expect(runOut("node", [projectCli, "upgrade", target, "--dry-run"], project)).toContain(`${installed} -> ${target}`);
+  expect(runOut("node", [cli, "upgrade", target, "--dry-run"], project)).toContain(`${installed} -> ${target}`);
 }
 
 async function expectDowngrade(project: string, cli: string, manifest: string, installed: string, target: string) {
