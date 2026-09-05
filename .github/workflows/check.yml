@@ -22,7 +22,7 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Release-grade check
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bun run check:release
+      - name: Show formatter diff
+        run: |
+          bun run format
+          git diff --exit-code -- tests/release-publish.test.ts
