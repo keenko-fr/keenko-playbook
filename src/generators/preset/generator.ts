@@ -35,14 +35,6 @@ const TYPESCRIPT_API = "6.0.2";
 const TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
-const START_ROUTE_TREE_FOOTER = `import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}`;
 const NX_TYPESCRIPT_PATCH = `import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -112,17 +104,8 @@ async function generateWeb(tree: Tree, projectName: string) {
   }
 
   const routerConfig = readJson(tree, "apps/web/tsr.config.json");
-  routerConfig.routeTreeFileFooter = [START_ROUTE_TREE_FOOTER];
+  routerConfig.autoCodeSplitting = true;
   tree.write("apps/web/tsr.config.json", json(routerConfig));
-
-  const viteConfig = tree.read("apps/web/vite.config.ts", "utf-8");
-  if (viteConfig === null || !viteConfig.includes("tanstackStart()")) {
-    throw new Error("Unexpected @tanstack/create Vite config: tanstackStart() is missing");
-  }
-  tree.write(
-    "apps/web/vite.config.ts",
-    viteConfig.replace("tanstackStart()", "tanstackStart({ router: { routeTreeFileFooter: [] } })")
-  );
 
   const pkg = readJson(tree, "apps/web/package.json");
   pkg.name = `@${projectName}/web`;
@@ -260,21 +243,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
   );
   tree.write(
     "oxlint.config.ts",
-    `import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";\nimport { defineConfig } from "oxlint";\nimport { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";\nimport core from "ultracite/oxlint/core";\n\nexport default defineConfig({\n  extends: [core],\n  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  jsPlugins: ["@nx/oxlint/boundaries-plugin", "oxlint-plugin-effect/plugin"],\n  options: { typeAware: true },\n  overrides: [\n    {\n      files: ["apps/web/**/*"],\n      rules: {\n        "eslint/no-empty-function": "off",\n        "eslint/no-use-before-define": "off",\n        "eslint/require-await": "off",\n        "eslint/sort-keys": "off",\n      },\n    },\n    {\n      files: ["packages/ui/**/*"],\n      rules: { "eslint/sort-keys": "off" },\n    },\n    {\n      files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectTsgoRecommended.rules,\n        ...effectRecommended,\n        "effect/noTernary": "off",\n      },\n    },\n  ],\n  plugins: ["effecttsgo"],\n  rules: {\n    "@nx/enforce-module-boundaries": [\n      "error",
-      {
-        allow: [],
-        allowCircularSelfDependency: true,
-        depConstraints: [
-${boundaryConstraints}
-        ],
-      },
-    ],
-    "eslint/no-plusplus": "off",
-    "func-style": "off",
-    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],
-  },
-});
-`
+    `import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";\nimport { defineConfig } from "oxlint";\nimport { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";\nimport core from "ultracite/oxlint/core";\n\nexport default defineConfig({\n  extends: [core],\n  ignorePatterns: [".keenko/**", ".agents/skills/**", ".claude/skills/**", "**/_generated/**", "**/routeTree.gen.ts", "packages/backend/confect/**", "packages/backend/convex/**", "!packages/backend/convex/tsconfig.json", "!packages/backend/convex/convex.config.ts"],\n  jsPlugins: ["@nx/oxlint/boundaries-plugin", "oxlint-plugin-effect/plugin"],\n  options: { typeAware: true },\n  overrides: [\n    {\n      files: ["apps/web/**/*"],\n      rules: {\n        "eslint/no-empty-function": "off",\n        "eslint/no-use-before-define": "off",\n        "eslint/require-await": "off",\n        "eslint/sort-keys": "off",\n      },\n    },\n    {\n      files: ["packages/ui/**/*"],\n      rules: { "eslint/sort-keys": "off" },\n    },\n    {\n      files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectTsgoRecommended.rules,\n        ...effectRecommended,\n        "effect/noTernary": "off",\n      },\n    },\n  ],\n  plugins: ["effecttsgo"],\n  rules: {\n    "@nx/enforce-module-boundaries": [\n      "error",\n      {\n        allow: [],\n        allowCircularSelfDependency: true,\n        depConstraints: [\n${boundaryConstraints}\n        ],\n      },\n    ],\n    "eslint/no-plusplus": "off",\n    "func-style": "off",\n    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],\n  },\n});\n`
   );
   tree.write(
     ".github/workflows/ci.yml",
