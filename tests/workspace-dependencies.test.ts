@@ -10,7 +10,9 @@ describe("workspace manifest dependencies", () => {
     const tree = fixture();
     writeWorkspace(tree, "packages/feature", "@fixture/feature", "scope:shared");
 
-    expect(() => verifyWorkspaceManifestDependencies(tree)).not.toThrow();
+    expect(() => {
+      verifyWorkspaceManifestDependencies(tree);
+    }).not.toThrow();
   });
 
   for (const field of DEPENDENCY_FIELDS) {
@@ -20,9 +22,9 @@ describe("workspace manifest dependencies", () => {
         [field]: { "@fixture/web": "workspace:*" },
       });
 
-      expect(() => verifyWorkspaceManifestDependencies(tree)).toThrow(
-        `Forbidden Keenko manifest dependency: packages/feature (scope:shared) ${field} -> @fixture/web (scope:web)`
-      );
+      expect(() => {
+        verifyWorkspaceManifestDependencies(tree);
+      }).toThrow(`Forbidden Keenko manifest dependency: packages/feature (scope:shared) ${field} -> @fixture/web (scope:web)`);
     });
   }
 
@@ -33,7 +35,9 @@ describe("workspace manifest dependencies", () => {
     manifest.nx = { tags: ["type:lib"] };
     tree.write("packages/feature/package.json", json(manifest));
 
-    expect(() => verifyWorkspaceManifestDependencies(tree)).toThrow("must declare exactly one Keenko scope tag");
+    expect(() => {
+      verifyWorkspaceManifestDependencies(tree);
+    }).toThrow("must declare exactly one Keenko scope tag");
   });
 });
 
