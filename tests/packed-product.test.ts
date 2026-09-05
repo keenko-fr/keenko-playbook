@@ -36,7 +36,8 @@ test("packed Keenko works through native Nx creation, synchronization, boundarie
     const occupiedFailure = runFailure("bunx", createWorkspaceArgs("occupied"), temp, registry.env);
     expect(occupiedFailure).toContain("already exists");
     expect(await readFile(path.join(occupied, "sentinel.txt"), "utf-8")).toBe("keep me\n");
-    expect((await readdir(occupied)).toSorted()).toEqual(["sentinel.txt"]);
+    const occupiedEntries = await readdir(occupied);
+    expect(occupiedEntries.toSorted()).toEqual(["sentinel.txt"]);
 
     run("bunx", createWorkspaceArgs("my_app"), temp, registry.env);
 
