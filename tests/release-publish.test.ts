@@ -111,10 +111,7 @@ async function releaseFixture() {
       2
     )}\n`
   );
-  await writeFile(
-    path.join(root, ".nx/version-plans/release.md"),
-    "---\nfixture: minor\n---\n\nExercise native Nx release ownership.\n"
-  );
+  await writeFile(path.join(root, ".nx/version-plans/release.md"), "---\nfixture: minor\n---\n\nExercise native Nx release ownership.\n");
   await symlink(path.join(ROOT, "node_modules"), path.join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
 
   execFileSync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: root });
@@ -144,7 +141,9 @@ function git(cwd: string, ...args: string[]) {
 }
 
 async function exists(filePath: string) {
-  return await stat(filePath).then(() => true).catch(() => false);
+  return await stat(filePath)
+    .then(() => true)
+    .catch(() => false);
 }
 
 function output(result: ReturnType<typeof nx>) {
