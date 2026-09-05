@@ -90,7 +90,12 @@ test("native Nx migrations upgrade both supported historical baselines while pre
   }
 }, 600_000);
 
-async function makeBaseline(cli: string, target: string, expectedVersion: string, registryEnv: Record<string, string>): Promise<BaselineSnapshot> {
+async function makeBaseline(
+  cli: string,
+  target: string,
+  expectedVersion: string,
+  registryEnv: Record<string, string>
+): Promise<BaselineSnapshot> {
   run("node", [cli, "create", target, "--no-install"], ROOT);
 
   const packagePath = path.join(target, "package.json");
@@ -145,7 +150,10 @@ async function makeBaseline(cli: string, target: string, expectedVersion: string
   return {
     agentsTail,
     context: await readFile(path.join(target, "CONTEXT.md"), "utf-8"),
-    dependencyRange: string(recordOrEmpty(json(await readFile(packagePath, "utf-8")).dependencies, "baseline dependencies")[PROJECT_DEPENDENCY], "dependency range"),
+    dependencyRange: string(
+      recordOrEmpty(json(await readFile(packagePath, "utf-8")).dependencies, "baseline dependencies")[PROJECT_DEPENDENCY],
+      "dependency range"
+    ),
     dependencyVersion: await installedVersion(target, PROJECT_DEPENDENCY),
     featureSource: await readFile(path.join(target, "packages/feature/src/index.ts"), "utf-8"),
   };
@@ -223,7 +231,10 @@ async function historicalTarball(root: string, commit: string, version: string, 
 async function installPackedCli(root: string, tarball: string, label: string) {
   const runner = path.join(root, `${label}-runner`);
   await mkdir(runner);
-  await writeFile(path.join(runner, "package.json"), `${JSON.stringify({ dependencies: { keenko: `file:${tarball}` }, private: true }, null, 2)}\n`);
+  await writeFile(
+    path.join(runner, "package.json"),
+    `${JSON.stringify({ dependencies: { keenko: `file:${tarball}` }, private: true }, null, 2)}\n`
+  );
   run("bun", ["install"], runner);
   return path.join(runner, "node_modules/keenko/dist/cli/keenko.js");
 }
