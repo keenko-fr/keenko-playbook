@@ -53,6 +53,7 @@ describe("Keenko migrations", () => {
     expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
     expect(devDependencies["typescript-api"]).toBe(TYPESCRIPT_API_BRIDGE);
     expect(migrated.projectNote).toBe("preserve me");
+    expect(readJson(tree, "apps/web/tsr.config.json").autoCodeSplitting).toBe(true);
     const nxPatchTool = tree.read("tools/keenko-patch-nx-typescript.ts", "utf-8") ?? "";
     expect(nxPatchTool).toContain('path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js")');
     expect(nxPatchTool).toContain("typescript-api");
@@ -104,6 +105,16 @@ describe("Keenko migrations", () => {
     await expectMigrationFailure(tree, "packages/shared/package.json devDependencies.typescript");
   });
 
+  test("rejects a customized Router code splitting setting", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "custom-router" });
+    const config = readJson(tree, "apps/web/tsr.config.json");
+    config.autoCodeSplitting = false;
+    tree.write("apps/web/tsr.config.json", `${JSON.stringify(config, null, 2)}\n`);
+
+    await expectMigrationFailure(tree, "Keenko-owned router setting was customized");
+  });
+
   test("rejects a customized Nx boundary rule", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom-boundary" });
@@ -147,6 +158,10 @@ function downgradeBoundaryBridge(tree: Tree) {
   pkg.devDependencies = devDependencies;
   tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
   tree.delete("tools/keenko-patch-nx-typescript.ts");
+
+  const routerConfig = readJson(tree, "apps/web/tsr.config.json");
+  delete routerConfig.autoCodeSplitting;
+  tree.write("apps/web/tsr.config.json", `${JSON.stringify(routerConfig, null, 2)}\n`);
 
   for (const file of WORKSPACE_MANIFESTS) {
     const workspace = readJson(tree, file);
