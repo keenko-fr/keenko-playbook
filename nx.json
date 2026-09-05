@@ -9,23 +9,13 @@
     },
     "versionPlans": true,
     "version": {
-      "git": {
-        "commit": false,
-        "tag": false,
-        "stageChanges": true,
-        "push": false
-      },
-      "preVersionCommand": "bun run check:release"
+      "adjustSemverBumpsForZeroMajorVersion": false
     },
     "changelog": {
-      "git": {
-        "commit": true,
-        "tag": false,
-        "stageChanges": true,
-        "push": false
-      },
+      "automaticFromRef": true,
       "workspaceChangelog": {
-        "file": "{workspaceRoot}/CHANGELOG.md"
+        "file": "{workspaceRoot}/CHANGELOG.md",
+        "createRelease": "github"
       }
     }
   },
