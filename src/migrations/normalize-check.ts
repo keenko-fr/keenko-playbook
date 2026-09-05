@@ -12,13 +12,15 @@ const PREVIOUS_CHECKS = new Set([
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const PREVIOUS_CODEGEN_CHECK = "keenko check --guidance";
 const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
+const PREVIOUS_LINT = "oxlint .";
+const CURRENT_LINT = "nx show projects && oxlint .";
 const CURRENT_TEST = "bun test --pass-with-no-tests";
 const PREVIOUS_TYPESCRIPT = "7.0.2";
 const PREVIOUS_WEB_TYPESCRIPT = "6.0.2";
 const PREVIOUS_TYPESCRIPT_ALIAS = "npm:@typescript/typescript6@6.0.2";
 const CURRENT_TYPESCRIPT = "6.0.2";
 const CURRENT_TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
-const CURRENT_TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
+const CURRENT_TYPESCRIPT_NATIVE = "npm:@typescript/native@7.0.2";
 const CURRENT_TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
 const CURRENT_NX_OXLINT = "23.2.0";
 const PREVIOUS_POSTINSTALL = "effect-tsgo patch --oxlint";
@@ -152,6 +154,7 @@ function migrateRootPackage(tree: Tree) {
     CURRENT_CODEGEN_CHECK,
     "package.json scripts.codegen:check"
   );
+  migrateKnownString(scripts, "lint", [PREVIOUS_LINT], CURRENT_LINT, "package.json scripts.lint");
   migrateKnownString(scripts, "test", [undefined], CURRENT_TEST, "package.json scripts.test");
   migrateKnownString(scripts, "dev", ["nx run web:dev"], `nx run @${name}/web:dev`, "package.json scripts.dev");
   migrateKnownString(scripts, "ui", [PREVIOUS_UI], CURRENT_UI, "package.json scripts.ui");
