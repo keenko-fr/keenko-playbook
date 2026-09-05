@@ -124,6 +124,7 @@ async function startRegistry(root: string, manifest: Record<string, unknown>, pa
   const child = spawn("bun", [path.join(ROOT, "tests/registry-server.ts"), statePath], {
     stdio: ["ignore", "pipe", "inherit"],
   });
+  // oxlint-disable-next-line promise/avoid-new -- Test registry startup is exposed through child-process events.
   const origin = await new Promise<string>((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", (code) => {

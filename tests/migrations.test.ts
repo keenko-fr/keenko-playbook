@@ -310,17 +310,17 @@ function setCompatibilityAlias(tree: Tree) {
 }
 
 async function expectNormalizeFailure(tree: Tree, message: string) {
-  await expectFailure(() => normalizeCheck(tree), message);
+  await expectFailure(normalizeCheck(tree), message);
 }
 
 async function expectNativeLifecycleFailure(tree: Tree, message: string) {
-  await expectFailure(() => nativeNxLifecycle(tree), message);
+  await expectFailure(nativeNxLifecycle(tree), message);
 }
 
-async function expectFailure(run: () => Promise<unknown>, message: string) {
+async function expectFailure(run: Promise<unknown>, message: string) {
   let failure: unknown;
   try {
-    await run();
+    await run;
   } catch (error) {
     failure = error;
   }

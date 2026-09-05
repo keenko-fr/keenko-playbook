@@ -97,13 +97,13 @@ describe("Keenko Nx preset", () => {
     "rejects invalid shared identity %s",
     async (name) => {
       const tree = createTreeWithEmptyWorkspace();
-      await expect(preset(tree, { name })).rejects.toThrow("Keenko workspace name");
+      await expectFailure(preset(tree, { name }), "Keenko workspace name");
     }
   );
 
   test("rejects an identity that makes a scoped package exceed the npm name limit", async () => {
     const tree = createTreeWithEmptyWorkspace();
-    await expect(preset(tree, { name: `a${"b".repeat(205)}` })).rejects.toThrow("too long");
+    await expectFailure(preset(tree, { name: `a${"b".repeat(205)}` }), "too long");
   });
 
   test("is deterministic and preserves project-owned guidance surfaces", async () => {
@@ -146,6 +146,19 @@ function hashChanges(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
     }
   }
   return hashes;
+}
+
+async function expectFailure(run: Promise<unknown>, message: string) {
+  let failure: unknown;
+  try {
+    await run;
+  } catch (error) {
+    failure = error;
+  }
+  if (!(failure instanceof Error)) {
+    throw new TypeError("Expected preset to fail with an Error");
+  }
+  expect(failure.message).toContain(message);
 }
 
 function readJson(tree: ReturnType<typeof createTreeWithEmptyWorkspace>, file: string): Record<string, unknown> {

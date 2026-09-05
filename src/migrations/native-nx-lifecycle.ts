@@ -81,16 +81,21 @@ async function formattedGeneratedCodeCheck() {
 }
 
 async function formatMigratedFiles(tree: Tree) {
-  for (const file of ["package.json", "nx.json"]) {
-    const source = tree.read(file, "utf-8");
-    if (source === null) {
-      throw new Error(`Cannot format migrated ${file}: file is missing`);
-    }
-    const result = await format(file, source, { printWidth: 140, sortImports: true, sortPackageJson: true });
-    if (result.errors.length > 0) {
-      throw new Error(`Cannot format migrated ${file}: ${result.errors.map(({ message }) => message).join(", ")}`);
-    }
-    tree.write(file, result.code);
+  const formatted = await Promise.all(
+    ["package.json", "nx.json"].map(async (file) => {
+      const source = tree.read(file, "utf-8");
+      if (source === null) {
+        throw new Error(`Cannot format migrated ${file}: file is missing`);
+      }
+      const result = await format(file, source, { printWidth: 140, sortImports: true, sortPackageJson: true });
+      if (result.errors.length > 0) {
+        throw new Error(`Cannot format migrated ${file}: ${result.errors.map(({ message }) => message).join(", ")}`);
+      }
+      return [file, result.code] as const;
+    })
+  );
+  for (const [file, source] of formatted) {
+    tree.write(file, source);
   }
 }
 
