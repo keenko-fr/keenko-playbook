@@ -99,7 +99,7 @@ describe("public package contract", () => {
     expect(workflow).toContain(RELEASE_APP_CHECKOUT_TOKEN);
     expect(workflow).toContain(CHECK_GITHUB_TOKEN);
     expect(workflow).toContain(RELEASE_APP_TOKEN);
-    expect(workflow).toContain('RELEASE_APP_SLUG: ${{ steps.release-app.outputs.app-slug }}');
+    expect(workflow).toContain("RELEASE_APP_SLUG: ${{ steps.release-app.outputs.app-slug }}");
     expect(workflow).toContain(RELEASE_APP_GIT_NAME);
     expect(workflow).toContain(NODE_AUTH_TOKEN);
     expect(workflow).toContain("contents: read");
