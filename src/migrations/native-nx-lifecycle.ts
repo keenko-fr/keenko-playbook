@@ -3,7 +3,8 @@ import { format } from "oxfmt";
 
 import { GENERATED_CODE_CHECK } from "../generated-code-check.ts";
 
-const PREVIOUS_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const PREVIOUS_CHECK =
+  "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const CURRENT_CHECK =
   "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const PREVIOUS_CODEGEN_CHECK = "keenko check --guidance --codegen";
@@ -68,7 +69,11 @@ function migrateKnownString(recordValue: Record<string, unknown>, key: string, p
 }
 
 async function formattedGeneratedCodeCheck() {
-  const result = await format("tools/check-generated.ts", GENERATED_CODE_CHECK, { printWidth: 140, sortImports: true, sortPackageJson: true });
+  const result = await format("tools/check-generated.ts", GENERATED_CODE_CHECK, {
+    printWidth: 140,
+    sortImports: true,
+    sortPackageJson: true,
+  });
   if (result.errors.length > 0) {
     throw new Error(`Cannot format generated code check: ${result.errors.map(({ message }) => message).join(", ")}`);
   }
