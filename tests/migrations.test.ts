@@ -129,10 +129,7 @@ describe("Keenko migrations", () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom-start-router" });
     const vite = tree.read("apps/web/vite.config.ts", "utf-8") ?? "";
-    tree.write(
-      "apps/web/vite.config.ts",
-      vite.replace(CURRENT_START_CALL, "tanstackStart({ router: { autoCodeSplitting: false } })")
-    );
+    tree.write("apps/web/vite.config.ts", vite.replace(CURRENT_START_CALL, "tanstackStart({ router: { autoCodeSplitting: false } })"));
 
     await expectMigrationFailure(tree, "Keenko-owned Router integration was customized");
   });
