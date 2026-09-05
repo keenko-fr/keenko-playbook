@@ -51,6 +51,25 @@ test("packed Keenko works through native Nx creation, synchronization, boundarie
     expect(record(nx.sync, "nx sync").globalGenerators).toEqual(["keenko:sync"]);
     run("bun", ["run", "check"], project, { NX_DAEMON: "false" });
 
+    run("bun", ["run", "ui", "--", "button", "-y"], project, registry.env);
+    expect(await exists(path.join(project, "packages/ui/src/components/button.tsx"))).toBe(true);
+    expect(await exists(path.join(project, "apps/web/src/components/button.tsx"))).toBe(false);
+    run("bun", ["run", "check"], project, { NX_DAEMON: "false" });
+
+    const sharedManifestPath = path.join(project, "packages/shared/package.json");
+    const sharedManifestSource = await readFile(sharedManifestPath, "utf-8");
+    const sharedManifest = json(sharedManifestSource);
+    sharedManifest.dependencies = {
+      ...recordOrEmpty(sharedManifest.dependencies, "shared dependencies"),
+      "@my_app/web": "workspace:*",
+    };
+    await writeFile(sharedManifestPath, `${JSON.stringify(sharedManifest, null, 2)}\n`);
+    const manifestBoundaryFailure = runFailure("bun", ["run", "check"], project, { NX_DAEMON: "false" });
+    expect(manifestBoundaryFailure).toContain(
+      "Forbidden Keenko manifest dependency: packages/shared (scope:shared) dependencies -> @my_app/web (scope:web)"
+    );
+    await writeFile(sharedManifestPath, sharedManifestSource);
+
     const managedGuidance = path.join(project, ".keenko/docs/core/verification.md");
     await writeFile(managedGuidance, `${await readFile(managedGuidance, "utf-8")}\nStale generated guidance.\n`);
     expect(runFailure("bun", ["x", "nx", "sync:check"], project, registry.env)).toContain("out of sync");
@@ -177,6 +196,10 @@ function record(value: unknown, label: string): Record<string, unknown> {
     throw new TypeError(`${label} must be an object`);
   }
   return Object.fromEntries(Object.entries(value));
+}
+
+function recordOrEmpty(value: unknown, label: string) {
+  return value === undefined ? {} : record(value, label);
 }
 
 function string(value: unknown, label: string) {
