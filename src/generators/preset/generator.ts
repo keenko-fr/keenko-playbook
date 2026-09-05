@@ -103,10 +103,6 @@ async function generateWeb(tree: Tree, projectName: string) {
     tree.write(`apps/web/${normalized.slice(index + marker.length)}`, content);
   }
 
-  const routerConfig = readJson(tree, "apps/web/tsr.config.json");
-  routerConfig.autoCodeSplitting = true;
-  tree.write("apps/web/tsr.config.json", json(routerConfig));
-
   const pkg = readJson(tree, "apps/web/package.json");
   pkg.name = `@${projectName}/web`;
   pkg.nx = { tags: ["type:app", "scope:web"] };
