@@ -60,6 +60,9 @@ describe("Keenko Nx preset", () => {
     expect(rootPackage).toContain(TYPESCRIPT_API_BRIDGE);
     expect(rootPackage).toContain('"postinstall": "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts"');
     expect(tree.read("tools/check-generated.ts", "utf-8")).toContain("Generated source has drifted at:");
+    const readme = tree.read("README.md", "utf-8") ?? "";
+    expect(readme).toContain("\nbun x nx sync\n");
+    expect(readme).not.toContain("\nnx sync\n");
 
     const nx = readJson(tree, "nx.json");
     expect(object(nx.sync).globalGenerators).toEqual(["keenko:sync"]);
