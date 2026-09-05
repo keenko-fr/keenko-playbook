@@ -83,13 +83,15 @@ Every Keenko TypeScript repository exposes these scripts:
 
 Expose `test`, `build`, `codegen`, and `codegen:check` only when those concerns exist. Do not add fake no-op scripts for uniformity.
 
+Keenko registers generated guidance and package-manifest workspace boundary validation in a global Nx sync generator. `bun x nx sync` applies generated guidance updates after validating workspace manifest edges. `bun x nx sync:check` detects guidance drift and rejects forbidden package-declared workspace dependencies without changing files. The generated `bun run check` script runs its synchronization check through Bun, which resolves the workspace-local Nx binary, before other generated-code drift checks.
+
 `bun run check` is non-remediating. Its conceptual order is:
 
 ```text
-codegen/drift -> format:check -> lint -> typecheck -> test -> build -> project-specific delivery/security checks
+sync:check -> codegen/drift -> format:check -> lint -> typecheck -> test -> build -> project-specific delivery/security checks
 ```
 
-Only applicable stages run. A drift check may regenerate into a disposable workspace and compare output, but `check` must not leave tracked source rewritten.
+Only applicable stages run. A code-generation drift check may regenerate into a disposable workspace and compare output, but `check` must not leave tracked source rewritten.
 
 ## CI and agents
 
@@ -99,6 +101,8 @@ During implementation, agents format/fix the touched scope and run focused lint,
 
 ## Generated workspace boundary
 
-The Keenko Nx preset owns the initial package manifests, root Oxc/Ultracite configuration, scripts, CI contract, and generated guidance. Forward changes to those owned surfaces ship as explicit Nx migrations. Migrations must preserve project-owned files and reject ambiguous customized values with an actionable conflict instead of silently overwriting them.
+The Keenko Nx preset owns the initial package manifests, root Oxc/Ultracite configuration, scripts, CI contract, and generated guidance. Forward changes to those owned surfaces ship as explicit Nx migrations. Migrations must preserve project-owned files and reject ambiguous customized Keenko-owned values with an actionable conflict instead of silently overwriting them.
 
-The verified baseline includes `@nx/oxlint` and `@nx/enforce-module-boundaries`. Nx/Oxlint owns source-import and module-boundary diagnostics for the fixed scope matrix. `keenko check` does not repeat those import diagnostics: it owns the fixed four-workspace topology and supplements Nx/Oxlint only for manifest-declared workspace dependencies in `dependencies`, `devDependencies`, `optionalDependencies`, and `peerDependencies`, which the lint rule does not diagnose without a source import. Both checks derive their allowed scope matrix from the same Keenko definition. Preserve the rule that one diagnostic concern has one owner.
+A fresh project starts with `apps/web`, `packages/backend`, `packages/ui`, and `packages/shared`. The preset owns that initial topology. It does not impose a permanent four-workspace count. Additional workspaces are valid when they model a real ownership or reuse boundary and participate in the Nx project graph with the required tags.
+
+The verified baseline includes `@nx/oxlint` and `@nx/enforce-module-boundaries`. Nx owns project-graph and source module-boundary enforcement. At the pinned Nx 23.2.0 implementation, the Oxlint bridge exposes the Nx ESLint rule and the rule evaluates import, export, and `require` edges against the project graph. It does not separately scan package manifests for declaration-only workspace dependencies. Keenko's global `keenko:sync` generator therefore validates package-declared workspace edges across every `apps/*` and `packages/*` workspace that participates in the Keenko scope model. It requires exactly one Keenko scope tag per workspace package and checks `dependencies`, `devDependencies`, `optionalDependencies`, and `peerDependencies` with the same allowed-scope table as source boundaries. This keeps manifest validation inside the native Nx sync lifecycle rather than restoring a parallel lifecycle CLI. Re-verify both mechanisms when the pinned Nx boundary implementation changes.

@@ -2,7 +2,12 @@
   "$schema": "https://json-schema.org/schema",
   "type": "object",
   "properties": {
-    "name": { "type": "string", "description": "Workspace name" }
+    "name": {
+      "type": "string",
+      "description": "Nx workspace name and npm package scope",
+      "pattern": "^[a-z][a-z0-9._-]*$",
+      "maxLength": 205
+    }
   },
   "required": ["name"],
   "additionalProperties": true

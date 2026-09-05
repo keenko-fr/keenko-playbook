@@ -3,9 +3,14 @@ import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { describe, expect, test } from "bun:test";
 
 import preset from "../src/generators/preset/generator.ts";
+import nativeNxLifecycle from "../src/migrations/native-nx-lifecycle.ts";
 import normalizeCheck from "../src/migrations/normalize-check.ts";
 
-const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const LEGACY_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const CURRENT_CHECK =
+  "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const LEGACY_CODEGEN_CHECK = "keenko check --guidance --codegen";
+const CURRENT_CODEGEN_CHECK = "bun tools/check-generated.ts";
 const CURRENT_LINT = "nx show projects && oxlint .";
 const CURRENT_LINT_FIX = "oxlint --fix .";
 const CURRENT_POSTINSTALL = "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts";
@@ -31,9 +36,10 @@ const WORKSPACE_MANIFESTS = [
 ] as const;
 
 describe("Keenko migrations", () => {
-  test("leaves the current generated tooling baseline unchanged", async () => {
+  test("leaves the current 0.1 generated tooling baseline unchanged", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "current" });
+    setLegacyLifecycle(tree);
     const before = snapshot(tree);
     await normalizeCheck(tree);
     expect(snapshot(tree)).toEqual(before);
@@ -53,7 +59,7 @@ describe("Keenko migrations", () => {
     const migrated = readJson(tree, "package.json");
     const scripts = record(migrated.scripts, "scripts");
     const devDependencies = record(migrated.devDependencies, "devDependencies");
-    expect(scripts.check).toBe(CURRENT_CHECK);
+    expect(scripts.check).toBe(LEGACY_CHECK);
     expect(scripts.lint).toBe(CURRENT_LINT);
     expect(scripts["lint:fix"]).toBe(CURRENT_LINT_FIX);
     expect(scripts.postinstall).toBe(CURRENT_POSTINSTALL);
@@ -89,6 +95,7 @@ describe("Keenko migrations", () => {
   test("replaces the Bun-broken TypeScript 6 compatibility alias", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "alias-baseline" });
+    setLegacyLifecycle(tree);
     setCompatibilityAlias(tree);
 
     await normalizeCheck(tree);
@@ -112,31 +119,34 @@ describe("Keenko migrations", () => {
     pkg.devDependencies = devDependencies;
     tree.write("packages/shared/package.json", `${JSON.stringify(pkg, null, 2)}\n`);
 
-    await expectMigrationFailure(tree, "packages/shared/package.json devDependencies.typescript");
+    await expectNormalizeFailure(tree, "packages/shared/package.json devDependencies.typescript");
   });
 
   test("rejects a customized Router footer", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom-router-footer" });
+    setLegacyLifecycle(tree);
     const config = readJson(tree, "apps/web/tsr.config.json");
     config.routeTreeFileFooter = ["// custom footer"];
     tree.write("apps/web/tsr.config.json", `${JSON.stringify(config, null, 2)}\n`);
 
-    await expectMigrationFailure(tree, "Keenko-owned Router footer was customized");
+    await expectNormalizeFailure(tree, "Keenko-owned Router footer was customized");
   });
 
   test("rejects a customized TanStack Start Router integration", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom-start-router" });
+    setLegacyLifecycle(tree);
     const vite = tree.read("apps/web/vite.config.ts", "utf-8") ?? "";
     tree.write("apps/web/vite.config.ts", vite.replace(CURRENT_START_CALL, "tanstackStart({ router: { autoCodeSplitting: false } })"));
 
-    await expectMigrationFailure(tree, "Keenko-owned Router integration was customized");
+    await expectNormalizeFailure(tree, "Keenko-owned Router integration was customized");
   });
 
   test("rejects a customized Nx boundary rule", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom-boundary" });
+    setLegacyLifecycle(tree);
     const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
     const start = source.indexOf('    "@nx/enforce-module-boundaries": [');
     const end = source.indexOf('    "eslint/no-plusplus": "off",');
@@ -148,21 +158,95 @@ describe("Keenko migrations", () => {
       `${source.slice(0, start)}    "@nx/enforce-module-boundaries": ["error", { allow: ["custom/**"] }],\n${source.slice(end)}`
     );
 
-    await expectMigrationFailure(tree, "Keenko-owned rule was customized");
+    await expectNormalizeFailure(tree, "Keenko-owned rule was customized");
   });
 
   test("rejects a customized Keenko shadcn wrapper", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom-wrapper" });
+    setLegacyLifecycle(tree);
     const wrapper = tree.read("tools/keenko-ui.ts", "utf-8") ?? "";
     expect(wrapper).toContain("shadcn@4.20.1");
     tree.write("tools/keenko-ui.ts", wrapper.replace("shadcn@4.20.1", "shadcn@4.20.0"));
 
-    await expectMigrationFailure(tree, "Keenko-owned shadcn wrapper was customized");
+    await expectNormalizeFailure(tree, "Keenko-owned shadcn wrapper was customized");
+  });
+
+  test("moves 0.1 generated projects onto native Nx sync without removing project workspaces", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "native_migration" });
+    setLegacyLifecycle(tree);
+
+    const pkg = readJson(tree, "package.json");
+    const scripts = record(pkg.scripts, "package.json.scripts");
+    scripts.custom = "node custom-script.js";
+    pkg.scripts = scripts;
+    tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+
+    const nx = readJson(tree, "nx.json");
+    nx.sync = { globalGenerators: ["project:sync"] };
+    tree.write("nx.json", `${JSON.stringify(nx, null, 2)}\n`);
+    tree.write(
+      "packages/feature/package.json",
+      `${JSON.stringify({ name: "@native_migration/feature", nx: { tags: ["type:lib", "scope:shared"] }, private: true, version: "0.0.0" }, null, 2)}\n`
+    );
+    tree.write("packages/feature/src/index.ts", "export const feature = true;\n");
+
+    await nativeNxLifecycle(tree);
+
+    const migrated = readJson(tree, "package.json");
+    const migratedScripts = record(migrated.scripts, "package.json.scripts");
+    expect(migratedScripts.check).toBe(CURRENT_CHECK);
+    expect(migratedScripts["codegen:check"]).toBe(CURRENT_CODEGEN_CHECK);
+    expect(migratedScripts.custom).toBe("node custom-script.js");
+    expect(record(readJson(tree, "nx.json").sync, "nx.json.sync").globalGenerators).toEqual(["project:sync", "keenko:sync"]);
+    expect(tree.read("tools/check-generated.ts", "utf-8")).toContain("Generated source has drifted at:");
+    expect(tree.exists("packages/feature/package.json")).toBe(true);
+
+    const beforeReplay = snapshot(tree);
+    await nativeNxLifecycle(tree);
+    expect(snapshot(tree)).toEqual(beforeReplay);
+  });
+
+  test("rejects a customized legacy merge-ready script", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "custom_check" });
+    setLegacyLifecycle(tree);
+    const pkg = readJson(tree, "package.json");
+    const scripts = record(pkg.scripts, "package.json.scripts");
+    scripts.check = `${LEGACY_CHECK} && bun run security`;
+    pkg.scripts = scripts;
+    tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+
+    await expectNativeLifecycleFailure(tree, "scripts.check");
+  });
+
+  test("rejects a conflicting project-owned generated-code helper path", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "custom_helper" });
+    setLegacyLifecycle(tree);
+    tree.write("tools/check-generated.ts", "console.log('project-owned');\n");
+
+    await expectNativeLifecycleFailure(tree, "project already owns a different file");
   });
 });
 
+function setLegacyLifecycle(tree: Tree) {
+  const pkg = readJson(tree, "package.json");
+  const scripts = record(pkg.scripts, "package.json.scripts");
+  scripts.check = LEGACY_CHECK;
+  scripts["codegen:check"] = LEGACY_CODEGEN_CHECK;
+  pkg.scripts = scripts;
+  tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+
+  const nx = readJson(tree, "nx.json");
+  delete nx.sync;
+  tree.write("nx.json", `${JSON.stringify(nx, null, 2)}\n`);
+  tree.delete("tools/check-generated.ts");
+}
+
 function downgradeBoundaryBridge(tree: Tree) {
+  setLegacyLifecycle(tree);
   const pkg = readJson(tree, "package.json");
   const scripts = record(pkg.scripts, "scripts");
   scripts.lint = "oxlint .";
@@ -225,10 +309,18 @@ function setCompatibilityAlias(tree: Tree) {
   }
 }
 
-async function expectMigrationFailure(tree: Tree, message: string) {
+async function expectNormalizeFailure(tree: Tree, message: string) {
+  await expectFailure(normalizeCheck(tree), message);
+}
+
+async function expectNativeLifecycleFailure(tree: Tree, message: string) {
+  await expectFailure(nativeNxLifecycle(tree), message);
+}
+
+async function expectFailure(run: Promise<unknown>, message: string) {
   let failure: unknown;
   try {
-    await normalizeCheck(tree);
+    await run;
   } catch (error) {
     failure = error;
   }
@@ -254,8 +346,7 @@ function readJson(tree: Tree, path: string): Record<string, unknown> {
   if (source === null) {
     throw new Error(`Missing ${path}`);
   }
-  const value: unknown = JSON.parse(source);
-  return record(value, path);
+  return record(JSON.parse(source), path);
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {

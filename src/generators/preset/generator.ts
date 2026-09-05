@@ -1,10 +1,11 @@
-import type { Tree } from "@nx/devkit";
+import { installPackagesTask, type Tree } from "@nx/devkit";
 import { createApp, createMemoryEnvironment, finalizeAddOns, getFrameworkById, populateAddOnOptionsDefaults } from "@tanstack/create";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { format } from "oxfmt";
 
 import { KEENKO_BOUNDARY_CONSTRAINTS } from "../../boundaries.ts";
+import { GENERATED_CODE_CHECK } from "../../generated-code-check.ts";
 import { syncGuidance } from "../../guidance.ts";
 import { normalizeStartRouteGeneration } from "../../start-route-generation.ts";
 import { versions } from "../../versions.ts";
@@ -56,7 +57,7 @@ if (originalCount === 2 && patchedCount === 0) {
 `;
 
 export default async function presetGenerator(tree: Tree, options: PresetSchema) {
-  const projectName = normalizeName(options.name);
+  const projectName = validateProjectName(options.name);
   await generateWeb(tree, projectName);
   normalizeStartRouteGeneration(tree);
   writeWorkspaceFiles(tree, projectName);
@@ -65,6 +66,11 @@ export default async function presetGenerator(tree: Tree, options: PresetSchema)
   writeShared(tree, projectName);
   await formatAuthoredFiles(tree);
   syncGuidance(tree);
+  return async () => {
+    installPackagesTask(tree);
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("bun", ["run", "codegen"], { cwd: tree.root, stdio: "inherit" });
+  };
 }
 
 async function generateWeb(tree: Tree, projectName: string) {
@@ -178,9 +184,10 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
       private: true,
       scripts: {
         build: "nx run-many -t build",
-        check: "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
+        check:
+          "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
         codegen: "nx run-many -t codegen",
-        "codegen:check": "keenko check --guidance --codegen",
+        "codegen:check": "bun tools/check-generated.ts",
         dev: `nx run @${projectName}/web:dev`,
         format: "oxfmt .",
         "format:check": "oxfmt --check .",
@@ -196,6 +203,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
       workspaces: ["apps/*", "packages/*"],
     })
   );
+  tree.write("tools/check-generated.ts", GENERATED_CODE_CHECK);
   tree.write(
     "tools/keenko-ui.ts",
     `const args = process.argv.slice(2);\n\nif (args.length === 0) {\n  throw new Error("Pass at least one shadcn component name.");\n}\n\nconst options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;\nconst add = Bun.spawnSync(["bunx", "--bun", "shadcn@${versions.shadcn}", "add", "-c", "apps/web", ...args], options);\nif (add.exitCode !== 0) {\n  throw new Error("shadcn failed");\n}\n\nconst install = Bun.spawnSync(["bun", "install"], options);\nif (install.exitCode !== 0) {\n  throw new Error("bun install failed after shadcn updated workspace dependencies");\n}\n\nconst codegen = Bun.spawnSync(["bun", "run", "codegen"], options);\nif (codegen.exitCode !== 0) {\n  throw new Error("Keenko codegen failed after shadcn updated dependencies");\n}\n\nconst format = Bun.spawnSync(["bun", "run", "format"], options);\nif (format.exitCode !== 0) {\n  throw new Error("Keenko format failed after shadcn generated components");\n}\n\nconst lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], options);\nif (lintFix.exitCode !== 0) {\n  throw new Error("Keenko lint fixes failed after shadcn generated components");\n}\n\nconst reformat = Bun.spawnSync(["bun", "run", "format"], options);\nif (reformat.exitCode !== 0) {\n  throw new Error("Keenko format failed after lint fixes");\n}\n`
@@ -207,6 +215,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
       $schema: "./node_modules/nx/schemas/nx-schema.json",
       defaultBase: "main",
       neverConnectToCloud: true,
+      sync: { globalGenerators: ["keenko:sync"] },
       targetDefaults: {
         build: { cache: true, dependsOn: ["^build"] },
         typecheck: { cache: true, dependsOn: ["^typecheck"] },
@@ -249,7 +258,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
   );
   tree.write(
     "README.md",
-    `# ${projectName}\n\nKeenko application workspace. Node 24 runs Nx and tooling that requires Node; Bun ${versions.bun} owns packages, scripts, the lockfile, and supported application execution.\n\n## Commands\n\n\`\`\`sh\nbun install\nbun run check\nbun run dev\n\`\`\`\n\nAdd shadcn components from the app boundary: \`bun run ui -- button\`. The CLI routes reusable UI into \`packages/ui\`.\n`
+    `# ${projectName}\n\nKeenko application workspace. Node 24 runs Nx and tooling that requires Node; Bun ${versions.bun} owns packages, scripts, the lockfile, and supported application execution.\n\n## Commands\n\n\`\`\`sh\nbun install\nbun x nx sync\nbun run check\nbun run dev\n\`\`\`\n\nAdd shadcn components from the app boundary: \`bun run ui -- button\`. The CLI routes reusable UI into \`packages/ui\`.\n`
   );
 }
 
@@ -406,16 +415,18 @@ function packageTsconfig(...include: string[]) {
   return json({ compilerOptions: { composite: false }, extends: "../../tsconfig.json", include });
 }
 
-function normalizeName(name: string) {
-  const value = name
-    .trim()
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9-]+/gu, "-")
-    .replaceAll(/^-|-$/gu, "");
-  if (value.length === 0) {
-    throw new Error("Project name must contain letters or numbers");
+function validateProjectName(name: string) {
+  if (!/^[a-z][a-z0-9._-]*$/u.test(name)) {
+    throw new Error(
+      "Keenko workspace name must start with a lowercase letter and contain only lowercase letters, numbers, dots, underscores, or hyphens so the same value is valid as an npm package name and scope"
+    );
   }
-  return value;
+  for (const packageName of [name, `@${name}/web`, `@${name}/backend`, `@${name}/ui`, `@${name}/shared`]) {
+    if (packageName.length > 214) {
+      throw new Error(`Keenko workspace name is too long for npm package name ${packageName}`);
+    }
+  }
+  return name;
 }
 
 function readJson(tree: Tree, file: string): Record<string, unknown> {

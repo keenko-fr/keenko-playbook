@@ -9,7 +9,7 @@
 - Keep the committed Bun lockfile format version 2 canonical. Lockfile format version 2 is separate from the Bun 2.x runtime major. Do not regenerate or downgrade the lockfile to accommodate an unsupported local Bun; update the local Bun runtime instead.
 - Do not add mise, asdf, Volta-like machinery, custom bootstrap scripts, or another version-manager requirement solely to enforce this baseline.
 - Do not use a `preinstall` script as the Bun compatibility guard. An incompatible Bun can fail while parsing `bun.lock` before repository scripts run.
-- Generated workspaces declare Node `>=24 <25` and Bun `>=1.4.0 <2`; the Keenko CLI rejects unsupported runtimes before it mutates a project.
+- Generated workspaces declare Node `>=24 <25` and Bun `>=1.4.0 <2`. Keenko does not add a lifecycle wrapper solely to preflight those ranges before native Nx or Bun commands run.
 
 ## Adding dependencies
 
