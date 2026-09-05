@@ -10,6 +10,7 @@ const RELEASE_APP_TOKEN = `GITHUB_TOKEN: \${{ steps.release-app.outputs.token }}
 const RELEASE_APP_CHECKOUT_TOKEN = `token: \${{ steps.release-app.outputs.token }}`;
 const RELEASE_APP_CLIENT_ID = `client-id: \${{ vars.KEENKO_RELEASE_APP_CLIENT_ID }}`;
 const RELEASE_APP_PRIVATE_KEY = `private-key: \${{ secrets.KEENKO_RELEASE_APP_PRIVATE_KEY }}`;
+const RELEASE_APP_SLUG_ENV = `RELEASE_APP_SLUG: \${{ steps.release-app.outputs.app-slug }}`;
 const RELEASE_APP_GIT_NAME = `git config user.name "\${RELEASE_APP_SLUG}[bot]"`;
 const NODE_AUTH_TOKEN = `NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}`;
 const REPOSITORY = {
@@ -99,7 +100,7 @@ describe("public package contract", () => {
     expect(workflow).toContain(RELEASE_APP_CHECKOUT_TOKEN);
     expect(workflow).toContain(CHECK_GITHUB_TOKEN);
     expect(workflow).toContain(RELEASE_APP_TOKEN);
-    expect(workflow).toContain("RELEASE_APP_SLUG: ${{ steps.release-app.outputs.app-slug }}");
+    expect(workflow).toContain(RELEASE_APP_SLUG_ENV);
     expect(workflow).toContain(RELEASE_APP_GIT_NAME);
     expect(workflow).toContain(NODE_AUTH_TOKEN);
     expect(workflow).toContain("contents: read");
