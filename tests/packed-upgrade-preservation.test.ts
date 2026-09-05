@@ -173,6 +173,7 @@ async function migrateBaseline(root: string, before: BaselineSnapshot, registryE
   run("bun", ["install"], root, registryEnv);
   run("bun", ["x", "nx", "migrate", "--run-migrations"], root, registryEnv);
   run("bun", ["x", "nx", "sync"], root, registryEnv);
+  run("bun", ["run", "codegen"], root, registryEnv);
 
   const migrated = json(await readFile(path.join(root, "package.json"), "utf-8"));
   const scripts = record(migrated.scripts, "migrated scripts");

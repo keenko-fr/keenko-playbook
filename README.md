@@ -49,6 +49,7 @@ Upgrade Keenko through normal Nx migrations:
 nx migrate keenko@0.2.0
 nx migrate --run-migrations
 nx sync
+bun run codegen
 bun run check
 ```
 
