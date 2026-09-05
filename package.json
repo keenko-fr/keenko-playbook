@@ -59,7 +59,7 @@
   },
   "scripts": {
     "format": "oxfmt .",
-    "format:check": "oxfmt --check .",
+    "format:check": "oxfmt . && git diff --exit-code",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "typecheck": "tsc --noEmit",
@@ -69,7 +69,7 @@
     "vendor:sync": "bun cli/vendor-sync.ts",
     "vendor:check": "bun cli/vendor-sync.ts --check",
     "vendor:update": "bun cli/vendor-sync.ts --update",
-    "build": "bun -e 'import { rmSync } from \"node:fs\"; rmSync(\"dist\", { force: true, recursive: true })' && tsc -p tsconfig.build.json",
+    "build": "bun -e 'import { rmSync } from \"node:fs\"; rmSync(\"dist\", { force: true, recursive: true })' && tsc -p tsconfig.build.json && bun -e 'import { cpSync } from \"node:fs\"; cpSync(\"src/generators/preset/files\", \"dist/src/generators/preset/files\", { recursive: true })'",
     "release": "nx release",
     "release:plan": "nx release plan",
     "release:plan:check": "nx release plan:check",

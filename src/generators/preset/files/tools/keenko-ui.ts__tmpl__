@@ -1,0 +1,36 @@
+const args = process.argv.slice(2);
+
+if (args.length === 0) {
+  throw new Error("Pass at least one shadcn component name.");
+}
+
+const options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;
+const add = Bun.spawnSync(["bunx", "--bun", "shadcn@<%= shadcnVersion %>", "add", "-c", "apps/web", ...args], options);
+if (add.exitCode !== 0) {
+  throw new Error("shadcn failed");
+}
+
+const install = Bun.spawnSync(["bun", "install"], options);
+if (install.exitCode !== 0) {
+  throw new Error("bun install failed after shadcn updated workspace dependencies");
+}
+
+const codegen = Bun.spawnSync(["bun", "run", "codegen"], options);
+if (codegen.exitCode !== 0) {
+  throw new Error("Keenko codegen failed after shadcn updated dependencies");
+}
+
+const format = Bun.spawnSync(["bun", "run", "format"], options);
+if (format.exitCode !== 0) {
+  throw new Error("Keenko format failed after shadcn generated components");
+}
+
+const lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], options);
+if (lintFix.exitCode !== 0) {
+  throw new Error("Keenko lint fixes failed after shadcn generated components");
+}
+
+const reformat = Bun.spawnSync(["bun", "run", "format"], options);
+if (reformat.exitCode !== 0) {
+  throw new Error("Keenko format failed after lint fixes");
+}

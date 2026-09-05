@@ -1,0 +1,14 @@
+# <%= projectName %>
+
+Keenko application workspace. Node 24 runs Nx and tooling that requires Node; Bun <%= bunVersion %> owns packages, scripts, the lockfile, and supported application execution.
+
+## Commands
+
+```sh
+bun install
+bun x nx sync
+bun run check
+bun run dev
+```
+
+Add shadcn components from the app boundary: `bun run ui -- button`. The CLI routes reusable UI into `packages/ui`.

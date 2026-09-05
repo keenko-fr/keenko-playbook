@@ -1,10 +1,10 @@
-# Formatting and linting tooling
+# Formatting, linting, and generator tooling
 
 ## Authority and engines
 
 Keenko TypeScript repositories use Oxfmt for formatting and Oxlint for linting, with Ultracite as the generic preset layer. Keenko owns the project-specific overrides, architectural rules, scripts, CI contract, agent workflow, and semantic conventions. Ultracite is a dependency, not an instruction or workflow authority: do not let it generate or own Playbook-managed agent instructions, routing blocks, hooks, or editor policy.
 
-Oxfmt output is canonical for formatter-owned choices. Do not restate quotes, semicolons, trailing commas, wrapping behavior, or other arbitrary formatter output as independent prose rules. The deliberate Keenko formatting override is `printWidth: 140`; `.editorconfig` remains responsible for editor-neutral invariants such as LF, final newline, and indentation. When inheriting an upstream formatter preset, strip any preset fields that overlap those EditorConfig-owned invariants before passing the config to Oxfmt. For the pinned Ultracite baseline, remove `endOfLine`, `tabWidth`, and `useTabs`; their values must come from `.editorconfig` even when the upstream preset currently matches them.
+Oxfmt owns formatting. Its configuration is the only canonical source for indentation, tabs versus spaces, line endings, final newlines, wrapping, quotes, semicolons, trailing commas, import sorting, and other formatter-owned choices. Keenko deliberately sets `printWidth: 140`; all other inherited Ultracite Oxfmt fields remain part of the formatter contract unless a reviewed Oxfmt override changes them. `.editorconfig` is not part of the Keenko formatting architecture. Do not duplicate Oxfmt-owned choices in prose, editor configuration, CI wrappers, generator-specific formatting rules, or another configuration system. Editor and CI integrations may invoke Oxfmt, but they consume its configuration rather than defining another formatting policy.
 
 Oxlint is correctness-first. Canonical lint policy is layered:
 
@@ -56,6 +56,37 @@ A TypeScript repository owns root `oxfmt.config.ts` and `oxlint.config.ts` files
 `options.typeAware: true` is required in the root Oxlint configuration. Keep TypeScript type checking as a separate `typecheck` script; do not enable Oxlint's experimental type-check mode as a replacement for the compiler contract.
 
 Oxfmt owns mechanical import sorting. Keep external and workspace packages before project-local imports and preserve side-effect import order. Type-import semantics remain a convention in `code-style.md` and the TypeScript stack; the linter enforces the mechanical form.
+
+## Generator authoring
+
+Use public `@nx/devkit` as the default vocabulary for Keenko generators and repository migrations. Prefer native operations such as `generateFiles`, `readJson`, `writeJson`, `updateJson`, `readNxJson`, `updateNxJson`, `addDependenciesToPackageJson`, `removeDependenciesFromPackageJson`, `joinPathFragments`, `runTasksInSerial`, and `installPackagesTask` when they express the operation. Add a Keenko helper only when it owns Keenko semantics, not to wrap `JSON.parse`, `tree.write`, or an existing Devkit operation.
+
+Represent generated state according to its shape:
+
+```text
+static or mostly-static file
+  -> generator template
+
+structured dynamic JSON
+  -> Nx JSON APIs
+
+shared semantic fact
+  -> small typed constant/function
+
+upstream-generated artifact
+  -> upstream generator/API plus minimal Keenko delta
+
+historical migration state
+  -> frozen migration-local snapshot
+```
+
+Generator-owned project files live beside their generator, for example under `src/generators/preset/files/`, and are materialized with `generateFiles()`. The root `templates/` directory owns project guidance and managed agent materialization, not preset project files. Keep readable files as files. Do not replace them with a giant baseline object, file manifest, custom workspace-description DSL, or Keenko template engine.
+
+Compose a full first-party Nx generator only when its owned project model substantially matches the Keenko result. If Keenko would immediately delete or rewrite a substantial part of the generated package, TypeScript configuration, project configuration, or file topology, use lower-level Devkit operations and small Keenko templates instead. Do not generate and then substantially undo upstream output. At the pinned Nx 23.2 baseline, `@nx/js:library` does not own the Keenko backend/shared package model because it initializes its own JS/TypeScript project shape, including `tsconfig.lib.json`.
+
+DRY semantic facts such as versions, boundary constraints, package identity construction, and canonical script values when multiple outputs derive from them. Do not DRY ordinary static files into an encoded repository model. Historical migrations are frozen compatibility snapshots and must not import mutable current-baseline constants.
+
+Oxfmt remains the formatter for generator-authored project files. Do not switch generator output to Nx/Prettier or embed a second formatting policy merely to match generator conventions.
 
 ## Generated, managed, and vendored files
 
