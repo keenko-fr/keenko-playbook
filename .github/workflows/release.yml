@@ -9,17 +9,25 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Create Keenko Release token
+        id: release-app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.KEENKO_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.KEENKO_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           ref: ${{ inputs.expected_sha }}
+          token: ${{ steps.release-app.outputs.token }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -42,12 +50,16 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: bun run check:release
       - name: Configure release identity
+        env:
+          GH_TOKEN: ${{ steps.release-app.outputs.token }}
+          RELEASE_APP_SLUG: ${{ steps.release-app.outputs.app-slug }}
         run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          release_app_id="$(gh api "/users/${RELEASE_APP_SLUG}[bot]" --jq .id)"
+          git config user.name "${RELEASE_APP_SLUG}[bot]"
+          git config user.email "${release_app_id}+${RELEASE_APP_SLUG}[bot]@users.noreply.github.com"
       - name: Release with Nx
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.release-app.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
         run: bun x nx release --yes
