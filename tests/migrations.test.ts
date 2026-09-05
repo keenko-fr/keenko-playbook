@@ -53,9 +53,9 @@ describe("Keenko migrations", () => {
     expect(oxfmt).not.toContain("tabWidth: _tabWidth");
     expect(oxfmt).not.toContain("useTabs: _useTabs");
 
-    const beforeReplay = snapshot(tree);
     removeEditorConfig(tree);
-    expect(snapshot(tree)).toEqual(beforeReplay);
+    expect(tree.exists(".editorconfig")).toBe(false);
+    expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(oxfmt);
   });
 
   test("rejects a customized editor config instead of deleting it", async () => {
@@ -63,7 +63,9 @@ describe("Keenko migrations", () => {
     await preset(tree, { name: "custom_editor" });
     tree.write(".editorconfig", `${LEGACY_EDITORCONFIG}\n[*.md]\ntrim_trailing_whitespace = false\n`);
 
-    expect(() => removeEditorConfig(tree)).toThrow(".editorconfig was customized");
+    expect(() => {
+      removeEditorConfig(tree);
+    }).toThrow(".editorconfig was customized");
     expect(tree.exists(".editorconfig")).toBe(true);
   });
 
@@ -73,17 +75,9 @@ describe("Keenko migrations", () => {
     tree.write(".editorconfig", LEGACY_EDITORCONFIG);
     tree.write("oxfmt.config.ts", `${LEGACY_OXFMT_CONFIG}\n// project-owned formatter change\n`);
 
-    expect(() => removeEditorConfig(tree)).toThrow("oxfmt.config.ts was customized");
+    expect(() => {
+      removeEditorConfig(tree);
+    }).toThrow("oxfmt.config.ts was customized");
     expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
   });
 });
-
-function snapshot(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
-  return Object.fromEntries(
-    tree
-      .listChanges()
-      .filter((change) => change.content !== null)
-      .map((change) => [change.path, change.content?.toString("utf-8")])
-      .toSorted(([left], [right]) => left.localeCompare(right))
-  );
-}

@@ -1,14 +1,4 @@
-import {
-  generateFiles,
-  installPackagesTask,
-  joinPathFragments,
-  readJsonFile,
-  runTasksInSerial,
-  type PackageJson,
-  type Tree,
-  updateJson,
-  writeJson,
-} from "@nx/devkit";
+import { generateFiles, installPackagesTask, joinPathFragments, readJsonFile, type Tree, updateJson, writeJson } from "@nx/devkit";
 import { createApp, createMemoryEnvironment, finalizeAddOns, getFrameworkById, populateAddOnOptionsDefaults } from "@tanstack/create";
 import path from "node:path";
 
@@ -21,10 +11,19 @@ interface PresetSchema {
   name: string;
 }
 
-interface GeneratedPackageJson extends PackageJson {
+interface GeneratedPackageJson {
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
   imports?: Record<string, string>;
+  name: string;
   nx?: { tags: string[] };
   pnpm?: unknown;
+  scripts: Record<string, string>;
+}
+
+interface PackageIdentity {
+  name?: string;
+  version?: string;
 }
 
 const TANSTACK_PINS: Record<string, string> = {
@@ -58,11 +57,12 @@ export default async function presetGenerator(tree: Tree, options: PresetSchema)
   applyWebCorrections(tree);
   syncGuidance(tree);
 
-  return runTasksInSerial(installPackagesTask(tree), async () => {
+  return async () => {
+    installPackagesTask(tree);
     const { execFileSync } = await import("node:child_process");
     execFileSync("bun", ["run", "format"], { cwd: tree.root, stdio: "inherit" });
     execFileSync("bun", ["run", "codegen"], { cwd: tree.root, stdio: "inherit" });
-  });
+  };
 }
 
 async function generateWeb(tree: Tree) {
@@ -273,19 +273,19 @@ function applyWebConfiguration(tree: Tree, projectName: string) {
     };
     delete pkg.pnpm;
     pkg.scripts = {
-      ...(pkg.scripts ?? {}),
+      ...pkg.scripts,
       codegen: "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --no-emit-readme && tsr generate",
       typecheck: TYPESCRIPT_NATIVE_TSC,
     };
     pkg.dependencies = {
-      ...(pkg.dependencies ?? {}),
+      ...pkg.dependencies,
       "@confect/react": versions.confect,
       [`@${projectName}/backend`]: "workspace:*",
       [`@${projectName}/shared`]: "workspace:*",
       [`@${projectName}/ui`]: "workspace:*",
     };
     pkg.devDependencies = {
-      ...(pkg.devDependencies ?? {}),
+      ...pkg.devDependencies,
       "@typescript/native": versions.typescriptNative,
       typescript: versions.typescriptApi,
     };
@@ -336,12 +336,8 @@ function componentsConfig(projectName: string, owner: "web" | "ui") {
   };
 }
 
-function pinDependencies(pkg: PackageJson) {
-  for (const field of ["dependencies", "devDependencies"] as const) {
-    const dependencies = pkg[field];
-    if (dependencies === undefined) {
-      continue;
-    }
+function pinDependencies(pkg: Pick<GeneratedPackageJson, "dependencies" | "devDependencies">) {
+  for (const dependencies of [pkg.dependencies, pkg.devDependencies]) {
     for (const [name, value] of Object.entries(dependencies)) {
       dependencies[name] = value.replace(/^[~^]/u, "");
     }
@@ -376,7 +372,7 @@ function keenkoVersion() {
   for (let depth = 0; depth < 8; depth += 1) {
     const packagePath = path.join(current, "package.json");
     try {
-      const pkg = readJsonFile<PackageJson>(packagePath);
+      const pkg = readJsonFile<PackageIdentity>(packagePath);
       if (pkg.name === "keenko" && typeof pkg.version === "string") {
         return pkg.version;
       }
