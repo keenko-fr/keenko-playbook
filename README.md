@@ -46,7 +46,7 @@ Keenko generated guidance is a global Nx sync generator. Apply it with:
 bun x nx sync
 ```
 
-`bun run check` invokes the local `nx sync:check` script stage, so generated guidance drift fails the merge-ready check without rewriting tracked files.
+`bun run check` runs the synchronization check through the package script, where Bun resolves the workspace-local Nx binary. Generated guidance drift therefore fails the merge-ready check without rewriting tracked files.
 
 Upgrade Keenko through normal Nx migrations:
 
