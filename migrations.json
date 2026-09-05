@@ -4,6 +4,11 @@
       "version": "0.1.0",
       "description": "Reconcile supported pre-v1 project scripts and the canonical Oxlint baseline.",
       "factory": "./dist/src/migrations/normalize-check.js"
+    },
+    "0.2.0-native-nx-lifecycle": {
+      "version": "0.2.0",
+      "description": "Move generated Keenko projects from the removed lifecycle CLI to native Nx sync and migration commands.",
+      "factory": "./dist/src/migrations/native-nx-lifecycle.js"
     }
   }
 }
