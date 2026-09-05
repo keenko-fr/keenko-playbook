@@ -69,6 +69,7 @@ test("packed Keenko works through native Nx creation, synchronization, boundarie
       "Forbidden Keenko manifest dependency: packages/shared (scope:shared) dependencies -> @my_app/web (scope:web)"
     );
     await writeFile(sharedManifestPath, sharedManifestSource);
+    run("bun", ["x", "nx", "reset"], project, registry.env);
 
     const managedGuidance = path.join(project, ".keenko/docs/core/verification.md");
     await writeFile(managedGuidance, `${await readFile(managedGuidance, "utf-8")}\nStale generated guidance.\n`);
