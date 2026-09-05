@@ -4,11 +4,21 @@ import { describe, expect, test } from "bun:test";
 
 import preset from "../src/generators/preset/generator.ts";
 import normalizeCheck from "../src/migrations/normalize-check.ts";
+import { normalizeStartRouteGeneration } from "../src/start-route-generation.ts";
 
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const CURRENT_LINT = "oxlint .";
 const CURRENT_LINT_FIX = "oxlint --fix .";
 const CURRENT_POSTINSTALL = "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts";
+const CURRENT_START_CALL = "tanstackStart({ router: { routeTreeFileFooter: [] } })";
+const START_ROUTE_TREE_FOOTER = `import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}`;
 const TYPESCRIPT_API = "6.0.2";
 const TYPESCRIPT_API_ALIAS = "npm:@typescript/typescript6@6.0.2";
 const TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
@@ -25,6 +35,7 @@ describe("Keenko migrations", () => {
   test("leaves the current generated tooling baseline unchanged", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "current" });
+    normalizeStartRouteGeneration(tree);
     const before = snapshot(tree);
     await normalizeCheck(tree);
     expect(snapshot(tree)).toEqual(before);
@@ -53,7 +64,8 @@ describe("Keenko migrations", () => {
     expect(devDependencies.typescript).toBe(TYPESCRIPT_API);
     expect(devDependencies["typescript-api"]).toBe(TYPESCRIPT_API_BRIDGE);
     expect(migrated.projectNote).toBe("preserve me");
-    expect(readJson(tree, "apps/web/tsr.config.json").autoCodeSplitting).toBe(true);
+    expect(readJson(tree, "apps/web/tsr.config.json").routeTreeFileFooter).toEqual([START_ROUTE_TREE_FOOTER]);
+    expect(tree.read("apps/web/vite.config.ts", "utf-8")).toContain(CURRENT_START_CALL);
     const nxPatchTool = tree.read("tools/keenko-patch-nx-typescript.ts", "utf-8") ?? "";
     expect(nxPatchTool).toContain('path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js")');
     expect(nxPatchTool).toContain("typescript-api");
@@ -105,14 +117,23 @@ describe("Keenko migrations", () => {
     await expectMigrationFailure(tree, "packages/shared/package.json devDependencies.typescript");
   });
 
-  test("rejects a customized Router code splitting setting", async () => {
+  test("rejects a customized Router footer", async () => {
     const tree = createTreeWithEmptyWorkspace();
-    await preset(tree, { name: "custom-router" });
+    await preset(tree, { name: "custom-router-footer" });
     const config = readJson(tree, "apps/web/tsr.config.json");
-    config.autoCodeSplitting = false;
+    config.routeTreeFileFooter = ["// custom footer"];
     tree.write("apps/web/tsr.config.json", `${JSON.stringify(config, null, 2)}\n`);
 
-    await expectMigrationFailure(tree, "Keenko-owned router setting was customized");
+    await expectMigrationFailure(tree, "Keenko-owned Router footer was customized");
+  });
+
+  test("rejects a customized TanStack Start Router integration", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "custom-start-router" });
+    const vite = tree.read("apps/web/vite.config.ts", "utf-8") ?? "";
+    tree.write("apps/web/vite.config.ts", vite.replace("tanstackStart()", "tanstackStart({ router: { autoCodeSplitting: false } })"));
+
+    await expectMigrationFailure(tree, "Keenko-owned Router integration was customized");
   });
 
   test("rejects a customized Nx boundary rule", async () => {
@@ -158,10 +179,6 @@ function downgradeBoundaryBridge(tree: Tree) {
   pkg.devDependencies = devDependencies;
   tree.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
   tree.delete("tools/keenko-patch-nx-typescript.ts");
-
-  const routerConfig = readJson(tree, "apps/web/tsr.config.json");
-  delete routerConfig.autoCodeSplitting;
-  tree.write("apps/web/tsr.config.json", `${JSON.stringify(routerConfig, null, 2)}\n`);
 
   for (const file of WORKSPACE_MANIFESTS) {
     const workspace = readJson(tree, file);
