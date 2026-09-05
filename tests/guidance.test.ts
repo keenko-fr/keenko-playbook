@@ -17,7 +17,12 @@ describe("Keenko managed guidance blocks", () => {
 
     const agents = tree.read("AGENTS.md", "utf-8") ?? "";
     const claude = tree.read("CLAUDE.md", "utf-8") ?? "";
-    expect(result.outOfSyncMessage).toContain("nx sync");
+    const generatedCode = tree.read(".keenko/docs/core/generated-code.md", "utf-8") ?? "";
+    expect(result.outOfSyncMessage).toBe("Keenko generated guidance is out of sync. Run 'bun x nx sync'.");
+    expect(generatedCode).toContain(
+      "Use `bun x nx sync` to apply guidance updates and `bun x nx sync:check` to detect guidance drift without rewriting tracked files."
+    );
+    expect(generatedCode).not.toContain("Use `nx sync`");
     expect(agents.startsWith("Human agents text.\n")).toBe(true);
     expect(claude.startsWith("Human Claude text.\n")).toBe(true);
     expect(count(agents, START)).toBe(1);
@@ -51,7 +56,7 @@ describe("Keenko managed guidance blocks", () => {
     tree.write("AGENTS.md", content);
     expect(() => {
       sync(tree);
-    }).toThrow("expected exactly one");
+    }).toThrow("Remove duplicate or stray markers, then run 'bun x nx sync'.");
   });
 
   test("rejects a stale second block even when the first block is canonical", () => {
@@ -62,7 +67,7 @@ describe("Keenko managed guidance blocks", () => {
 
     expect(() => {
       sync(tree);
-    }).toThrow("expected exactly one");
+    }).toThrow("Remove duplicate or stray markers, then run 'bun x nx sync'.");
   });
 });
 
