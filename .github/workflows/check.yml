@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   check:
@@ -15,6 +15,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -22,10 +23,14 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Print formatted fixture
+      - name: Commit formatter output
         run: |
           bun run format
-          printf 'FORMATTED_FIXTURE=' 
-          base64 -w0 tests/packed-upgrade-preservation.test.ts
-          printf '\n'
-          exit 1
+          git add tests/packed-upgrade-preservation.test.ts
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name "Keenko CI formatter"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "KEE-14 format historical migration fixture"
+          git push origin HEAD:${{ github.head_ref }}
