@@ -54,7 +54,9 @@ function discoverWorkspaces(tree: Tree): WorkspaceManifest[] {
       const tags = stringArray(nx.tags, `${workspacePath}/package.json.nx.tags`);
       const matchingScopes = SCOPE_TAGS.filter((scope) => tags.includes(scope));
       if (matchingScopes.length !== 1) {
-        throw new Error(`${workspacePath}/package.json must declare exactly one Keenko scope tag; found ${matchingScopes.join(", ") || "none"}`);
+        throw new Error(
+          `${workspacePath}/package.json must declare exactly one Keenko scope tag; found ${matchingScopes.join(", ") || "none"}`
+        );
       }
       workspaces.push({ manifest, name, scope: matchingScopes[0], workspacePath });
     }
