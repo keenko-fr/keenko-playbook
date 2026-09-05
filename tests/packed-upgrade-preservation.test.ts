@@ -31,7 +31,7 @@ test("native Nx migration moves an existing generated project off keenko check w
         "--bun",
         "create-nx-workspace@23.2.0",
         "migration_app",
-        "--preset=keenko",
+        `--preset=keenko@${currentVersion}`,
         "--packageManager=bun",
         "--nxCloud=skip",
         "--interactive=false",

@@ -1,4 +1,4 @@
-import type { Tree } from "@nx/devkit";
+import { installPackagesTask, type Tree } from "@nx/devkit";
 import { createApp, createMemoryEnvironment, finalizeAddOns, getFrameworkById, populateAddOnOptionsDefaults } from "@tanstack/create";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -66,6 +66,9 @@ export default async function presetGenerator(tree: Tree, options: PresetSchema)
   writeShared(tree, projectName);
   await formatAuthoredFiles(tree);
   syncGuidance(tree);
+  return () => {
+    installPackagesTask(tree);
+  };
 }
 
 async function generateWeb(tree: Tree, projectName: string) {
