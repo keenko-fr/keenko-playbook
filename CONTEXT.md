@@ -1,5 +1,7 @@
 # Keenko context
 
-Keenko is an opinionated TypeScript application distribution, not a generic stack composer or existing-repository adoption tool. It creates and upgrades one fixed Nx package-based workspace through the public `keenko` package.
+Keenko is an opinionated TypeScript application distribution and Nx plugin. It is not a generic stack composer, an existing-repository adoption tool, or a parallel lifecycle CLI.
 
-Linear owns actionable work. This repository owns executable lifecycle behavior and canonical shared engineering guidance.
+Nx owns workspace creation invocation, migration invocation and traversal, synchronization, the project graph, module-boundary enforcement, and task orchestration. The `keenko` package owns the preset, Keenko generators, sync generators, migrations, release compatibility decisions, the initial workspace topology, and generated engineering guidance.
+
+Linear owns actionable work. This repository owns the implementation and canonical shared engineering guidance.
