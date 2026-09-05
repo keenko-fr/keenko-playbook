@@ -179,7 +179,8 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
       private: true,
       scripts: {
         build: "nx run-many -t build",
-        check: "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
+        check:
+          "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
         codegen: "nx run-many -t codegen",
         "codegen:check": "bun tools/check-generated.ts",
         dev: `nx run @${projectName}/web:dev`,
