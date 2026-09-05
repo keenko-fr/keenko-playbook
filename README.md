@@ -43,17 +43,18 @@ The stack is fixed: TypeScript, Nx, React, Effect 4, Convex, Confect, TanStack S
 Keenko generated guidance is a global Nx sync generator. Apply it with:
 
 ```sh
-nx sync
+bun x nx sync
 ```
 
-`bun run check` runs `nx sync:check`, so generated guidance drift fails the merge-ready check without rewriting tracked files.
+`bun run check` invokes the local `nx sync:check` script stage, so generated guidance drift fails the merge-ready check without rewriting tracked files.
 
 Upgrade Keenko through normal Nx migrations:
 
 ```sh
-nx migrate keenko@0.2.0
-nx migrate --run-migrations
-nx sync
+bun x nx migrate keenko@0.2.0
+bun install
+bun x nx migrate --run-migrations
+bun x nx sync
 bun run codegen
 bun run check
 ```
