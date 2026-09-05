@@ -6,5 +6,5 @@ import { verifyWorkspaceManifestDependencies } from "../../workspace-dependencie
 export default function syncGenerator(tree: Tree) {
   verifyWorkspaceManifestDependencies(tree);
   syncGuidance(tree);
-  return { outOfSyncMessage: "Keenko generated guidance is out of sync. Run 'nx sync'." };
+  return { outOfSyncMessage: "Keenko generated guidance is out of sync. Run 'bun x nx sync'." };
 }
