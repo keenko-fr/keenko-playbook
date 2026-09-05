@@ -258,7 +258,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
   );
   tree.write(
     "README.md",
-    `# ${projectName}\n\nKeenko application workspace. Node 24 runs Nx and tooling that requires Node; Bun ${versions.bun} owns packages, scripts, the lockfile, and supported application execution.\n\n## Commands\n\n\`\`\`sh\nbun install\nnx sync\nbun run check\nbun run dev\n\`\`\`\n\nAdd shadcn components from the app boundary: \`bun run ui -- button\`. The CLI routes reusable UI into \`packages/ui\`.\n`
+    `# ${projectName}\n\nKeenko application workspace. Node 24 runs Nx and tooling that requires Node; Bun ${versions.bun} owns packages, scripts, the lockfile, and supported application execution.\n\n## Commands\n\n\`\`\`sh\nbun install\nbun x nx sync\nbun run check\nbun run dev\n\`\`\`\n\nAdd shadcn components from the app boundary: \`bun run ui -- button\`. The CLI routes reusable UI into \`packages/ui\`.\n`
   );
 }
 
