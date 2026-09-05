@@ -1,12 +1,25 @@
 import { expect, test } from "bun:test";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const CURRENT_CHECK =
   "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const CURRENT_CODEGEN_CHECK = "bun tools/check-generated.ts";
+const CREATE_NX_WORKSPACE_VERSION = "23.2.0";
+
+function createWorkspaceArgs(name: string) {
+  return [
+    `create-nx-workspace@${CREATE_NX_WORKSPACE_VERSION}`,
+    name,
+    "--preset=keenko",
+    "--packageManager=bun",
+    "--nxCloud=skip",
+    "--interactive=false",
+    "--trustThirdPartyPreset",
+  ];
+}
 
 test("packed Keenko works through native Nx creation, synchronization, boundaries, and merge-ready verification", async () => {
   const temp = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? "/tmp", "keenko-packed-native-"));
@@ -17,24 +30,20 @@ test("packed Keenko works through native Nx creation, synchronization, boundarie
     const currentVersion = string(packageJson.version, "package.json.version");
     registry = await startRegistry(temp, packageJson, { [currentVersion]: tarball });
 
-    run(
-      "bunx",
-      [
-        "--bun",
-        "create-nx-workspace@23.2.0",
-        "my_app",
-        "--preset=keenko",
-        "--packageManager=bun",
-        "--nxCloud=skip",
-        "--interactive=false",
-        "--skipGit",
-        "--trustThirdPartyPreset",
-      ],
-      temp,
-      registry.env
-    );
+    const occupied = path.join(temp, "occupied");
+    await mkdir(occupied);
+    await writeFile(path.join(occupied, "sentinel.txt"), "keep me\n");
+    const occupiedFailure = runFailure("bunx", createWorkspaceArgs("occupied"), temp, registry.env);
+    expect(occupiedFailure).toContain("already exists");
+    expect(await readFile(path.join(occupied, "sentinel.txt"), "utf-8")).toBe("keep me\n");
+    expect((await readdir(occupied)).toSorted()).toEqual(["sentinel.txt"]);
+
+    run("bunx", createWorkspaceArgs("my_app"), temp, registry.env);
 
     const project = path.join(temp, "my_app");
+    expect(await exists(path.join(project, ".git"))).toBe(true);
+    expect(runOut("git", ["symbolic-ref", "--short", "HEAD"], project).trim()).toBe("main");
+    expect(spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd: project, encoding: "utf-8" }).status).not.toBe(0);
     const root = json(await readFile(path.join(project, "package.json"), "utf-8"));
     const scripts = record(root.scripts, "root scripts");
     expect(root.name).toBe("my_app");
@@ -106,7 +115,6 @@ test("packed Keenko works through native Nx creation, synchronization, boundarie
     run("bun", ["run", "format"], project);
     run("bun", ["run", "check"], project, { NX_DAEMON: "false" });
 
-    run("git", ["init", "--quiet", "--initial-branch=main"], project);
     run("git", ["config", "user.name", "Keenko fixture"], project);
     run("git", ["config", "user.email", "fixture@keenko.invalid"], project);
     run("git", ["add", "-A"], project);

@@ -6,10 +6,15 @@ Keenko is one opinionated, versioned TypeScript application distribution built a
 
 Node 24 is the tooling runtime. Bun `>=1.4.0 <2` owns package installation, workspace script entry, the v2 lockfile, and supported application execution.
 
-Create a project with the Keenko Nx preset:
+Create a project with the canonical exact-pinned Nx command. Bun is the fixed package manager and Nx Cloud is skipped:
 
 ```sh
-create-nx-workspace my-project --preset=keenko
+bunx create-nx-workspace@23.2.0 my-project \
+  --preset=keenko \
+  --packageManager=bun \
+  --nxCloud=skip \
+  --interactive=false \
+  --trustThirdPartyPreset
 cd my-project
 bun run check
 ```
@@ -53,7 +58,7 @@ bun run codegen
 bun run check
 ```
 
-A Keenko release encodes its package and dependency compatibility changes in Nx migration metadata and migration generators. There is no Keenko wrapper that chooses a release, imposes Git policy, performs downgrade preflight, or runs a generic post-migration dependency update.
+A Keenko release encodes its package and dependency compatibility changes in Nx migration metadata and migration generators. There is no Keenko wrapper that chooses a release or adds clean-tree, downgrade, prerelease, future-major, or same-version policy. Native Nx owns those invocation semantics.
 
 Nx Release owns versions, changelogs, tags, and publication. User-visible changes require a file-based version plan under `.nx/version-plans/`. Publication remains an explicitly dispatched, human-owned operation.
 

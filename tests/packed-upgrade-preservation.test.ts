@@ -7,19 +7,28 @@ const ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_A_COMMIT = "f983654297acb84c1e4005ef72a646c7b33ddcfe";
 const BASELINE_B_COMMIT = "6303870d1ad0e10a7ef9894ddf6f8e717f467ad3";
 const TARGET_VERSION = "0.2.0";
+const GUIDANCE_VERSION = "0.2.1";
+const GUIDANCE_MARKER = "Guidance-only packed fixture marker.";
 const PROJECT_DEPENDENCY = "keenko-project-fixture";
 const CURRENT_CHECK =
   "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const CURRENT_CODEGEN_CHECK = "bun tools/check-generated.ts";
 const PROJECT_CONTEXT = "# Project context\n\nPreserve this project-owned context byte-for-byte.\n";
+const PROJECT_ARCHITECTURE = "# Project architecture\n\nPreserve this project-owned architecture byte-for-byte.\n";
+const PROJECT_OVERRIDES = "# Project overrides\n\nPreserve this project-owned override byte-for-byte.\n";
+const PROJECT_UI = "# Project UI\n\nPreserve this project-owned UI guidance byte-for-byte.\n";
 const PROJECT_SOURCE = "export const projectOwned = true;\n";
 
 interface BaselineSnapshot {
   agentsTail: string;
+  architecture: string;
+  claudeTail: string;
   context: string;
   dependencyRange: string;
   dependencyVersion: string;
   featureSource: string;
+  overrides: string;
+  ui: string;
 }
 
 interface RegistryPackage {
@@ -45,6 +54,7 @@ test("native Nx migrations upgrade both supported historical baselines while pre
     const currentTarball = await packCurrent(temp);
     const currentManifest = json(await readFile(path.join(ROOT, "package.json"), "utf-8"));
     const targetTarball = await versionedTarball(currentTarball, path.join(temp, `keenko-${TARGET_VERSION}.tgz`), TARGET_VERSION);
+    const guidanceTarball = await guidanceOnlyTarball(currentTarball, path.join(temp, `keenko-${GUIDANCE_VERSION}.tgz`), GUIDANCE_VERSION);
     const baselineATarball = await historicalTarball(temp, BASELINE_A_COMMIT, "0.0.1", "baseline-a");
     const baselineBTarball = await historicalTarball(temp, BASELINE_B_COMMIT, "0.0.2", "baseline-b");
     const projectDependency101 = await projectDependencyTarball(temp, "1.0.1");
@@ -58,6 +68,7 @@ test("native Nx migrations upgrade both supported historical baselines while pre
             "0.0.1": baselineATarball,
             "0.0.2": baselineBTarball,
             [TARGET_VERSION]: targetTarball,
+            [GUIDANCE_VERSION]: guidanceTarball,
           },
         },
         [PROJECT_DEPENDENCY]: {
@@ -84,6 +95,7 @@ test("native Nx migrations upgrade both supported historical baselines while pre
 
     await migrateBaseline(baselineA, beforeA, registry.env);
     await migrateBaseline(baselineB, beforeB, registry.env);
+    await verifyNativeNoopAndGuidanceOnly(baselineB, beforeB, registry.env);
   } finally {
     registry?.stop();
     await rm(temp, { force: true, recursive: true });
@@ -113,9 +125,17 @@ async function makeBaseline(
   await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
 
   await writeFile(path.join(target, "CONTEXT.md"), PROJECT_CONTEXT);
+  await mkdir(path.join(target, "docs/project"), { recursive: true });
+  await writeFile(path.join(target, "docs/project/architecture.md"), PROJECT_ARCHITECTURE);
+  await writeFile(path.join(target, "docs/project/overrides.md"), PROJECT_OVERRIDES);
+  await writeFile(path.join(target, "docs/project/ui.md"), PROJECT_UI);
   const agentsPath = path.join(target, "AGENTS.md");
   const agentsTail = "\nHuman project tail must survive.\n";
   await writeFile(agentsPath, `${await readFile(agentsPath, "utf-8")}${agentsTail}`);
+  const claudePath = path.join(target, "CLAUDE.md");
+  const claudeTail = "\nHuman Claude tail must survive.\n";
+  const claudeSource = await readFile(claudePath, "utf-8").catch(() => "");
+  await writeFile(claudePath, `${claudeSource}${claudeTail}`);
   await writeFile(path.join(target, "custom-script.js"), 'console.log("project-owned");\n');
   await mkdir(path.join(target, "packages/feature/src"), { recursive: true });
   await writeFile(
@@ -154,6 +174,8 @@ async function makeBaseline(
 
   return {
     agentsTail,
+    architecture: await readFile(path.join(target, "docs/project/architecture.md"), "utf-8"),
+    claudeTail,
     context: await readFile(path.join(target, "CONTEXT.md"), "utf-8"),
     dependencyRange: string(
       recordOrEmpty(json(await readFile(packagePath, "utf-8")).dependencies, "baseline dependencies")[PROJECT_DEPENDENCY],
@@ -161,6 +183,8 @@ async function makeBaseline(
     ),
     dependencyVersion: await installedVersion(target, PROJECT_DEPENDENCY),
     featureSource: await readFile(path.join(target, "packages/feature/src/index.ts"), "utf-8"),
+    overrides: await readFile(path.join(target, "docs/project/overrides.md"), "utf-8"),
+    ui: await readFile(path.join(target, "docs/project/ui.md"), "utf-8"),
   };
 }
 
@@ -190,7 +214,11 @@ async function migrateBaseline(root: string, before: BaselineSnapshot, registryE
   expect(record(nx.sync, "nx sync").globalGenerators).toContain("keenko:sync");
   expect(await readFile(path.join(root, "tools/check-generated.ts"), "utf-8")).toContain("Generated source has drifted at:");
   expect(await readFile(path.join(root, "CONTEXT.md"), "utf-8")).toBe(before.context);
+  expect(await readFile(path.join(root, "docs/project/architecture.md"), "utf-8")).toBe(before.architecture);
+  expect(await readFile(path.join(root, "docs/project/overrides.md"), "utf-8")).toBe(before.overrides);
+  expect(await readFile(path.join(root, "docs/project/ui.md"), "utf-8")).toBe(before.ui);
   expect(await readFile(path.join(root, "AGENTS.md"), "utf-8")).toContain(before.agentsTail.trim());
+  expect(await readFile(path.join(root, "CLAUDE.md"), "utf-8")).toContain(before.claudeTail.trim());
   expect(await readFile(path.join(root, "packages/feature/src/index.ts"), "utf-8")).toBe(before.featureSource);
   expect(await readFile(path.join(root, "custom-script.js"), "utf-8")).toBe('console.log("project-owned");\n');
   expect(await readFile(path.join(root, "oxlint.config.ts"), "utf-8")).toContain('"eslint/no-console": "off"');
@@ -199,6 +227,33 @@ async function migrateBaseline(root: string, before: BaselineSnapshot, registryE
   run("bun", ["install", "--frozen-lockfile"], root, registryEnv);
   expect(await installedVersion(root, PROJECT_DEPENDENCY)).toBe("1.0.1");
   expect(await installedVersion(root, "keenko")).toBe(TARGET_VERSION);
+  run("bun", ["run", "check"], root, { ...registryEnv, NX_DAEMON: "false" });
+}
+
+async function verifyNativeNoopAndGuidanceOnly(root: string, before: BaselineSnapshot, registryEnv: Record<string, string>) {
+  gitCommitAll(root, "native migration baseline");
+  expect(runOut("git", ["status", "--porcelain"], root)).toBe("");
+
+  run("bun", ["x", "nx", "migrate", `keenko@${TARGET_VERSION}`], root, registryEnv);
+  expect(runOut("git", ["status", "--porcelain"], root)).toBe("");
+
+  run("bun", ["x", "nx", "migrate", `keenko@${GUIDANCE_VERSION}`], root, registryEnv);
+  const prepared = json(await readFile(path.join(root, "package.json"), "utf-8"));
+  expect(record(prepared.devDependencies, "guidance devDependencies").keenko).toBe(GUIDANCE_VERSION);
+  run("bun", ["install"], root, registryEnv);
+  run("bun", ["x", "nx", "sync"], root, registryEnv);
+  run("bun", ["run", "codegen"], root, registryEnv);
+
+  expect(await readFile(path.join(root, ".keenko/docs/core/verification.md"), "utf-8")).toContain(GUIDANCE_MARKER);
+  expect(await readFile(path.join(root, "CONTEXT.md"), "utf-8")).toBe(before.context);
+  expect(await readFile(path.join(root, "docs/project/architecture.md"), "utf-8")).toBe(before.architecture);
+  expect(await readFile(path.join(root, "docs/project/overrides.md"), "utf-8")).toBe(before.overrides);
+  expect(await readFile(path.join(root, "docs/project/ui.md"), "utf-8")).toBe(before.ui);
+  expect(await readFile(path.join(root, "AGENTS.md"), "utf-8")).toContain(before.agentsTail.trim());
+  expect(await readFile(path.join(root, "CLAUDE.md"), "utf-8")).toContain(before.claudeTail.trim());
+  expect(await installedVersion(root, "keenko")).toBe(GUIDANCE_VERSION);
+
+  run("bun", ["install", "--frozen-lockfile"], root, registryEnv);
   run("bun", ["run", "check"], root, { ...registryEnv, NX_DAEMON: "false" });
 }
 
@@ -270,6 +325,23 @@ async function versionedTarball(source: string, target: string, version: string)
     const pkg = json(await readFile(packagePath, "utf-8"));
     pkg.version = version;
     await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+    run("tar", ["-czf", target, "-C", unpack, "package"], path.dirname(target));
+    return target;
+  } finally {
+    await rm(unpack, { force: true, recursive: true });
+  }
+}
+
+async function guidanceOnlyTarball(source: string, target: string, version: string) {
+  const unpack = await mkdtemp(path.join(path.dirname(target), "guidance-versioned-"));
+  try {
+    run("tar", ["-xzf", source, "-C", unpack], path.dirname(target));
+    const packagePath = path.join(unpack, "package/package.json");
+    const pkg = json(await readFile(packagePath, "utf-8"));
+    pkg.version = version;
+    await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+    const guidancePath = path.join(unpack, "package/docs/core/verification.md");
+    await writeFile(guidancePath, `${await readFile(guidancePath, "utf-8")}\n${GUIDANCE_MARKER}\n`);
     run("tar", ["-czf", target, "-C", unpack, "package"], path.dirname(target));
     return target;
   } finally {
