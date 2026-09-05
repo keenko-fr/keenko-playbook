@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -15,7 +15,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -23,30 +22,7 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Apply migration codegen fix
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          test = Path("tests/packed-upgrade-preservation.test.ts")
-          source = test.read_text()
-          old = '  run("bun", ["x", "nx", "sync"], root, registryEnv);\n\n  const migrated'
-          new = '  run("bun", ["x", "nx", "sync"], root, registryEnv);\n  run("bun", ["run", "codegen"], root, registryEnv);\n\n  const migrated'
-          if old not in source:
-              raise SystemExit("historical migration sync anchor missing")
-          test.write_text(source.replace(old, new, 1))
-
-          readme = Path("README.md")
-          source = readme.read_text()
-          old = 'nx migrate --run-migrations\nnx sync\nbun run check'
-          new = 'nx migrate --run-migrations\nnx sync\nbun run codegen\nbun run check'
-          if old not in source:
-              raise SystemExit("README native upgrade anchor missing")
-          readme.write_text(source.replace(old, new, 1))
-          PY
-          bun run format:check
-          git add README.md tests/packed-upgrade-preservation.test.ts
-          git config user.name "Keenko CI migration fix"
-          git config user.email "actions@users.noreply.github.com"
-          git commit -m "KEE-14 materialize codegen after native migrations"
-          git push origin HEAD:${{ github.head_ref }}
+      - name: Release-grade check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
