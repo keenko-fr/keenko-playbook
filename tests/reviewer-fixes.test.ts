@@ -81,7 +81,11 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     run("bun", ["run", "check"], cleanCheckout);
     const materializedParaglide = await stat(cleanParaglide);
     expect(materializedParaglide.isDirectory()).toBe(true);
-    expect(runOut("git", ["status", "--porcelain"], cleanCheckout)).toBe("");
+    const cleanStatus = runOut("git", ["status", "--porcelain"], cleanCheckout);
+    if (cleanStatus !== "") {
+      const routeTreeDiff = runOut("git", ["diff", "--", "apps/web/src/routeTree.gen.ts"], cleanCheckout);
+      throw new Error(`Canonical check changed tracked source:\n${cleanStatus}\n${routeTreeDiff}`);
+    }
 
     const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
     const installedManifest = path.join(project, "node_modules/keenko/package.json");
