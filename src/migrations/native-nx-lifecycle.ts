@@ -73,6 +73,7 @@ async function formattedGeneratedCodeCheck() {
     printWidth: 140,
     sortImports: true,
     sortPackageJson: true,
+    trailingComma: "es5",
   });
   if (result.errors.length > 0) {
     throw new Error(`Cannot format generated code check: ${result.errors.map(({ message }) => message).join(", ")}`);
@@ -87,7 +88,7 @@ async function formatMigratedFiles(tree: Tree) {
       if (source === null) {
         throw new Error(`Cannot format migrated ${file}: file is missing`);
       }
-      const result = await format(file, source, { printWidth: 140, sortImports: true, sortPackageJson: true });
+      const result = await format(file, source, { printWidth: 140, sortImports: true, sortPackageJson: true, trailingComma: "es5" });
       if (result.errors.length > 0) {
         throw new Error(`Cannot format migrated ${file}: ${result.errors.map(({ message }) => message).join(", ")}`);
       }

@@ -116,7 +116,7 @@ async function makeBaseline(
   const agentsPath = path.join(target, "AGENTS.md");
   const agentsTail = "\nHuman project tail must survive.\n";
   await writeFile(agentsPath, `${await readFile(agentsPath, "utf-8")}${agentsTail}`);
-  await writeFile(path.join(target, "custom-script.js"), "console.log('project-owned');\n");
+  await writeFile(path.join(target, "custom-script.js"), 'console.log("project-owned");\n');
   await mkdir(path.join(target, "packages/feature/src"), { recursive: true });
   await writeFile(
     path.join(target, "packages/feature/package.json"),
@@ -146,6 +146,7 @@ async function makeBaseline(
   await writeFile(oxlintPath, customizedOxlint);
 
   run("bun", ["install"], target, registryEnv);
+  run("bun", ["x", "oxfmt", "packages/feature/package.json"], target);
   run("bun", ["run", "codegen"], target);
   expect(await installedVersion(target, "keenko")).toBe(expectedVersion);
   expect(await installedVersion(target, PROJECT_DEPENDENCY)).toBe("1.0.1");
@@ -191,7 +192,7 @@ async function migrateBaseline(root: string, before: BaselineSnapshot, registryE
   expect(await readFile(path.join(root, "CONTEXT.md"), "utf-8")).toBe(before.context);
   expect(await readFile(path.join(root, "AGENTS.md"), "utf-8")).toContain(before.agentsTail.trim());
   expect(await readFile(path.join(root, "packages/feature/src/index.ts"), "utf-8")).toBe(before.featureSource);
-  expect(await readFile(path.join(root, "custom-script.js"), "utf-8")).toBe("console.log('project-owned');\n");
+  expect(await readFile(path.join(root, "custom-script.js"), "utf-8")).toBe('console.log("project-owned");\n');
   expect(await readFile(path.join(root, "oxlint.config.ts"), "utf-8")).toContain('"eslint/no-console": "off"');
   expect(await installedVersion(root, PROJECT_DEPENDENCY)).toBe(before.dependencyVersion);
 
