@@ -160,7 +160,7 @@ function managedRange(current: string, file: string): { end: number; start: numb
   const [end] = ends;
   if (starts.length !== 1 || ends.length !== 1 || start === undefined || end === undefined || end < start) {
     throw new Error(
-      `Invalid Keenko managed block in ${file}: expected exactly one ${START} followed by exactly one ${END}. Remove duplicate or stray markers, then run 'nx sync'.`
+      `Invalid Keenko managed block in ${file}: expected exactly one ${START} followed by exactly one ${END}. Remove duplicate or stray markers, then run 'bun x nx sync'.`
     );
   }
   return { end: end + END.length, start };
