@@ -36,7 +36,7 @@ describe("Keenko Nx preset", () => {
     expect(tree.exists("project.json")).toBe(false);
     expect(tree.exists("apps/web/vite.config.ts")).toBe(true);
     expect(tree.read("apps/web/package.json", "utf-8")).toContain('"@tanstack/react-start"');
-    const routerConfig = JSON.parse(tree.read("apps/web/tsr.config.json", "utf-8") ?? "{}") as { routeTreeFileFooter?: unknown };
+    const routerConfig = object(JSON.parse(tree.read("apps/web/tsr.config.json", "utf-8") ?? "{}"));
     expect(routerConfig.routeTreeFileFooter).toEqual([START_ROUTE_TREE_FOOTER]);
     expect(tree.read("apps/web/vite.config.ts", "utf-8")).toContain(CURRENT_START_CALL);
     expect(tree.read("packages/ui/components.json", "utf-8")).toContain('"style": "base-nova"');
@@ -112,4 +112,11 @@ function hashChanges(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
     }
   }
   return hashes;
+}
+
+function object(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Expected object");
+  }
+  return Object.fromEntries(Object.entries(value));
 }
