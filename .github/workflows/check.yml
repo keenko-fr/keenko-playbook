@@ -25,4 +25,10 @@ jobs:
       - name: Release-grade check
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bun run check:release
+        run: |
+          if ! bun run format:check; then
+            bun run format
+            git diff -- src/generators/preset/generator.ts src/migrations/native-nx-lifecycle.ts tests/preset.test.ts
+            exit 1
+          fi
+          bun run check:release
