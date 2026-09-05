@@ -5,7 +5,9 @@ import { createHash } from "node:crypto";
 import preset from "../src/generators/preset/generator.ts";
 import sync from "../src/generators/sync/generator.ts";
 
-const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const CURRENT_CHECK =
+  "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const CURRENT_CODEGEN_CHECK = "bun tools/check-generated.ts";
 const CURRENT_LINT = "nx show projects && oxlint .";
 const CURRENT_START_CALL = "tanstackStart({ router: { routeTreeFileFooter: [] } })";
 const START_ROUTE_TREE_FOOTER = `import type { getRouter } from './router.tsx'
@@ -28,9 +30,9 @@ const WORKSPACE_MANIFESTS = [
 ] as const;
 
 describe("Keenko Nx preset", () => {
-  test("creates the fixed package-based workspace through first-party TanStack output", async () => {
+  test("creates the initial package workspace and registers native Nx sync", async () => {
     const tree = createTreeWithEmptyWorkspace();
-    await preset(tree, { name: "Example App" });
+    await preset(tree, { name: "example_app" });
 
     expect(workspaces(tree)).toEqual(["apps/web", "packages/backend", "packages/shared", "packages/ui"]);
     expect(tree.exists("project.json")).toBe(false);
@@ -42,6 +44,14 @@ describe("Keenko Nx preset", () => {
     expect(tree.read("packages/ui/components.json", "utf-8")).toContain('"style": "base-nova"');
     expect(tree.read("packages/ui/components.json", "utf-8")).not.toContain('"base":');
     expect(tree.read("packages/backend/package.json", "utf-8")).toContain('"@confect/server": "10.0.0-next.21"');
+
+    const root = readJson(tree, "package.json");
+    expect(root.name).toBe("example_app");
+    const scripts = object(root.scripts);
+    expect(scripts.check).toBe(CURRENT_CHECK);
+    expect(scripts["codegen:check"]).toBe(CURRENT_CODEGEN_CHECK);
+    expect(scripts.lint).toBe(CURRENT_LINT);
+    expect(scripts["lint:fix"]).toBe("oxlint --fix .");
     const rootPackage = tree.read("package.json", "utf-8") ?? "";
     expect(rootPackage).not.toContain('"latest"');
     expect(rootPackage).toContain('"@nx/oxlint": "23.2.0"');
@@ -49,10 +59,15 @@ describe("Keenko Nx preset", () => {
     expect(rootPackage).toContain(TYPESCRIPT_API);
     expect(rootPackage).toContain(TYPESCRIPT_API_BRIDGE);
     expect(rootPackage).toContain('"postinstall": "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts"');
-    expect(rootPackage).toContain('"codegen:check": "keenko check --guidance --codegen"');
-    expect(rootPackage).toContain(`"check": "${CURRENT_CHECK}"`);
-    expect(rootPackage).toContain(`"lint": "${CURRENT_LINT}"`);
-    expect(rootPackage).toContain('"lint:fix": "oxlint --fix ."');
+    expect(tree.read("tools/check-generated.ts", "utf-8")).toContain("Generated source has drifted at:");
+
+    const nx = readJson(tree, "nx.json");
+    expect(object(nx.sync).globalGenerators).toEqual(["keenko:sync"]);
+    expect(readJson(tree, "apps/web/package.json").name).toBe("@example_app/web");
+    expect(readJson(tree, "packages/backend/package.json").name).toBe("@example_app/backend");
+    expect(readJson(tree, "packages/ui/package.json").name).toBe("@example_app/ui");
+    expect(readJson(tree, "packages/shared/package.json").name).toBe("@example_app/shared");
+
     const nxPatchTool = tree.read("tools/keenko-patch-nx-typescript.ts", "utf-8") ?? "";
     expect(nxPatchTool).toContain('path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js")');
     expect(nxPatchTool).toContain("typescript-api");
@@ -69,7 +84,23 @@ describe("Keenko Nx preset", () => {
     expect(oxlint).toContain('"@nx/oxlint/boundaries-plugin"');
     expect(oxlint).toContain('"@nx/enforce-module-boundaries"');
     expect(oxlint).toContain('sourceTag: "scope:shared"');
-    expect(tree.exists(".playbook/config.json")).toBe(false);
+  });
+
+  test("preserves the Nx workspace name instead of normalizing it", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "my_app.v2" });
+    expect(readJson(tree, "package.json").name).toBe("my_app.v2");
+    expect(readJson(tree, "apps/web/package.json").name).toBe("@my_app.v2/web");
+  });
+
+  test.each(["Example App", "Example", "my app", "-demo", "demo@scope", " demo", "demo/"])("rejects invalid shared identity %s", async (name) => {
+    const tree = createTreeWithEmptyWorkspace();
+    await expect(preset(tree, { name })).rejects.toThrow("Keenko workspace name");
+  });
+
+  test("rejects an identity that makes a scoped package exceed the npm name limit", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await expect(preset(tree, { name: `a${"b".repeat(205)}` })).rejects.toThrow("too long");
   });
 
   test("is deterministic and preserves project-owned guidance surfaces", async () => {
@@ -80,7 +111,7 @@ describe("Keenko Nx preset", () => {
 
     first.write("CONTEXT.md", "# Product context\n\nKeep me.\n");
     first.write("AGENTS.md", `${first.read("AGENTS.md", "utf-8")}\nHuman-owned tail.\n`);
-    sync(first);
+    expect(sync(first).outOfSyncMessage).toContain("nx sync");
     expect(first.read("CONTEXT.md", "utf-8")).toBe("# Product context\n\nKeep me.\n");
     expect(first.read("AGENTS.md", "utf-8")).toContain("Human-owned tail.");
   });
@@ -112,6 +143,10 @@ function hashChanges(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
     }
   }
   return hashes;
+}
+
+function readJson(tree: ReturnType<typeof createTreeWithEmptyWorkspace>, file: string): Record<string, unknown> {
+  return object(JSON.parse(tree.read(file, "utf-8") ?? "{}"));
 }
 
 function object(value: unknown): Record<string, unknown> {
