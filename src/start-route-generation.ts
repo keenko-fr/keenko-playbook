@@ -26,7 +26,9 @@ function normalizeRouterConfig(tree: Tree) {
     return;
   }
   if (!Array.isArray(footer) || footer.length !== 1 || footer[0] !== START_ROUTE_TREE_FOOTER) {
-    throw new Error(`Cannot update ${file} routeTreeFileFooter because the Keenko-owned Router footer was customized; reconcile it manually`);
+    throw new Error(
+      `Cannot update ${file} routeTreeFileFooter because the Keenko-owned Router footer was customized; reconcile it manually`
+    );
   }
 }
 
@@ -38,7 +40,9 @@ function normalizeViteConfig(tree: Tree) {
   }
   const first = source.indexOf(PREVIOUS_START_CALL);
   if (first === -1 || first !== source.lastIndexOf(PREVIOUS_START_CALL)) {
-    throw new Error(`Cannot update ${file} TanStack Start call because the Keenko-owned Router integration was customized; reconcile it manually`);
+    throw new Error(
+      `Cannot update ${file} TanStack Start call because the Keenko-owned Router integration was customized; reconcile it manually`
+    );
   }
   tree.write(file, source.replace(PREVIOUS_START_CALL, CURRENT_START_CALL));
 }
