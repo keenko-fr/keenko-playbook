@@ -13,6 +13,6 @@ Generated, manager-owned, and vendored output is excluded from direct formatter/
 
 Repositories expose a canonical aggregate codegen command rather than relying on developers to remember every generator invocation. When generated contracts change, verify deterministic regeneration, for example by running generation twice and requiring a clean second pass.
 
-Keenko generated guidance is synchronized through the registered Nx sync generator. Use `nx sync` to apply guidance updates and `nx sync:check` to detect guidance drift without rewriting tracked files. Other tracked generated artifacts keep their generator-specific drift checks.
+Keenko generated guidance is synchronized through the registered Nx sync generator. Use `bun x nx sync` to apply guidance updates and `bun x nx sync:check` to detect guidance drift without rewriting tracked files. Other tracked generated artifacts keep their generator-specific drift checks.
 
 CI should detect drift for tracked generated artifacts. Never claim generation or checks passed unless they actually ran.
