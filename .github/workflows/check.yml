@@ -22,8 +22,10 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Show formatter diff
+      - name: Print formatted fixture
         run: |
           bun run format
-          git diff -- src/workspace-dependencies.ts tests/packed-upgrade-preservation.test.ts
+          printf 'FORMATTED_FIXTURE=' 
+          base64 -w0 tests/packed-upgrade-preservation.test.ts
+          printf '\n'
           exit 1
