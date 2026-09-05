@@ -5,6 +5,8 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const EXPECTED_SHA = `\${{ inputs.expected_sha }}`;
+const GITHUB_TOKEN = `GITHUB_TOKEN: \${{ github.token }}`;
+const NODE_AUTH_TOKEN = `NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}`;
 const REPOSITORY = {
   type: "git",
   url: "git+https://github.com/keenko-fr/keenko-playbook.git",
@@ -85,8 +87,8 @@ describe("public package contract", () => {
     expect(workflow).toContain(`test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"`);
     expect(workflow).toContain("bun run check:release");
     expect(workflow).toContain("run: bun x nx release --yes");
-    expect(workflow).toContain("GITHUB_TOKEN: ${{ github.token }}");
-    expect(workflow).toContain("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
+    expect(workflow).toContain(GITHUB_TOKEN);
+    expect(workflow).toContain(NODE_AUTH_TOKEN);
     expect(workflow).toContain("id-token: write");
     expect(workflow).toContain("registry-url: https://registry.npmjs.org");
     expect(workflow).toContain("NPM_CONFIG_PROVENANCE: true");
