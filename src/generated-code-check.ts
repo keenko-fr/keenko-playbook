@@ -1,4 +1,4 @@
-export const GENERATED_CODE_CHECK = String.raw`import { spawn } from "node:child_process";
+export const GENERATED_CODE_CHECK = `import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink } from "node:fs/promises";
 import path from "node:path";
@@ -12,7 +12,7 @@ const stage = path.join(tempRoot, "project");
 try {
   await cp(root, stage, {
     filter: (source) => {
-      const relative = path.relative(root, source).replaceAll("\\\\", "/");
+      const relative = path.relative(root, source).split(path.sep).join("/");
       if (relative === "") {
         return true;
       }
@@ -30,7 +30,7 @@ try {
   if (JSON.stringify(expected) !== JSON.stringify(actual)) {
     const paths = new Set([...Object.keys(expected), ...Object.keys(actual)]);
     const changed = [...paths].filter((entry) => expected[entry] !== actual[entry]).toSorted();
-    throw new Error(\`Generated source has drifted at: \${changed.join(", ")}. Run 'bun run codegen' and review the generated diff.\`);
+    throw new Error("Generated source has drifted at: " + changed.join(", ") + ". Run 'bun run codegen' and review the generated diff.");
   }
   await materializeIgnoredGenerated(stage, root);
 } finally {
@@ -43,7 +43,7 @@ async function materializeIgnoredGenerated(stageRoot: string, projectRoot: strin
       const source = path.join(stageRoot, relative);
       const sourceInfo = await stat(source).catch(() => null);
       if (sourceInfo?.isDirectory() !== true) {
-        throw new Error(\`Codegen did not materialize ignored compiler output: \${relative}\`);
+        throw new Error("Codegen did not materialize ignored compiler output: " + relative);
       }
       const target = path.join(projectRoot, relative);
       await rm(target, { force: true, recursive: true });
@@ -77,7 +77,7 @@ async function generatedHashes(projectRoot: string) {
     }
     const files = info.isDirectory() ? await walkFiles(target) : [target];
     for (const file of files) {
-      const rel = path.relative(projectRoot, file).replaceAll("\\\\", "/");
+      const rel = path.relative(projectRoot, file).split(path.sep).join("/");
       if (!isGeneratedOwned(rel)) {
         continue;
       }
@@ -117,7 +117,7 @@ async function runCodegen(cwd: string) {
     });
   });
   if (code !== 0) {
-    throw new Error(\`bun run codegen failed with exit code \${code}\`);
+    throw new Error("bun run codegen failed with exit code " + code);
   }
 }
 `;
