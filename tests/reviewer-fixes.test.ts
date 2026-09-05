@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, unlink, writeFile } from "node:fs/p
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
+const CURRENT_LINT = "nx show projects && oxlint .";
 const TYPESCRIPT_API = "6.0.2";
 const TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
@@ -49,6 +50,7 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     expect(rootDevDependencies.typescript).toBe(TYPESCRIPT_API);
     expect(rootDevDependencies["typescript-api"]).toBe(TYPESCRIPT_API_BRIDGE);
     expect(rootDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+    expect(rootScripts.lint).toBe(CURRENT_LINT);
     expect(rootScripts.postinstall).toBe("effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts");
     const nxPatchTool = await readFile(path.join(project, "tools/keenko-patch-nx-typescript.ts"), "utf-8");
     expect(nxPatchTool).toContain('path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js")');
@@ -78,7 +80,19 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     expect(await stat(cleanParaglide).catch(() => null)).toBeNull();
     run("bun", ["install", "--frozen-lockfile"], cleanCheckout);
     expect(await stat(cleanParaglide).catch(() => null)).toBeNull();
-    run("bun", ["run", "check"], cleanCheckout);
+
+    const cleanUiName = string(
+      object(JSON.parse(await readFile(path.join(cleanCheckout, "packages/ui/package.json"), "utf-8"))).name,
+      "clean UI name"
+    );
+    const cleanForbiddenImport = path.join(cleanCheckout, "packages/shared/src/forbidden-clean-checkout.ts");
+    await writeFile(cleanForbiddenImport, `import "${cleanUiName}/lib/utils";\n`);
+    const cleanBoundaryFailure = runFailure("bun", ["run", "check"], cleanCheckout, { NX_DAEMON: "false" });
+    expect(cleanBoundaryFailure).toContain("enforce-module-boundaries");
+    expect(cleanBoundaryFailure).not.toContain("No cached ProjectGraph is available. The rule will be skipped.");
+    await unlink(cleanForbiddenImport);
+
+    run("bun", ["run", "check"], cleanCheckout, { NX_DAEMON: "false" });
     const materializedParaglide = await stat(cleanParaglide);
     expect(materializedParaglide.isDirectory()).toBe(true);
     const cleanStatus = runOut("git", ["status", "--porcelain"], cleanCheckout);
@@ -192,7 +206,7 @@ async function expectManifestBoundary(
 
 async function expectForward(project: string, cli: string, manifest: string, installed: string, target: string) {
   await setInstalledVersion(manifest, installed);
-  expect(runOut("node", [cli, "upgrade", target, "--dry-run"], project)).toContain(`${installed} -> ${target}`);
+  expect(runOut("node", [projectCli, "upgrade", target, "--dry-run"], project)).toContain(`${installed} -> ${target}`);
 }
 
 async function expectDowngrade(project: string, cli: string, manifest: string, installed: string, target: string) {
