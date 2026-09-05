@@ -35,6 +35,14 @@ const TYPESCRIPT_API = "6.0.2";
 const TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
 const TYPESCRIPT_NATIVE_TSC = "node ../../node_modules/@typescript/native/bin/tsc --noEmit";
+const START_ROUTE_TREE_FOOTER = `import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}`;
 const NX_TYPESCRIPT_PATCH = `import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -104,8 +112,17 @@ async function generateWeb(tree: Tree, projectName: string) {
   }
 
   const routerConfig = readJson(tree, "apps/web/tsr.config.json");
-  routerConfig.autoCodeSplitting = true;
+  routerConfig.routeTreeFileFooter = [START_ROUTE_TREE_FOOTER];
   tree.write("apps/web/tsr.config.json", json(routerConfig));
+
+  const viteConfig = tree.read("apps/web/vite.config.ts", "utf-8");
+  if (viteConfig === null || !viteConfig.includes("tanstackStart()")) {
+    throw new Error("Unexpected @tanstack/create Vite config: tanstackStart() is missing");
+  }
+  tree.write(
+    "apps/web/vite.config.ts",
+    viteConfig.replace("tanstackStart()", "tanstackStart({ router: { routeTreeFileFooter: [] } })")
+  );
 
   const pkg = readJson(tree, "apps/web/package.json");
   pkg.name = `@${projectName}/web`;
@@ -200,7 +217,14 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
   );
   tree.write(
     "tools/keenko-ui.ts",
-    `const args = process.argv.slice(2);\n\nif (args.length === 0) {\n  throw new Error("Pass at least one shadcn component name.");\n}\n\nconst options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;\nconst add = Bun.spawnSync(["bunx", "--bun", "shadcn@${versions.shadcn}", "add", "-c", "apps/web", ...args], options);\nif (add.exitCode !== 0) {\n  throw new Error("shadcn failed");\n}\n\nconst install = Bun.spawnSync(["bun", "install"], options);\nif (install.exitCode !== 0) {\n  throw new Error("bun install failed after shadcn updated workspace dependencies");\n}\n\nconst codegen = Bun.spawnSync(["bun", "run", "codegen"], options);\nif (codegen.exitCode !== 0) {\n  throw new Error("Keenko codegen failed after shadcn updated dependencies");\n}\n\nconst format = Bun.spawnSync(["bun", "run", "format"], options);\nif (format.exitCode !== 0) {\n  throw new Error("Keenko format failed after shadcn generated components");\n}\n\nconst lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], options);\nif (lintFix.exitCode !== 0) {\n  throw new Error("Keenko lint fixes failed after shadcn generated components");\n}\n\nconst reformat = Bun.spawnSync(["bun", "run", "format"], options);\nif (reformat.exitCode !== 0) {\n  throw new Error("Keenko format failed after lint fixes");\n}\n`
+    `const args = process.argv.slice(2);\n\nif (args.length === 0) {\n  throw new Error("Pass at least one shadcn component name.");\n}\n\nconst options = { stderr: "inherit", stdin: "inherit", stdout: "inherit" } as const;\nconst add = Bun.spawnSync(["bunx", "--bun", "shadcn@${versions.shadcn}", "add", "-c", "apps/web", ...args], options);\nif (add.exitCode !== 0) {\n  throw new Error("shadcn failed");\n}\n\nconst install = Bun.spawnSync(["bun", "install"], options);\nif (install.exitCode !== 0) {\n  throw new Error("bun install failed after shadcn updated workspace dependencies");\n}\n\nconst codegen = Bun.spawnSync(["bun", "run", "codegen"], options);\nif (codegen.exitCode !== 0) {\n  throw new Error("Keenko codegen failed after shadcn updated dependencies");\n}\n\nconst format = Bun.spawnSync(["bun", "run", "format"], options);\nif (format.exitCode !== 0) {\n  throw new Error("Keenko format failed after shadcn generated components");\n}\n\nconst lintFix = Bun.spawnSync(["bun", "run", "lint:fix"], options);\nif (lintFix.exitCode !== 0) {\n  throw new Error("Keenko lint fixes failed after shadcn updated dependencies");
+}
+
+const reformat = Bun.spawnSync(["bun", "run", "format"], options);
+if (reformat.exitCode !== 0) {
+  throw new Error("Keenko format failed after lint fixes");
+}
+`
   );
   tree.write("tools/keenko-patch-nx-typescript.ts", NX_TYPESCRIPT_PATCH);
   tree.write(
