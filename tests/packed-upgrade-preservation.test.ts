@@ -63,7 +63,7 @@ test("native Nx migration moves an existing generated project off keenko check w
     expect(scripts.custom).toBe("node custom-script.js");
     expect(record(migrated.devDependencies, "migrated devDependencies").keenko).toBe(TARGET_VERSION);
     const nx = json(await readFile(path.join(project, "nx.json"), "utf-8"));
-    expect(record(nx.sync, "nx sync").globalGenerators).toEqual(["project:sync", "keenko:sync"]);
+    expect(record(nx.sync, "nx sync").globalGenerators).toEqual(["keenko:sync"]);
     expect(await readFile(path.join(project, "tools/check-generated.ts"), "utf-8")).toContain("Generated source has drifted at:");
     expect(await readFile(path.join(project, "CONTEXT.md"), "utf-8")).toBe(PROJECT_CONTEXT);
     expect(await readFile(path.join(project, "AGENTS.md"), "utf-8")).toContain("Human project tail.");
@@ -89,7 +89,7 @@ async function downgradeLifecycle(project: string) {
 
   const nxPath = path.join(project, "nx.json");
   const nx = json(await readFile(nxPath, "utf-8"));
-  nx.sync = { globalGenerators: ["project:sync"] };
+  delete nx.sync;
   await writeFile(nxPath, `${JSON.stringify(nx, null, 2)}\n`);
   await rm(path.join(project, "tools/check-generated.ts"), { force: true });
 }
