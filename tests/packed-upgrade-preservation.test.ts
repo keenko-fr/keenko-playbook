@@ -72,9 +72,9 @@ test("native Nx migrations upgrade both supported historical baselines while pre
     const baselineBCli = await installPackedCli(temp, baselineBTarball, "baseline-b");
 
     const baselineA = path.join(temp, "baseline-a-project");
-    const beforeA = await makeBaseline(baselineACli, baselineA, "0.0.1", registry.env);
+    const beforeA = await makeBaseline(baselineACli, baselineA, "0.0.1", baselineATarball, registry.env);
     const baselineB = path.join(temp, "baseline-b-project");
-    const beforeB = await makeBaseline(baselineBCli, baselineB, "0.0.2", registry.env);
+    const beforeB = await makeBaseline(baselineBCli, baselineB, "0.0.2", baselineBTarball, registry.env);
 
     state.packages[PROJECT_DEPENDENCY].versions["1.0.2"] = projectDependency102;
     await writeRegistryState(registry.statePath, state);
@@ -94,6 +94,7 @@ async function makeBaseline(
   cli: string,
   target: string,
   expectedVersion: string,
+  packageTarball: string,
   registryEnv: Record<string, string>
 ): Promise<BaselineSnapshot> {
   run("node", [cli, "create", target, "--no-install"], ROOT);
@@ -106,6 +107,9 @@ async function makeBaseline(
   const dependencies = recordOrEmpty(pkg.dependencies, "baseline dependencies");
   dependencies[PROJECT_DEPENDENCY] = "^1.0.0";
   pkg.dependencies = dependencies;
+  const devDependencies = recordOrEmpty(pkg.devDependencies, "baseline devDependencies");
+  devDependencies.keenko = `file:${packageTarball}`;
+  pkg.devDependencies = devDependencies;
   await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
 
   await writeFile(path.join(target, "CONTEXT.md"), PROJECT_CONTEXT);

@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -15,7 +15,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -23,41 +22,7 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
-      - name: Align historical fixture tarballs
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("tests/packed-upgrade-preservation.test.ts")
-          source = path.read_text()
-          replacements = [
-              (
-                  '    const beforeA = await makeBaseline(baselineACli, baselineA, "0.0.1", registry.env);',
-                  '    const beforeA = await makeBaseline(baselineACli, baselineA, "0.0.1", baselineATarball, registry.env);',
-              ),
-              (
-                  '    const beforeB = await makeBaseline(baselineBCli, baselineB, "0.0.2", registry.env);',
-                  '    const beforeB = await makeBaseline(baselineBCli, baselineB, "0.0.2", baselineBTarball, registry.env);',
-              ),
-              (
-                  '  expectedVersion: string,\n  registryEnv: Record<string, string>\n): Promise<BaselineSnapshot> {',
-                  '  expectedVersion: string,\n  packageTarball: string,\n  registryEnv: Record<string, string>\n): Promise<BaselineSnapshot> {',
-              ),
-              (
-                  '  dependencies[PROJECT_DEPENDENCY] = "^1.0.0";\n  pkg.dependencies = dependencies;\n  await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\\n`);',
-                  '  dependencies[PROJECT_DEPENDENCY] = "^1.0.0";\n  pkg.dependencies = dependencies;\n  const devDependencies = recordOrEmpty(pkg.devDependencies, "baseline devDependencies");\n  devDependencies.keenko = `file:${packageTarball}`;\n  pkg.devDependencies = devDependencies;\n  await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\\n`);',
-              ),
-          ]
-          for old, new in replacements:
-              if old not in source:
-                  raise SystemExit(f"Expected fixture anchor not found: {old[:80]}")
-              source = source.replace(old, new, 1)
-          path.write_text(source)
-          PY
-          git checkout HEAD^ -- .github/workflows/check.yml
-          bun run format
-          git add .github/workflows/check.yml tests/packed-upgrade-preservation.test.ts
-          git config user.name "Keenko CI formatter"
-          git config user.email "actions@users.noreply.github.com"
-          git commit -m "KEE-14 align historical baseline tarballs"
-          git push origin HEAD:${{ github.head_ref }}
+      - name: Release-grade check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run check:release
