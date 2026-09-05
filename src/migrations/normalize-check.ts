@@ -2,6 +2,7 @@ import type { Tree } from "@nx/devkit";
 import { format } from "oxfmt";
 
 import { KEENKO_BOUNDARY_CONSTRAINTS } from "../boundaries.ts";
+import { normalizeStartRouteGeneration } from "../start-route-generation.ts";
 
 const PREVIOUS_CHECKS = new Set([
   "bun run format:check && bun run lint && bun run typecheck && bun run build",
@@ -122,6 +123,7 @@ export default async function normalizeCheck(tree: Tree) {
     migrateWorkspaceTypescript(tree, file, previousTypescript);
   }
   migrateWebPackage(tree);
+  normalizeStartRouteGeneration(tree);
   migrateUiPackage(tree);
   migrateComponentsConfig(tree, "apps/web/components.json");
   migrateComponentsConfig(tree, "packages/ui/components.json");
@@ -349,6 +351,8 @@ async function formatMigratedFiles(tree: Tree) {
   const paths = [
     "package.json",
     "apps/web/package.json",
+    "apps/web/tsr.config.json",
+    "apps/web/vite.config.ts",
     "packages/backend/package.json",
     "packages/shared/package.json",
     "packages/ui/package.json",
