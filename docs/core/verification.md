@@ -31,15 +31,16 @@ Manual verification is evidence, not a replacement for automatable behavior test
 
 Focused checks do not replace the repository's canonical complete verification. Keenko TypeScript repositories expose a non-remediating `bun run check`; it is the canonical merge-ready aggregate. Its applicable stages run in this conceptual order:
 
-1. code generation/drift checks;
-2. `format:check`;
-3. `lint`;
-4. `typecheck`;
-5. tests;
-6. builds;
-7. project-specific delivery/security checks.
+1. Nx synchronization/drift checks;
+2. code generation/drift checks;
+3. `format:check`;
+4. `lint`;
+5. `typecheck`;
+6. tests;
+7. builds;
+8. project-specific delivery/security checks.
 
-`check` must not rewrite tracked source. Generated drift verification may regenerate into a disposable workspace and compare output, but a green check proves the submitted tree was already valid.
+`check` must not rewrite tracked source. `nx sync:check` detects registered sync-generator drift without applying it. Generated-code drift verification may regenerate into a disposable workspace and compare output, but a green check proves the submitted tree was already valid.
 
 Generated contract changes require deterministic regeneration verification.
 
