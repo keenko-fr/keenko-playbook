@@ -6,6 +6,16 @@ import preset from "../src/generators/preset/generator.ts";
 import sync from "../src/generators/sync/generator.ts";
 
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
+const CURRENT_LINT = "nx show projects && oxlint .";
+const CURRENT_START_CALL = "tanstackStart({ router: { routeTreeFileFooter: [] } })";
+const START_ROUTE_TREE_FOOTER = `import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}`;
 const TYPESCRIPT_API = '"typescript": "6.0.2"';
 const TYPESCRIPT_API_BRIDGE = '"typescript-api": "npm:typescript@6.0.2"';
 const TYPESCRIPT_NATIVE = '"@typescript/native": "npm:typescript@7.0.2"';
@@ -26,6 +36,9 @@ describe("Keenko Nx preset", () => {
     expect(tree.exists("project.json")).toBe(false);
     expect(tree.exists("apps/web/vite.config.ts")).toBe(true);
     expect(tree.read("apps/web/package.json", "utf-8")).toContain('"@tanstack/react-start"');
+    const routerConfig = object(JSON.parse(tree.read("apps/web/tsr.config.json", "utf-8") ?? "{}"));
+    expect(routerConfig.routeTreeFileFooter).toEqual([START_ROUTE_TREE_FOOTER]);
+    expect(tree.read("apps/web/vite.config.ts", "utf-8")).toContain(CURRENT_START_CALL);
     expect(tree.read("packages/ui/components.json", "utf-8")).toContain('"style": "base-nova"');
     expect(tree.read("packages/ui/components.json", "utf-8")).not.toContain('"base":');
     expect(tree.read("packages/backend/package.json", "utf-8")).toContain('"@confect/server": "10.0.0-next.21"');
@@ -38,7 +51,7 @@ describe("Keenko Nx preset", () => {
     expect(rootPackage).toContain('"postinstall": "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts"');
     expect(rootPackage).toContain('"codegen:check": "keenko check --guidance --codegen"');
     expect(rootPackage).toContain(`"check": "${CURRENT_CHECK}"`);
-    expect(rootPackage).toContain('"lint": "oxlint ."');
+    expect(rootPackage).toContain(`"lint": "${CURRENT_LINT}"`);
     expect(rootPackage).toContain('"lint:fix": "oxlint --fix ."');
     const nxPatchTool = tree.read("tools/keenko-patch-nx-typescript.ts", "utf-8") ?? "";
     expect(nxPatchTool).toContain('path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js")');
@@ -99,4 +112,11 @@ function hashChanges(tree: ReturnType<typeof createTreeWithEmptyWorkspace>) {
     }
   }
   return hashes;
+}
+
+function object(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Expected object");
+  }
+  return Object.fromEntries(Object.entries(value));
 }

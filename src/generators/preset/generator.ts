@@ -6,6 +6,7 @@ import { format } from "oxfmt";
 
 import { KEENKO_BOUNDARY_CONSTRAINTS } from "../../boundaries.ts";
 import { syncGuidance } from "../../guidance.ts";
+import { normalizeStartRouteGeneration } from "../../start-route-generation.ts";
 import { versions } from "../../versions.ts";
 
 interface PresetSchema {
@@ -57,6 +58,7 @@ if (originalCount === 2 && patchedCount === 0) {
 export default async function presetGenerator(tree: Tree, options: PresetSchema) {
   const projectName = normalizeName(options.name);
   await generateWeb(tree, projectName);
+  normalizeStartRouteGeneration(tree);
   writeWorkspaceFiles(tree, projectName);
   writeBackend(tree, projectName);
   writeUi(tree, projectName);
@@ -182,7 +184,7 @@ function writeWorkspaceFiles(tree: Tree, projectName: string) {
         dev: `nx run @${projectName}/web:dev`,
         format: "oxfmt .",
         "format:check": "oxfmt --check .",
-        lint: "oxlint .",
+        lint: "nx show projects && oxlint .",
         "lint:fix": "oxlint --fix .",
         postinstall: "effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts",
         test: "bun test --pass-with-no-tests",

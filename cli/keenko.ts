@@ -25,6 +25,8 @@ if (!isSemverApi(loadedSemver)) {
   throw new TypeError("Loaded semver package does not expose the required API");
 }
 const semver = loadedSemver;
+const IGNORED_GENERATED_ROOTS = ["apps/web/src/paraglide"] as const;
+const TRACKED_GENERATED_ROOTS = ["apps/web/src/routeTree.gen.ts", "packages/backend/confect", "packages/backend/convex"] as const;
 
 async function main() {
   const [command = "help", ...args] = process.argv.slice(2);
@@ -361,9 +363,26 @@ async function verifyGeneratedCode(root: string) {
       const changed = [...paths].filter((entry) => expected[entry] !== actual[entry]).toSorted();
       throw new Error(`Generated source has drifted at: ${changed.join(", ")}. Run 'bun run codegen' and review the generated diff.`);
     }
+    await materializeIgnoredGenerated(stage, root);
   } finally {
     await rm(tempRoot, { force: true, recursive: true });
   }
+}
+
+async function materializeIgnoredGenerated(stage: string, root: string) {
+  await Promise.all(
+    IGNORED_GENERATED_ROOTS.map(async (relative) => {
+      const source = path.join(stage, relative);
+      const sourceInfo = await stat(source).catch(() => null);
+      if (sourceInfo?.isDirectory() !== true) {
+        throw new Error(`Codegen did not materialize ignored compiler output: ${relative}`);
+      }
+      const target = path.join(root, relative);
+      await rm(target, { force: true, recursive: true });
+      await mkdir(path.dirname(target), { recursive: true });
+      await cp(source, target, { recursive: true });
+    })
+  );
 }
 
 function isGeneratedOwned(relative: string) {
@@ -381,9 +400,8 @@ function isGeneratedOwned(relative: string) {
 
 // oxlint-disable eslint/no-await-in-loop -- Generated paths are read in stable order before hashing.
 async function generatedHashes(root: string) {
-  const roots = ["apps/web/src/paraglide", "apps/web/src/routeTree.gen.ts", "packages/backend/confect", "packages/backend/convex"];
   const entries: (readonly [string, string])[] = [];
-  for (const relative of roots) {
+  for (const relative of TRACKED_GENERATED_ROOTS) {
     const target = path.join(root, relative);
     const info = await stat(target).catch(() => null);
     if (info === null) {

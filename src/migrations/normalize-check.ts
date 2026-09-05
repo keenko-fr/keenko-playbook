@@ -2,6 +2,7 @@ import type { Tree } from "@nx/devkit";
 import { format } from "oxfmt";
 
 import { KEENKO_BOUNDARY_CONSTRAINTS } from "../boundaries.ts";
+import { normalizeStartRouteGeneration } from "../start-route-generation.ts";
 
 const PREVIOUS_CHECKS = new Set([
   "bun run format:check && bun run lint && bun run typecheck && bun run build",
@@ -11,6 +12,8 @@ const PREVIOUS_CHECKS = new Set([
 const CURRENT_CHECK = "bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build";
 const PREVIOUS_CODEGEN_CHECK = "keenko check --guidance";
 const CURRENT_CODEGEN_CHECK = "keenko check --guidance --codegen";
+const PREVIOUS_LINT = "oxlint .";
+const CURRENT_LINT = "nx show projects && oxlint .";
 const CURRENT_TEST = "bun test --pass-with-no-tests";
 const PREVIOUS_TYPESCRIPT = "7.0.2";
 const PREVIOUS_WEB_TYPESCRIPT = "6.0.2";
@@ -122,6 +125,7 @@ export default async function normalizeCheck(tree: Tree) {
     migrateWorkspaceTypescript(tree, file, previousTypescript);
   }
   migrateWebPackage(tree);
+  normalizeStartRouteGeneration(tree);
   migrateUiPackage(tree);
   migrateComponentsConfig(tree, "apps/web/components.json");
   migrateComponentsConfig(tree, "packages/ui/components.json");
@@ -150,6 +154,7 @@ function migrateRootPackage(tree: Tree) {
     CURRENT_CODEGEN_CHECK,
     "package.json scripts.codegen:check"
   );
+  migrateKnownString(scripts, "lint", [PREVIOUS_LINT], CURRENT_LINT, "package.json scripts.lint");
   migrateKnownString(scripts, "test", [undefined], CURRENT_TEST, "package.json scripts.test");
   migrateKnownString(scripts, "dev", ["nx run web:dev"], `nx run @${name}/web:dev`, "package.json scripts.dev");
   migrateKnownString(scripts, "ui", [PREVIOUS_UI], CURRENT_UI, "package.json scripts.ui");
@@ -349,6 +354,8 @@ async function formatMigratedFiles(tree: Tree) {
   const paths = [
     "package.json",
     "apps/web/package.json",
+    "apps/web/tsr.config.json",
+    "apps/web/vite.config.ts",
     "packages/backend/package.json",
     "packages/shared/package.json",
     "packages/ui/package.json",

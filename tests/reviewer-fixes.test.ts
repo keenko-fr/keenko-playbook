@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dir, "..");
+const CURRENT_LINT = "nx show projects && oxlint .";
 const TYPESCRIPT_API = "6.0.2";
 const TYPESCRIPT_API_BRIDGE = "npm:typescript@6.0.2";
 const TYPESCRIPT_NATIVE = "npm:typescript@7.0.2";
@@ -49,6 +50,7 @@ test("packed Keenko enforces release-reviewer contracts through the production C
     expect(rootDevDependencies.typescript).toBe(TYPESCRIPT_API);
     expect(rootDevDependencies["typescript-api"]).toBe(TYPESCRIPT_API_BRIDGE);
     expect(rootDevDependencies["@typescript/native"]).toBe(TYPESCRIPT_NATIVE);
+    expect(rootScripts.lint).toBe(CURRENT_LINT);
     expect(rootScripts.postinstall).toBe("effect-tsgo patch --oxlint && bun tools/keenko-patch-nx-typescript.ts");
     const nxPatchTool = await readFile(path.join(project, "tools/keenko-patch-nx-typescript.ts"), "utf-8");
     expect(nxPatchTool).toContain('path.join("node_modules", "nx", "dist", "src", "plugins", "js", "utils", "typescript.js")');
@@ -66,6 +68,38 @@ test("packed Keenko enforces release-reviewer contracts through the production C
         }
       })
     );
+
+    run("git", ["config", "user.name", "Keenko fixture"], project);
+    run("git", ["config", "user.email", "fixture@keenko.invalid"], project);
+    run("git", ["add", "-A"], project);
+    run("git", ["commit", "--quiet", "-m", "fresh create"], project);
+    expect(runOut("git", ["ls-files", "apps/web/src/paraglide"], project).trim()).toBe("");
+    const cleanCheckout = path.join(temp, "clean-checkout");
+    run("git", ["clone", "--quiet", project, cleanCheckout], temp);
+    const cleanParaglide = path.join(cleanCheckout, "apps/web/src/paraglide");
+    expect(await stat(cleanParaglide).catch(() => null)).toBeNull();
+    run("bun", ["install", "--frozen-lockfile"], cleanCheckout);
+    expect(await stat(cleanParaglide).catch(() => null)).toBeNull();
+
+    const cleanUiName = string(
+      object(JSON.parse(await readFile(path.join(cleanCheckout, "packages/ui/package.json"), "utf-8"))).name,
+      "clean UI name"
+    );
+    const cleanForbiddenImport = path.join(cleanCheckout, "packages/shared/src/forbidden-clean-checkout.ts");
+    await writeFile(cleanForbiddenImport, `import "${cleanUiName}/lib/utils";\n`);
+    const cleanBoundaryFailure = runFailure("bun", ["run", "check"], cleanCheckout, { NX_DAEMON: "false" });
+    expect(cleanBoundaryFailure).toContain("enforce-module-boundaries");
+    expect(cleanBoundaryFailure).not.toContain("No cached ProjectGraph is available. The rule will be skipped.");
+    await unlink(cleanForbiddenImport);
+
+    run("bun", ["run", "check"], cleanCheckout, { NX_DAEMON: "false" });
+    const materializedParaglide = await stat(cleanParaglide);
+    expect(materializedParaglide.isDirectory()).toBe(true);
+    const cleanStatus = runOut("git", ["status", "--porcelain"], cleanCheckout);
+    if (cleanStatus !== "") {
+      const routeTreeDiff = runOut("git", ["diff", "--", "apps/web/src/routeTree.gen.ts"], cleanCheckout);
+      throw new Error(`Canonical check changed tracked source:\n${cleanStatus}\n${routeTreeDiff}`);
+    }
 
     const projectCli = path.join(project, "node_modules/keenko/dist/cli/keenko.js");
     const installedManifest = path.join(project, "node_modules/keenko/package.json");
