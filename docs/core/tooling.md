@@ -83,7 +83,7 @@ Every Keenko TypeScript repository exposes these scripts:
 
 Expose `test`, `build`, `codegen`, and `codegen:check` only when those concerns exist. Do not add fake no-op scripts for uniformity.
 
-Keenko registers its generated guidance as a global Nx sync generator. `nx sync` applies generated guidance updates. `nx sync:check` detects drift without changing files. The canonical `bun run check` starts with `nx sync:check` before other generated-code drift checks.
+Keenko registers generated guidance and package-manifest workspace boundary validation in a global Nx sync generator. `nx sync` applies generated guidance updates after validating workspace manifest edges. `nx sync:check` detects guidance drift and rejects forbidden package-declared workspace dependencies without changing files. The canonical `bun run check` starts with `nx sync:check` before other generated-code drift checks.
 
 `bun run check` is non-remediating. Its conceptual order is:
 
@@ -105,4 +105,4 @@ The Keenko Nx preset owns the initial package manifests, root Oxc/Ultracite conf
 
 A fresh project starts with `apps/web`, `packages/backend`, `packages/ui`, and `packages/shared`. The preset owns that initial topology. It does not impose a permanent four-workspace count. Additional workspaces are valid when they model a real ownership or reuse boundary and participate in the Nx project graph with the required tags.
 
-The verified baseline includes `@nx/oxlint` and `@nx/enforce-module-boundaries`. Nx owns project-graph and module-boundary enforcement. At the pinned Nx 23.2.0 implementation, the Oxlint bridge exposes the Nx ESLint rule and the rule evaluates import, export, and `require` edges against the project graph. It does not separately scan package manifests for declaration-only workspace dependencies. Keenko does not maintain a second manifest dependency checker to fill that gap. Re-verify this behavior when the pinned Nx boundary implementation changes.
+The verified baseline includes `@nx/oxlint` and `@nx/enforce-module-boundaries`. Nx owns project-graph and source module-boundary enforcement. At the pinned Nx 23.2.0 implementation, the Oxlint bridge exposes the Nx ESLint rule and the rule evaluates import, export, and `require` edges against the project graph. It does not separately scan package manifests for declaration-only workspace dependencies. Keenko's global `keenko:sync` generator therefore validates package-declared workspace edges across every `apps/*` and `packages/*` workspace that participates in the Keenko scope model. It requires exactly one Keenko scope tag per workspace package and checks `dependencies`, `devDependencies`, `optionalDependencies`, and `peerDependencies` with the same allowed-scope table as source boundaries. This keeps manifest validation inside the native Nx sync lifecycle rather than restoring a parallel lifecycle CLI. Re-verify both mechanisms when the pinned Nx boundary implementation changes.
