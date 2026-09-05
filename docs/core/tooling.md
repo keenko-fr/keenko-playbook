@@ -83,7 +83,7 @@ Every Keenko TypeScript repository exposes these scripts:
 
 Expose `test`, `build`, `codegen`, and `codegen:check` only when those concerns exist. Do not add fake no-op scripts for uniformity.
 
-Keenko registers generated guidance and package-manifest workspace boundary validation in a global Nx sync generator. `bun x nx sync` applies generated guidance updates after validating workspace manifest edges. `bun x nx sync:check` detects guidance drift and rejects forbidden package-declared workspace dependencies without changing files. The generated `bun run check` script invokes the local `nx sync:check` stage before other generated-code drift checks.
+Keenko registers generated guidance and package-manifest workspace boundary validation in a global Nx sync generator. `bun x nx sync` applies generated guidance updates after validating workspace manifest edges. `bun x nx sync:check` detects guidance drift and rejects forbidden package-declared workspace dependencies without changing files. The generated `bun run check` script runs its synchronization check through Bun, which resolves the workspace-local Nx binary, before other generated-code drift checks.
 
 `bun run check` is non-remediating. Its conceptual order is:
 
