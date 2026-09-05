@@ -8,11 +8,7 @@
     "type": "git",
     "url": "git+https://github.com/keenko-fr/keenko-playbook.git"
   },
-  "bin": {
-    "keenko": "dist/cli/keenko.js"
-  },
   "files": [
-    "dist/cli/keenko.js",
     "dist/src/",
     "docs/",
     "generators.json",
@@ -62,7 +58,6 @@
     "access": "public"
   },
   "scripts": {
-    "keenko": "bun cli/keenko.ts",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
