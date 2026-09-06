@@ -21,6 +21,11 @@ const OWNED_FORMATTING_PROPERTY = new RegExp(
   String.raw`^${TRIVIA_PATTERN}(?:${OWNED_FORMATTING_FIELD}\b${TRIVIA_PATTERN}(?::|\(|$)|["']${OWNED_FORMATTING_FIELD}["']${TRIVIA_PATTERN}(?::|\()|\[${TRIVIA_PATTERN}["']${OWNED_FORMATTING_FIELD}["']${TRIVIA_PATTERN}\]${TRIVIA_PATTERN}(?::|\())`,
   "u"
 );
+const COMPUTED_PROPERTY = new RegExp(String.raw`^${TRIVIA_PATTERN}\[`, "u");
+const STATIC_STRING_COMPUTED_PROPERTY = new RegExp(
+  String.raw`^${TRIVIA_PATTERN}\[${TRIVIA_PATTERN}(?:"[^"\\]*"|'[^'\\]*')${TRIVIA_PATTERN}\]`,
+  "u"
+);
 const SPREAD_PROPERTY = new RegExp(String.raw`^${TRIVIA_PATTERN}\.\.\.`, "u");
 const FORMATTING_SPREAD = new RegExp(String.raw`^${TRIVIA_PATTERN}\.\.\.${TRIVIA_PATTERN}formatting\b${TRIVIA_PATTERN}$`, "u");
 const DEFINE_CONFIG_OBJECT = new RegExp(
@@ -133,7 +138,11 @@ function hasOwnedFormattingProperty(source: string) {
   if (formattingSpreadIndex === -1) {
     throwOwnershipConflict();
   }
-  return properties.slice(0, formattingSpreadIndex).some((property) => SPREAD_PROPERTY.test(property) && !FORMATTING_SPREAD.test(property));
+  return properties.slice(0, formattingSpreadIndex).some(
+    (property) =>
+      (SPREAD_PROPERTY.test(property) && !FORMATTING_SPREAD.test(property)) ||
+      (COMPUTED_PROPERTY.test(property) && !STATIC_STRING_COMPUTED_PROPERTY.test(property))
+  );
 }
 
 function readTopLevelProperties(source: string, objectStart: number) {
