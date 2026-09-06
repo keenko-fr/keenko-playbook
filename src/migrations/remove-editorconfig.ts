@@ -334,10 +334,38 @@ function slashStartsRegularExpression(source: string, slashIndex: number, expres
   if (previous === "}") {
     return throwOwnershipConflict();
   }
+  if (previous === "!") {
+    return isPrefixBang(source, previousIndex, expressionStart);
+  }
   if ((previous === "+" || previous === "-") && source[previousIndex - 1] === previous) {
     return false;
   }
   if ("([{,;:?=!*%&|^~<>+-".includes(previous)) {
+    return true;
+  }
+  return throwOwnershipConflict();
+}
+
+function isPrefixBang(source: string, bangIndex: number, expressionStart: number) {
+  let previousIndex = bangIndex - 1;
+  while (previousIndex >= expressionStart && /\s/u.test(source[previousIndex] ?? "")) {
+    previousIndex -= 1;
+  }
+  if (previousIndex < expressionStart) {
+    return true;
+  }
+
+  const previous = source[previousIndex] ?? "";
+  if (/[A-Za-z0-9_$]/u.test(previous)) {
+    return identifierAllowsRegularExpression(source, previousIndex, expressionStart);
+  }
+  if (previous === '"' || previous === "'" || previous === "`" || previous === ")" || previous === "]") {
+    return false;
+  }
+  if (previous === "}" || previous === "!" || previous === ".") {
+    return throwOwnershipConflict();
+  }
+  if ("([{,;:?=*%&|^~<>+-".includes(previous)) {
     return true;
   }
   return throwOwnershipConflict();
