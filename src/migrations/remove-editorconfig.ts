@@ -12,11 +12,50 @@ insert_final_newline = true
 const LEGACY_FORMATTING_DECLARATION = `const { endOfLine: _endOfLine, tabWidth: _tabWidth, useTabs: _useTabs, ...formatting } = ultracite;
 
 `;
-const LEGACY_FORMATTING_SPREAD = "  ...formatting,\n";
-const CURRENT_FORMATTING_SPREAD = "  ...ultracite,\n";
-const LEGACY_IGNORE_PATTERNS = "formatting.ignorePatterns";
-const CURRENT_IGNORE_PATTERNS = "ultracite.ignorePatterns";
+const CURRENT_FORMATTING_DECLARATION = `const formatting = ultracite;
+
+`;
 const OWNED_FORMATTING_OVERRIDE = /^\s*(?:endOfLine|tabWidth|useTabs)\s*:/mu;
+const LEGACY_OXFMT_CONFIG = `import { defineConfig } from "oxfmt";
+import ultracite from "ultracite/oxfmt";
+
+${LEGACY_FORMATTING_DECLARATION}export default defineConfig({
+  ...formatting,
+  ignorePatterns: [
+    ...(formatting.ignorePatterns ?? []),
+    ".keenko/**",
+    ".agents/skills/**",
+    ".claude/skills/**",
+    "**/_generated/**",
+    "**/routeTree.gen.ts",
+    "packages/backend/confect/**",
+    "packages/backend/convex/**",
+    "!packages/backend/convex/tsconfig.json",
+    "!packages/backend/convex/convex.config.ts",
+  ],
+  printWidth: 140,
+});
+`;
+const CURRENT_OXFMT_CONFIG = `import { defineConfig } from "oxfmt";
+import ultracite from "ultracite/oxfmt";
+
+export default defineConfig({
+  ...ultracite,
+  ignorePatterns: [
+    ...(ultracite.ignorePatterns ?? []),
+    ".keenko/**",
+    ".agents/skills/**",
+    ".claude/skills/**",
+    "**/_generated/**",
+    "**/routeTree.gen.ts",
+    "packages/backend/confect/**",
+    "packages/backend/convex/**",
+    "!packages/backend/convex/tsconfig.json",
+    "!packages/backend/convex/convex.config.ts",
+  ],
+  printWidth: 140,
+});
+`;
 
 export default function removeEditorConfig(tree: Tree) {
   const editorConfig = tree.read(".editorconfig", "utf-8");
@@ -43,16 +82,13 @@ export default function removeEditorConfig(tree: Tree) {
 }
 
 function migrateOxfmtOwnership(source: string) {
-  if (
-    !source.includes(LEGACY_FORMATTING_DECLARATION) &&
-    source.includes(CURRENT_FORMATTING_SPREAD) &&
-    !source.includes(LEGACY_FORMATTING_SPREAD) &&
-    !source.includes(LEGACY_IGNORE_PATTERNS)
-  ) {
+  if (source === LEGACY_OXFMT_CONFIG) {
+    return CURRENT_OXFMT_CONFIG;
+  }
+  if (source === CURRENT_OXFMT_CONFIG || source.includes(CURRENT_FORMATTING_DECLARATION)) {
     return source;
   }
-
-  if (!source.includes(LEGACY_FORMATTING_DECLARATION) || !source.includes(LEGACY_FORMATTING_SPREAD)) {
+  if (!source.includes(LEGACY_FORMATTING_DECLARATION)) {
     throwOwnershipConflict();
   }
 
@@ -60,14 +96,7 @@ function migrateOxfmtOwnership(source: string) {
   if (OWNED_FORMATTING_OVERRIDE.test(withoutDeclaration)) {
     throwOwnershipConflict();
   }
-
-  const migrated = withoutDeclaration
-    .replace(LEGACY_FORMATTING_SPREAD, CURRENT_FORMATTING_SPREAD)
-    .replaceAll(LEGACY_IGNORE_PATTERNS, CURRENT_IGNORE_PATTERNS);
-  if (/\bformatting\b/u.test(migrated)) {
-    throwOwnershipConflict();
-  }
-  return migrated;
+  return source.replace(LEGACY_FORMATTING_DECLARATION, CURRENT_FORMATTING_DECLARATION);
 }
 
 function throwOwnershipConflict(): never {
