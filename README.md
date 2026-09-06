@@ -51,7 +51,7 @@ bun x nx sync
 Upgrade Keenko through normal Nx migrations:
 
 ```sh
-bun x nx migrate keenko@0.2.0
+bun x nx migrate keenko@<target>
 bun install
 bun x nx migrate --run-migrations
 bun x nx sync
