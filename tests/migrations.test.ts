@@ -73,16 +73,13 @@ describe("Keenko migrations", () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom_oxfmt" });
     tree.write(".editorconfig", LEGACY_EDITORCONFIG);
-    tree.write(
-      "oxfmt.config.ts",
-      LEGACY_OXFMT_CONFIG.replace("    \".keenko/**\",", "    \".keenko/**\",\n    \"project-cache/**\",")
-    );
+    tree.write("oxfmt.config.ts", LEGACY_OXFMT_CONFIG.replace('    ".keenko/**",', '    ".keenko/**",\n    "project-cache/**",'));
 
     removeEditorConfig(tree);
 
     expect(tree.exists(".editorconfig")).toBe(false);
     const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
-    expect(oxfmt).toContain("    \"project-cache/**\",");
+    expect(oxfmt).toContain('    "project-cache/**",');
     expect(oxfmt).toContain("...ultracite");
     expect(oxfmt).toContain("...(ultracite.ignorePatterns ?? [])");
   });
