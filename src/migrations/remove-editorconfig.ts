@@ -129,11 +129,13 @@ function hasOwnedFormattingProperty(source: string) {
     return true;
   }
 
-  const formattingSpreadIndex = properties.findIndex((property) => FORMATTING_SPREAD.test(property));
+  const formattingSpreadIndex = properties.map((property) => FORMATTING_SPREAD.test(property)).lastIndexOf(true);
   if (formattingSpreadIndex === -1) {
     throwOwnershipConflict();
   }
-  return properties.slice(0, formattingSpreadIndex).some((property) => SPREAD_PROPERTY.test(property));
+  return properties
+    .slice(0, formattingSpreadIndex)
+    .some((property) => SPREAD_PROPERTY.test(property) && !FORMATTING_SPREAD.test(property));
 }
 
 function readTopLevelProperties(source: string, objectStart: number) {
