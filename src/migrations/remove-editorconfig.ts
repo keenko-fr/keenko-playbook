@@ -320,11 +320,7 @@ function slashStartsRegularExpression(source: string, slashIndex: number, expres
 
   const previous = source[previousIndex] ?? "";
   if (/[A-Za-z0-9_$]/u.test(previous)) {
-    let tokenStart = previousIndex;
-    while (tokenStart > expressionStart && /[A-Za-z0-9_$]/u.test(source[tokenStart - 1] ?? "")) {
-      tokenStart -= 1;
-    }
-    return REGULAR_EXPRESSION_PREFIX_KEYWORD.test(source.slice(tokenStart, previousIndex + 1));
+    return identifierAllowsRegularExpression(source, previousIndex, expressionStart);
   }
   if (previous === '"' || previous === "'" || previous === "`" || previous === ")" || previous === "]" || previous === ".") {
     return false;
@@ -339,6 +335,14 @@ function slashStartsRegularExpression(source: string, slashIndex: number, expres
     return true;
   }
   return throwOwnershipConflict();
+}
+
+function identifierAllowsRegularExpression(source: string, previousIndex: number, expressionStart: number) {
+  let tokenStart = previousIndex;
+  while (tokenStart > expressionStart && /[A-Za-z0-9_$]/u.test(source[tokenStart - 1] ?? "")) {
+    tokenStart -= 1;
+  }
+  return REGULAR_EXPRESSION_PREFIX_KEYWORD.test(source.slice(tokenStart, previousIndex + 1));
 }
 
 function skipRegularExpression(source: string, start: number) {
