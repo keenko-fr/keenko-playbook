@@ -266,7 +266,11 @@ describe("Keenko migrations", () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "template_binding_reference" });
     tree.write(".editorconfig", LEGACY_EDITORCONFIG);
-    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace('    ".keenko/**",', '    ".keenko/**",\n    `cache-${_tabWidth}`,');
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      '    ".keenko/**",',
+      `    ".keenko/**",
+    \`cache-\${_tabWidth}\`,`
+    );
     tree.write("oxfmt.config.ts", customizedOxfmt);
 
     expect(() => {
