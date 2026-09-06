@@ -138,11 +138,15 @@ function hasOwnedFormattingProperty(source: string) {
   if (formattingSpreadIndex === -1) {
     throwOwnershipConflict();
   }
-  return properties.slice(0, formattingSpreadIndex).some(
-    (property) =>
+  for (const property of properties.slice(0, formattingSpreadIndex)) {
+    if (
       (SPREAD_PROPERTY.test(property) && !FORMATTING_SPREAD.test(property)) ||
       (COMPUTED_PROPERTY.test(property) && !STATIC_STRING_COMPUTED_PROPERTY.test(property))
-  );
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function readTopLevelProperties(source: string, objectStart: number) {
