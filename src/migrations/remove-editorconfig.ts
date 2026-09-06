@@ -108,7 +108,7 @@ function migrateOxfmtOwnership(source: string) {
 }
 
 function normalizeLineEndings(source: string) {
-  return source.replace(/\r\n?/gu, "\n");
+  return source.replaceAll(/\r\n?/gu, "\n");
 }
 
 function throwOwnershipConflict(): never {
