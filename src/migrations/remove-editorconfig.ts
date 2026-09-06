@@ -162,7 +162,7 @@ function readTopLevelProperties(source: string, objectStart: number) {
     }
   }
 
-  throwOwnershipConflict();
+  return throwOwnershipConflict();
 }
 
 function skipQuoted(source: string, start: number, quote: string) {
