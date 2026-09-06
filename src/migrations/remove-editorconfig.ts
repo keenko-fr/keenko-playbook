@@ -15,15 +15,17 @@ const LEGACY_FORMATTING_DECLARATION = `const { endOfLine: _endOfLine, tabWidth: 
 const CURRENT_FORMATTING_DECLARATION = `const formatting = ultracite;
 
 `;
+const CURRENT_FORMATTING_DECLARATION_LINE = /^[ \t]*const[ \t]+formatting[ \t]*=[ \t]*ultracite[ \t]*;[ \t]*$/mu;
 const TRIVIA_PATTERN = String.raw`(?:\s|//[^\n]*(?:\n|$)|/\*[\s\S]*?\*/)*`;
 const OWNED_FORMATTING_FIELD = String.raw`(?:endOfLine|tabWidth|useTabs)`;
+const OWNED_FORMATTING_KEY = String.raw`(?:${OWNED_FORMATTING_FIELD}\b|["']${OWNED_FORMATTING_FIELD}["']|\[${TRIVIA_PATTERN}["']${OWNED_FORMATTING_FIELD}["']${TRIVIA_PATTERN}\])`;
 const OWNED_FORMATTING_PROPERTY = new RegExp(
-  String.raw`^${TRIVIA_PATTERN}(?:${OWNED_FORMATTING_FIELD}\b${TRIVIA_PATTERN}(?::|\(|$)|["']${OWNED_FORMATTING_FIELD}["']${TRIVIA_PATTERN}(?::|\()|\[${TRIVIA_PATTERN}["']${OWNED_FORMATTING_FIELD}["']${TRIVIA_PATTERN}\]${TRIVIA_PATTERN}(?::|\())`,
+  String.raw`^${TRIVIA_PATTERN}(?:${OWNED_FORMATTING_KEY}${TRIVIA_PATTERN}(?::|\(|$)|(?:get|set)\b${TRIVIA_PATTERN}${OWNED_FORMATTING_KEY}${TRIVIA_PATTERN}\()`,
   "u"
 );
-const COMPUTED_PROPERTY = new RegExp(String.raw`^${TRIVIA_PATTERN}\[`, "u");
+const COMPUTED_PROPERTY = new RegExp(String.raw`^${TRIVIA_PATTERN}(?:(?:get|set)\b${TRIVIA_PATTERN})?\[`, "u");
 const STATIC_STRING_COMPUTED_PROPERTY = new RegExp(
-  String.raw`^${TRIVIA_PATTERN}\[${TRIVIA_PATTERN}(?:"[^"\\]*"|'[^'\\]*')${TRIVIA_PATTERN}\]`,
+  String.raw`^${TRIVIA_PATTERN}(?:(?:get|set)\b${TRIVIA_PATTERN})?\[${TRIVIA_PATTERN}(?:"[^"\\]*"|'[^'\\]*')${TRIVIA_PATTERN}\]`,
   "u"
 );
 const SPREAD_PROPERTY = new RegExp(String.raw`^${TRIVIA_PATTERN}\.\.\.`, "u");
@@ -104,19 +106,32 @@ function migrateOxfmtOwnership(source: string) {
   if (normalizedSource === LEGACY_OXFMT_CONFIG) {
     return CURRENT_OXFMT_CONFIG;
   }
-  if (normalizedSource === CURRENT_OXFMT_CONFIG || normalizedSource.includes(CURRENT_FORMATTING_DECLARATION)) {
+  if (normalizedSource === CURRENT_OXFMT_CONFIG) {
     return source;
   }
-  if (!normalizedSource.includes(LEGACY_FORMATTING_DECLARATION)) {
+
+  const maskedSource = maskCommentsAndStrings(normalizedSource);
+  const legacyDeclarationIndex = maskedSource.indexOf(LEGACY_FORMATTING_DECLARATION);
+  if (legacyDeclarationIndex === -1) {
+    if (CURRENT_FORMATTING_DECLARATION_LINE.test(maskedSource)) {
+      return source;
+    }
     throwOwnershipConflict();
   }
 
-  const withoutDeclaration = normalizedSource.replace(LEGACY_FORMATTING_DECLARATION, "");
-  if (hasOwnedFormattingProperty(withoutDeclaration) || REMOVED_FORMATTING_BINDING_REFERENCE.test(withoutDeclaration)) {
+  const withoutDeclaration =
+    normalizedSource.slice(0, legacyDeclarationIndex) + normalizedSource.slice(legacyDeclarationIndex + LEGACY_FORMATTING_DECLARATION.length);
+  if (
+    hasOwnedFormattingProperty(withoutDeclaration) ||
+    REMOVED_FORMATTING_BINDING_REFERENCE.test(maskCommentsAndStrings(withoutDeclaration))
+  ) {
     throwOwnershipConflict();
   }
 
-  const migratedSource = normalizedSource.replace(LEGACY_FORMATTING_DECLARATION, CURRENT_FORMATTING_DECLARATION);
+  const migratedSource =
+    normalizedSource.slice(0, legacyDeclarationIndex) +
+    CURRENT_FORMATTING_DECLARATION +
+    normalizedSource.slice(legacyDeclarationIndex + LEGACY_FORMATTING_DECLARATION.length);
   if (source.includes("\r\n") && !source.replaceAll("\r\n", "").includes("\n")) {
     return migratedSource.replaceAll("\n", "\r\n");
   }
@@ -187,6 +202,40 @@ function readTopLevelProperties(source: string, objectStart: number) {
   }
 
   return throwOwnershipConflict();
+}
+
+function maskCommentsAndStrings(source: string) {
+  const masked = source.split("");
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"' || character === "'" || character === "`") {
+      const end = skipQuoted(source, index, character);
+      maskRange(masked, source, index, end);
+      index = end;
+      continue;
+    }
+    if (character === "/" && source[index + 1] === "/") {
+      const end = skipLineComment(source, index);
+      maskRange(masked, source, index, end);
+      index = end;
+      continue;
+    }
+    if (character === "/" && source[index + 1] === "*") {
+      const end = skipBlockComment(source, index);
+      maskRange(masked, source, index, end);
+      index = end;
+    }
+  }
+  return masked.join("");
+}
+
+function maskRange(masked: string[], source: string, start: number, end: number) {
+  const finalIndex = Math.min(end, source.length - 1);
+  for (let index = start; index <= finalIndex; index += 1) {
+    if (source[index] !== "\n" && source[index] !== "\r") {
+      masked[index] = " ";
+    }
+  }
 }
 
 function skipQuoted(source: string, start: number, quote: string) {
