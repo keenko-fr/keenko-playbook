@@ -101,7 +101,10 @@ function migrateOxfmtOwnership(source: string) {
   }
 
   const migratedSource = normalizedSource.replace(LEGACY_FORMATTING_DECLARATION, CURRENT_FORMATTING_DECLARATION);
-  return source.includes("\r\n") && !source.replaceAll("\r\n", "").includes("\n") ? migratedSource.replaceAll("\n", "\r\n") : migratedSource;
+  if (source.includes("\r\n") && !source.replaceAll("\r\n", "").includes("\n")) {
+    return migratedSource.replaceAll("\n", "\r\n");
+  }
+  return migratedSource;
 }
 
 function normalizeLineEndings(source: string) {
