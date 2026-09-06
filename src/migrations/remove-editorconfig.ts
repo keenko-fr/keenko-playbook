@@ -35,6 +35,7 @@ const DEFINE_CONFIG_OBJECT = new RegExp(
   "u"
 );
 const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\b/u;
+const REGULAR_EXPRESSION_PREFIX_KEYWORD = /^(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/u;
 const LEGACY_OXFMT_CONFIG = `import { defineConfig } from "oxfmt";
 import ultracite from "ultracite/oxfmt";
 
@@ -287,6 +288,12 @@ function scanTemplateExpression(masked: string[], source: string, start: number)
       index = end;
       continue;
     }
+    if (character === "/" && slashStartsRegularExpression(source, index, start)) {
+      const end = skipRegularExpression(source, index);
+      maskRange(masked, source, index, end);
+      index = end;
+      continue;
+    }
     if (character === "{") {
       depth += 1;
       continue;
@@ -300,6 +307,68 @@ function scanTemplateExpression(masked: string[], source: string, start: number)
     }
   }
   return source.length;
+}
+
+function slashStartsRegularExpression(source: string, slashIndex: number, expressionStart: number) {
+  let previousIndex = slashIndex - 1;
+  while (previousIndex >= expressionStart && /\s/u.test(source[previousIndex] ?? "")) {
+    previousIndex -= 1;
+  }
+  if (previousIndex < expressionStart) {
+    return true;
+  }
+
+  const previous = source[previousIndex] ?? "";
+  if (/[A-Za-z0-9_$]/u.test(previous)) {
+    let tokenStart = previousIndex;
+    while (tokenStart > expressionStart && /[A-Za-z0-9_$]/u.test(source[tokenStart - 1] ?? "")) {
+      tokenStart -= 1;
+    }
+    return REGULAR_EXPRESSION_PREFIX_KEYWORD.test(source.slice(tokenStart, previousIndex + 1));
+  }
+  if (previous === '"' || previous === "'" || previous === "`" || previous === ")" || previous === "]" || previous === ".") {
+    return false;
+  }
+  if (previous === "}") {
+    return throwOwnershipConflict();
+  }
+  if ((previous === "+" || previous === "-") && source[previousIndex - 1] === previous) {
+    return false;
+  }
+  if ("([{,;:?=!*%&|^~<>+-".includes(previous)) {
+    return true;
+  }
+  return throwOwnershipConflict();
+}
+
+function skipRegularExpression(source: string, start: number) {
+  let inCharacterClass = false;
+  for (let index = start + 1; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "\\") {
+      index += 1;
+      continue;
+    }
+    if (character === "\n" || character === "\r") {
+      return throwOwnershipConflict();
+    }
+    if (character === "[") {
+      inCharacterClass = true;
+      continue;
+    }
+    if (character === "]" && inCharacterClass) {
+      inCharacterClass = false;
+      continue;
+    }
+    if (character === "/" && !inCharacterClass) {
+      let end = index;
+      while (/[A-Za-z]/u.test(source[end + 1] ?? "")) {
+        end += 1;
+      }
+      return end;
+    }
+  }
+  return throwOwnershipConflict();
 }
 
 function maskRange(masked: string[], source: string, start: number, end: number) {
