@@ -376,7 +376,15 @@ function identifierAllowsRegularExpression(source: string, previousIndex: number
   while (tokenStart > expressionStart && /[A-Za-z0-9_$]/u.test(source[tokenStart - 1] ?? "")) {
     tokenStart -= 1;
   }
-  return REGULAR_EXPRESSION_PREFIX_KEYWORD.test(source.slice(tokenStart, previousIndex + 1));
+  if (!REGULAR_EXPRESSION_PREFIX_KEYWORD.test(source.slice(tokenStart, previousIndex + 1))) {
+    return false;
+  }
+
+  let contextIndex = tokenStart - 1;
+  while (contextIndex >= expressionStart && /\s/u.test(source[contextIndex] ?? "")) {
+    contextIndex -= 1;
+  }
+  return contextIndex < expressionStart || source[contextIndex] !== ".";
 }
 
 function skipRegularExpression(source: string, start: number) {
