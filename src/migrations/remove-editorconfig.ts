@@ -61,8 +61,9 @@ export default defineConfig({
 export default function removeEditorConfig(tree: Tree) {
   const editorConfig = tree.read(".editorconfig", "utf-8");
   const oxfmtConfig = tree.read("oxfmt.config.ts", "utf-8");
+  const normalizedEditorConfig = editorConfig === null ? null : normalizeLineEndings(editorConfig);
 
-  if (editorConfig !== null && editorConfig !== LEGACY_EDITORCONFIG) {
+  if (normalizedEditorConfig !== null && normalizedEditorConfig !== LEGACY_EDITORCONFIG) {
     throw new Error(
       "Keenko-owned .editorconfig was customized. Reconcile or remove that project-owned file manually, then rerun the Keenko migration."
     );
@@ -77,27 +78,34 @@ export default function removeEditorConfig(tree: Tree) {
   if (migratedOxfmtConfig !== oxfmtConfig) {
     tree.write("oxfmt.config.ts", migratedOxfmtConfig);
   }
-  if (editorConfig === LEGACY_EDITORCONFIG) {
+  if (normalizedEditorConfig === LEGACY_EDITORCONFIG) {
     tree.delete(".editorconfig");
   }
 }
 
 function migrateOxfmtOwnership(source: string) {
-  if (source === LEGACY_OXFMT_CONFIG) {
+  const normalizedSource = normalizeLineEndings(source);
+  if (normalizedSource === LEGACY_OXFMT_CONFIG) {
     return CURRENT_OXFMT_CONFIG;
   }
-  if (source === CURRENT_OXFMT_CONFIG || source.includes(CURRENT_FORMATTING_DECLARATION)) {
+  if (normalizedSource === CURRENT_OXFMT_CONFIG || normalizedSource.includes(CURRENT_FORMATTING_DECLARATION)) {
     return source;
   }
-  if (!source.includes(LEGACY_FORMATTING_DECLARATION)) {
+  if (!normalizedSource.includes(LEGACY_FORMATTING_DECLARATION)) {
     throwOwnershipConflict();
   }
 
-  const withoutDeclaration = source.replace(LEGACY_FORMATTING_DECLARATION, "");
+  const withoutDeclaration = normalizedSource.replace(LEGACY_FORMATTING_DECLARATION, "");
   if (OWNED_FORMATTING_OVERRIDE.test(withoutDeclaration) || REMOVED_FORMATTING_BINDING_REFERENCE.test(withoutDeclaration)) {
     throwOwnershipConflict();
   }
-  return source.replace(LEGACY_FORMATTING_DECLARATION, CURRENT_FORMATTING_DECLARATION);
+
+  const migratedSource = normalizedSource.replace(LEGACY_FORMATTING_DECLARATION, CURRENT_FORMATTING_DECLARATION);
+  return source.includes("\r\n") && !source.replaceAll("\r\n", "").includes("\n") ? migratedSource.replaceAll("\n", "\r\n") : migratedSource;
+}
+
+function normalizeLineEndings(source: string) {
+  return source.replace(/\r\n?/gu, "\n");
 }
 
 function throwOwnershipConflict(): never {

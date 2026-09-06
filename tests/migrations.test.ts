@@ -58,6 +58,23 @@ describe("Keenko migrations", () => {
     expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(oxfmt);
   });
 
+  test("migrates the exact 0.2 formatter baseline with CRLF line endings", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "crlf_migration" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG.replaceAll("\n", "\r\n"));
+    tree.write("oxfmt.config.ts", LEGACY_OXFMT_CONFIG.replaceAll("\n", "\r\n"));
+
+    removeEditorConfig(tree);
+
+    expect(tree.exists(".editorconfig")).toBe(false);
+    const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+    expect(oxfmt).toContain("...ultracite");
+    expect(oxfmt).toContain("...(ultracite.ignorePatterns ?? [])");
+    expect(oxfmt).not.toContain("endOfLine: _endOfLine");
+    expect(oxfmt).not.toContain("tabWidth: _tabWidth");
+    expect(oxfmt).not.toContain("useTabs: _useTabs");
+  });
+
   test("rejects a customized editor config instead of deleting it", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom_editor" });
