@@ -16,11 +16,15 @@ const CURRENT_FORMATTING_DECLARATION = `const formatting = ultracite;
 
 `;
 const TRIVIA_PATTERN = String.raw`(?:\s|//[^\n]*(?:\n|$)|/\*[\s\S]*?\*/)*`;
+const OWNED_FORMATTING_FIELD = String.raw`(?:endOfLine|tabWidth|useTabs)`;
 const OWNED_FORMATTING_PROPERTY = new RegExp(
-  String.raw`^${TRIVIA_PATTERN}(?:(?:get|set|async)\s+)?(?:(?:endOfLine|tabWidth|useTabs)\b|["'](?:endOfLine|tabWidth|useTabs)["']\s*:|\[\s*["'\`](?:endOfLine|tabWidth|useTabs)["'\`]\s*\]\s*:)`,
+  String.raw`^${TRIVIA_PATTERN}(?:${OWNED_FORMATTING_FIELD}\b${TRIVIA_PATTERN}(?::|\(|$)|["']${OWNED_FORMATTING_FIELD}["']${TRIVIA_PATTERN}(?::|\()|\[${TRIVIA_PATTERN}["'\`]${OWNED_FORMATTING_FIELD}["'\`]${TRIVIA_PATTERN}\]${TRIVIA_PATTERN}(?::|\())`,
   "u"
 );
-const DEFINE_CONFIG_OBJECT = new RegExp(String.raw`\bdefineConfig${TRIVIA_PATTERN}\(${TRIVIA_PATTERN}\{`, "u");
+const DEFINE_CONFIG_OBJECT = new RegExp(
+  String.raw`\bexport${TRIVIA_PATTERN}default${TRIVIA_PATTERN}defineConfig${TRIVIA_PATTERN}\(${TRIVIA_PATTERN}\{`,
+  "u"
+);
 const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\b/u;
 const LEGACY_OXFMT_CONFIG = `import { defineConfig } from "oxfmt";
 import ultracite from "ultracite/oxfmt";
