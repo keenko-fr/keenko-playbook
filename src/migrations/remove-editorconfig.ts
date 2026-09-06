@@ -124,7 +124,7 @@ function migrateOxfmtOwnership(source: string) {
     normalizedSource.slice(legacyDeclarationIndex + LEGACY_FORMATTING_DECLARATION.length);
   if (
     hasOwnedFormattingProperty(withoutDeclaration) ||
-    REMOVED_FORMATTING_BINDING_REFERENCE.test(maskCommentsAndStrings(withoutDeclaration))
+    REMOVED_FORMATTING_BINDING_REFERENCE.test(maskCommentsAndStrings(withoutDeclaration, true))
   ) {
     throwOwnershipConflict();
   }
@@ -205,13 +205,21 @@ function readTopLevelProperties(source: string, objectStart: number) {
   return throwOwnershipConflict();
 }
 
-function maskCommentsAndStrings(source: string) {
+function maskCommentsAndStrings(source: string, scanTemplateExpressions = false) {
   const masked = Array.from({ length: source.length }, (_, index) => source.charAt(index));
   for (let index = 0; index < source.length; index += 1) {
     const character = source[index];
-    if (character === '"' || character === "'" || character === "`") {
+    if (character === '"' || character === "'") {
       const end = skipQuoted(source, index, character);
       maskRange(masked, source, index, end);
+      index = end;
+      continue;
+    }
+    if (character === "`") {
+      const end = scanTemplateExpressions ? maskTemplateLiteral(masked, source, index) : skipQuoted(source, index, character);
+      if (!scanTemplateExpressions) {
+        maskRange(masked, source, index, end);
+      }
       index = end;
       continue;
     }
@@ -228,6 +236,70 @@ function maskCommentsAndStrings(source: string) {
     }
   }
   return masked.join("");
+}
+
+function maskTemplateLiteral(masked: string[], source: string, start: number) {
+  maskRange(masked, source, start, start);
+  for (let index = start + 1; index < source.length; index += 1) {
+    if (source[index] === "\\") {
+      const escapeEnd = Math.min(index + 1, source.length - 1);
+      maskRange(masked, source, index, escapeEnd);
+      index = escapeEnd;
+      continue;
+    }
+    if (source[index] === "`") {
+      maskRange(masked, source, index, index);
+      return index;
+    }
+    if (source[index] === "$" && source[index + 1] === "{") {
+      maskRange(masked, source, index, index + 1);
+      index = scanTemplateExpression(masked, source, index + 2);
+      continue;
+    }
+    maskRange(masked, source, index, index);
+  }
+  return source.length;
+}
+
+function scanTemplateExpression(masked: string[], source: string, start: number) {
+  let depth = 1;
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"' || character === "'") {
+      const end = skipQuoted(source, index, character);
+      maskRange(masked, source, index, end);
+      index = end;
+      continue;
+    }
+    if (character === "`") {
+      index = maskTemplateLiteral(masked, source, index);
+      continue;
+    }
+    if (character === "/" && source[index + 1] === "/") {
+      const end = skipLineComment(source, index);
+      maskRange(masked, source, index, end);
+      index = end;
+      continue;
+    }
+    if (character === "/" && source[index + 1] === "*") {
+      const end = skipBlockComment(source, index);
+      maskRange(masked, source, index, end);
+      index = end;
+      continue;
+    }
+    if (character === "{") {
+      depth += 1;
+      continue;
+    }
+    if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        maskRange(masked, source, index, index);
+        return index;
+      }
+    }
+  }
+  return source.length;
 }
 
 function maskRange(masked: string[], source: string, start: number, end: number) {
