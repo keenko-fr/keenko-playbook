@@ -37,7 +37,8 @@ const DEFINE_CONFIG_OBJECT = new RegExp(
 const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\b/u;
 const REGULAR_EXPRESSION_PREFIX_KEYWORD = /^(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/u;
 const FOR_HEADER = /(?:^|[^\w$.#])for(?:\s+await)?\s*$/u;
-const FOR_OF_BINDING = /^(?:(?:(?:const|let|var)\s+)?(?:[A-Za-z_$][A-Za-z0-9_$]*|\[[\s\S]*\]|\{[\s\S]*\})|(?:await\s+)?using\s+[A-Za-z_$][A-Za-z0-9_$]*)\s*$/u;
+const FOR_OF_BINDING =
+  /^(?:(?:(?:const|let|var)\s+)?(?:[A-Za-z_$][A-Za-z0-9_$]*|\[[\s\S]*\]|\{[\s\S]*\})|(?:await\s+)?using\s+[A-Za-z_$][A-Za-z0-9_$]*)\s*$/u;
 const LEGACY_OXFMT_CONFIG = `import { defineConfig } from "oxfmt";
 import ultracite from "ultracite/oxfmt";
 
