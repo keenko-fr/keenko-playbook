@@ -316,6 +316,30 @@ describe("Keenko migrations", () => {
     expect(oxfmt).toContain("const formatting = ultracite;");
   });
 
+  test("preserves regex literals after contextual of with using for-of bindings", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "using_for_of_regex_text" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const loops = [
+      'for (using ignored of /project-_tabWidth-cache/.test("") ? resources : resources) { void ignored; }',
+      'for (await using ignored of /project-_tabWidth-cache/.test("") ? resources : resources) { void ignored; }',
+    ];
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      'import ultracite from "ultracite/oxfmt";\n',
+      `import ultracite from "ultracite/oxfmt";\n\nconst resources = [];\n${loops.join("\n")}\n`
+    );
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    removeEditorConfig(tree);
+
+    expect(tree.exists(".editorconfig")).toBe(false);
+    const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+    for (const loop of loops) {
+      expect(oxfmt).toContain(loop);
+    }
+    expect(oxfmt).toContain("const formatting = ultracite;");
+  });
+
   test("rejects a removed formatter binding inside a template interpolation", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "template_binding_reference" });
