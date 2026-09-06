@@ -120,6 +120,40 @@ describe("Keenko migrations", () => {
     expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
   });
 
+  test("rejects shorthand formatter ownership before a formatting spread", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "shorthand_conflict" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      'import ultracite from "ultracite/oxfmt";\n',
+      'import ultracite from "ultracite/oxfmt";\n\nconst tabWidth = 4;\n'
+    ).replace("export default defineConfig({\n  ...formatting,", "export default defineConfig({\n  tabWidth,\n  ...formatting,");
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    expect(() => {
+      removeEditorConfig(tree);
+    }).toThrow("formatter ownership fields");
+    expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
+    expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
+  });
+
+  test("rejects a static computed formatter ownership property", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "computed_conflict" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      "export default defineConfig({\n  ...formatting,",
+      'export default defineConfig({\n  ["useTabs"]: false,\n  ...formatting,'
+    );
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    expect(() => {
+      removeEditorConfig(tree);
+    }).toThrow("formatter ownership fields");
+    expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
+    expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
+  });
+
   test("rejects a reference to a removed formatter binding before mutating formatter state", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "binding_reference" });
