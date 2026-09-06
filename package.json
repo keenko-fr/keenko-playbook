@@ -59,7 +59,7 @@
   },
   "scripts": {
     "format": "oxfmt .",
-    "format:check": "oxfmt . && git diff --exit-code",
+    "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "typecheck": "tsc --noEmit",
