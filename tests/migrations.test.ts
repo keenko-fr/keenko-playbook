@@ -262,6 +262,24 @@ describe("Keenko migrations", () => {
     expect(oxfmt).toContain("const formatting = ultracite;");
   });
 
+  test("preserves removed formatter binding text inside a regex literal", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "binding_regex_text" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      'import ultracite from "ultracite/oxfmt";\n',
+      'import ultracite from "ultracite/oxfmt";\n\nconst ignoredName = /project-_tabWidth-cache/;\n'
+    );
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    removeEditorConfig(tree);
+
+    expect(tree.exists(".editorconfig")).toBe(false);
+    const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+    expect(oxfmt).toContain("const ignoredName = /project-_tabWidth-cache/;");
+    expect(oxfmt).toContain("const formatting = ultracite;");
+  });
+
   test("rejects a removed formatter binding inside a template interpolation", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "template_binding_reference" });
