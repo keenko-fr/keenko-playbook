@@ -374,7 +374,7 @@ describe("Keenko migrations", () => {
     tree.write(".editorconfig", LEGACY_EDITORCONFIG);
     const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
       "export default defineConfig({\n",
-      "const of = 8;\nconst customWidth = of / _tabWidth / 2;\n\nexport default defineConfig({\n"
+      "const of = 8;\nfor (let value = of / _tabWidth / 2; value < 10; value += 1) { void value; }\n\nexport default defineConfig({\n"
     );
     tree.write("oxfmt.config.ts", customizedOxfmt);
 
