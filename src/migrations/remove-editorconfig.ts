@@ -37,6 +37,7 @@ const DEFINE_CONFIG_OBJECT = new RegExp(
 const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\b/u;
 const REGULAR_EXPRESSION_PREFIX_KEYWORD = /^(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/u;
 const FOR_HEADER = /(?:^|[^\w$.#])for(?:\s+await)?\s*$/u;
+const FOR_OF_BINDING = /^(?:(?:const|let|var)\s+[A-Za-z_$][A-Za-z0-9_$]*|[A-Za-z_$][A-Za-z0-9_$]*)\s*$/u;
 const LEGACY_OXFMT_CONFIG = `import { defineConfig } from "oxfmt";
 import ultracite from "ultracite/oxfmt";
 
@@ -394,50 +395,28 @@ function identifierAllowsRegularExpression(source: string, previousIndex: number
 
 function isForOfKeyword(source: string, tokenStart: number, expressionStart: number) {
   const prefix = maskCommentsAndStrings(source.slice(expressionStart, tokenStart));
-  let parentheses = 0;
-  let brackets = 0;
-  let braces = 0;
+  let depth = 0;
 
   for (let index = prefix.length - 1; index >= 0; index -= 1) {
     const character = prefix[index] ?? "";
     if (/\s/u.test(character)) {
       continue;
     }
-    if (character === ")") {
-      parentheses += 1;
+    if (")]}`".includes(character)) {
+      depth += 1;
       continue;
     }
-    if (character === "]") {
-      brackets += 1;
+    if (!"([{".includes(character)) {
       continue;
     }
-    if (character === "}") {
-      braces += 1;
+    if (depth > 0) {
+      depth -= 1;
       continue;
     }
-    if (character === "(") {
-      if (parentheses > 0) {
-        parentheses -= 1;
-        continue;
-      }
-      if (brackets !== 0 || braces !== 0) {
-        return false;
-      }
-      return FOR_HEADER.test(prefix.slice(0, index));
+    if (character !== "(") {
+      return false;
     }
-    if (character === "[") {
-      if (brackets === 0) {
-        return false;
-      }
-      brackets -= 1;
-      continue;
-    }
-    if (character === "{") {
-      if (braces === 0) {
-        return false;
-      }
-      braces -= 1;
-    }
+    return FOR_HEADER.test(prefix.slice(0, index)) && FOR_OF_BINDING.test(prefix.slice(index + 1));
   }
   return false;
 }
