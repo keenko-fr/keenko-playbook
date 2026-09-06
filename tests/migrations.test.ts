@@ -171,6 +171,26 @@ describe("Keenko migrations", () => {
     expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
   });
 
+  test("rejects an unproven spread between repeated formatting spreads", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "repeated_spread_conflict" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      'import ultracite from "ultracite/oxfmt";\n',
+      'import ultracite from "ultracite/oxfmt";\n\nconst overrides = { tabWidth: 4 };\n'
+    ).replace(
+      "export default defineConfig({\n  ...formatting,",
+      "export default defineConfig({\n  ...formatting,\n  ...overrides,\n  ...formatting,"
+    );
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    expect(() => {
+      removeEditorConfig(tree);
+    }).toThrow("formatter ownership fields");
+    expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
+    expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
+  });
+
   test("rejects a reference to a removed formatter binding before mutating formatter state", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "binding_reference" });
