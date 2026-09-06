@@ -16,6 +16,7 @@ const CURRENT_FORMATTING_DECLARATION = `const formatting = ultracite;
 
 `;
 const OWNED_FORMATTING_OVERRIDE = /^\s*(?:endOfLine|tabWidth|useTabs)\s*:/mu;
+const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\b/u;
 const LEGACY_OXFMT_CONFIG = `import { defineConfig } from "oxfmt";
 import ultracite from "ultracite/oxfmt";
 
@@ -93,7 +94,7 @@ function migrateOxfmtOwnership(source: string) {
   }
 
   const withoutDeclaration = source.replace(LEGACY_FORMATTING_DECLARATION, "");
-  if (OWNED_FORMATTING_OVERRIDE.test(withoutDeclaration)) {
+  if (OWNED_FORMATTING_OVERRIDE.test(withoutDeclaration) || REMOVED_FORMATTING_BINDING_REFERENCE.test(withoutDeclaration)) {
     throwOwnershipConflict();
   }
   return source.replace(LEGACY_FORMATTING_DECLARATION, CURRENT_FORMATTING_DECLARATION);
