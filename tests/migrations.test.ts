@@ -280,6 +280,24 @@ describe("Keenko migrations", () => {
     expect(oxfmt).toContain("const formatting = ultracite;");
   });
 
+  test("preserves a regex literal after contextual of in a for-of header", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "for_of_regex_text" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      'import ultracite from "ultracite/oxfmt";\n',
+      'import ultracite from "ultracite/oxfmt";\n\nfor (const ignored of /project-_tabWidth-cache/.source) { void ignored; }\n'
+    );
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    removeEditorConfig(tree);
+
+    expect(tree.exists(".editorconfig")).toBe(false);
+    const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+    expect(oxfmt).toContain("for (const ignored of /project-_tabWidth-cache/.source) { void ignored; }");
+    expect(oxfmt).toContain("const formatting = ultracite;");
+  });
+
   test("rejects a removed formatter binding inside a template interpolation", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "template_binding_reference" });
@@ -340,6 +358,23 @@ describe("Keenko migrations", () => {
     const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
       "export default defineConfig({\n",
       "const custom = { in: 8 };\nconst customWidth = custom.in / _tabWidth / 2;\n\nexport default defineConfig({\n"
+    );
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    expect(() => {
+      removeEditorConfig(tree);
+    }).toThrow("formatter ownership fields");
+    expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
+    expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
+  });
+
+  test("does not treat an ordinary identifier named of as the for-of keyword", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "of_identifier_binding_reference" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      "export default defineConfig({\n",
+      "const of = 8;\nconst customWidth = of / _tabWidth / 2;\n\nexport default defineConfig({\n"
     );
     tree.write("oxfmt.config.ts", customizedOxfmt);
 
