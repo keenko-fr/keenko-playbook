@@ -1,4 +1,4 @@
-import { generateFiles, installPackagesTask, joinPathFragments, readJsonFile, type Tree, updateJson, writeJson } from "@nx/devkit";
+import { generateFiles, installPackagesTask, readJsonFile, type Tree, updateJson, writeJson } from "@nx/devkit";
 import { createApp, createMemoryEnvironment, finalizeAddOns, getFrameworkById, populateAddOnOptionsDefaults } from "@tanstack/create";
 import path from "node:path";
 
@@ -110,7 +110,7 @@ function materializeKeenkoFiles(tree: Tree, projectName: string) {
       `          { onlyDependOnLibsWithTags: ${JSON.stringify(onlyDependOnLibsWithTags)}, sourceTag: ${JSON.stringify(sourceTag)} },`
   ).join("\n");
 
-  generateFiles(tree, joinPathFragments(import.meta.dirname, "files"), ".", {
+  generateFiles(tree, path.join(import.meta.dirname, "files"), ".", {
     boundaryConstraints,
     bunVersion: versions.bun,
     projectName,
