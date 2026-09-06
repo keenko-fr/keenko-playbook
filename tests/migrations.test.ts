@@ -69,15 +69,36 @@ describe("Keenko migrations", () => {
     expect(tree.exists(".editorconfig")).toBe(true);
   });
 
-  test("rejects a customized Oxfmt config before deleting the known editor config", async () => {
+  test("preserves unrelated Oxfmt customization while restoring formatter ownership", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "custom_oxfmt" });
     tree.write(".editorconfig", LEGACY_EDITORCONFIG);
-    tree.write("oxfmt.config.ts", `${LEGACY_OXFMT_CONFIG}\n// project-owned formatter change\n`);
+    tree.write(
+      "oxfmt.config.ts",
+      LEGACY_OXFMT_CONFIG.replace('    ".keenko/**",', '    ".keenko/**",\n    "project-cache/**",')
+    );
+
+    removeEditorConfig(tree);
+
+    expect(tree.exists(".editorconfig")).toBe(false);
+    const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+    expect(oxfmt).toContain('    "project-cache/**",');
+    expect(oxfmt).toContain("...ultracite");
+    expect(oxfmt).toContain("...(ultracite.ignorePatterns ?? [])");
+  });
+
+  test("rejects an overlapping formatter ownership customization before deleting the known editor config", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "conflicting_oxfmt" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    tree.write(
+      "oxfmt.config.ts",
+      LEGACY_OXFMT_CONFIG.replace("export default defineConfig({\n", "export default defineConfig({\n  tabWidth: 4,\n")
+    );
 
     expect(() => {
       removeEditorConfig(tree);
-    }).toThrow("oxfmt.config.ts was customized");
+    }).toThrow("formatter ownership fields");
     expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
   });
 });
