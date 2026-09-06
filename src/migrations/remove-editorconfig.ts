@@ -206,10 +206,7 @@ function readTopLevelProperties(source: string, objectStart: number) {
 }
 
 function maskCommentsAndStrings(source: string) {
-  const masked: string[] = [];
-  for (let index = 0; index < source.length; index += 1) {
-    masked.push(source[index]);
-  }
+  const masked = Array.from({ length: source.length }, (_, index) => source.charAt(index));
   for (let index = 0; index < source.length; index += 1) {
     const character = source[index];
     if (character === '"' || character === "'" || character === "`") {
