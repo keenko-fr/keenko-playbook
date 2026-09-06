@@ -15,7 +15,12 @@ const LEGACY_FORMATTING_DECLARATION = `const { endOfLine: _endOfLine, tabWidth: 
 const CURRENT_FORMATTING_DECLARATION = `const formatting = ultracite;
 
 `;
-const OWNED_FORMATTING_FIELDS = new Set(["endOfLine", "tabWidth", "useTabs"]);
+const TRIVIA_PATTERN = String.raw`(?:\s|//[^\n]*(?:\n|$)|/\*[\s\S]*?\*/)*`;
+const OWNED_FORMATTING_PROPERTY = new RegExp(
+  String.raw`^${TRIVIA_PATTERN}(?:(?:get|set|async)\s+)?(?:(?:endOfLine|tabWidth|useTabs)\b|["'](?:endOfLine|tabWidth|useTabs)["']\s*:|\[\s*["'\`](?:endOfLine|tabWidth|useTabs)["'\`]\s*\]\s*:)`,
+  "u"
+);
+const DEFINE_CONFIG_OBJECT = new RegExp(String.raw`\bdefineConfig${TRIVIA_PATTERN}\(${TRIVIA_PATTERN}\{`, "u");
 const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\b/u;
 const LEGACY_OXFMT_CONFIG = `import { defineConfig } from "oxfmt";
 import ultracite from "ultracite/oxfmt";
@@ -108,178 +113,52 @@ function migrateOxfmtOwnership(source: string) {
 }
 
 function hasOwnedFormattingProperty(source: string) {
-  const objectStart = findDefineConfigObjectStart(source);
-  return readTopLevelProperties(source, objectStart).some((property) => {
-    const propertyName = readStaticPropertyName(property);
-    return propertyName !== null && OWNED_FORMATTING_FIELDS.has(propertyName);
-  });
-}
-
-function findDefineConfigObjectStart(source: string) {
-  let searchFrom = 0;
-  while (searchFrom < source.length) {
-    const defineConfigIndex = source.indexOf("defineConfig", searchFrom);
-    if (defineConfigIndex === -1) {
-      break;
-    }
-    let cursor = skipTrivia(source, defineConfigIndex + "defineConfig".length);
-    if (source[cursor] === "(") {
-      cursor = skipTrivia(source, cursor + 1);
-      if (source[cursor] === "{") {
-        return cursor;
-      }
-    }
-    searchFrom = defineConfigIndex + "defineConfig".length;
+  const objectMatch = DEFINE_CONFIG_OBJECT.exec(source);
+  if (objectMatch?.index === undefined) {
+    throwOwnershipConflict();
   }
-  throwOwnershipConflict();
+  const objectStart = objectMatch.index + objectMatch[0].lastIndexOf("{");
+  return readTopLevelProperties(source, objectStart).some((property) => OWNED_FORMATTING_PROPERTY.test(property));
 }
 
 function readTopLevelProperties(source: string, objectStart: number) {
   const properties: string[] = [];
   let propertyStart = objectStart + 1;
-  let braceDepth = 1;
-  let bracketDepth = 0;
-  let parenthesisDepth = 0;
+  let depth = 1;
 
   for (let index = objectStart + 1; index < source.length; index += 1) {
     const character = source[index];
-    const nextCharacter = source[index + 1];
     if (character === '"' || character === "'" || character === "`") {
       index = skipQuoted(source, index, character);
       continue;
     }
-    if (character === "/" && nextCharacter === "/") {
+    if (character === "/" && source[index + 1] === "/") {
       index = skipLineComment(source, index);
       continue;
     }
-    if (character === "/" && nextCharacter === "*") {
+    if (character === "/" && source[index + 1] === "*") {
       index = skipBlockComment(source, index);
       continue;
     }
-    if (character === "{") {
-      braceDepth += 1;
+    if (character === "{" || character === "[" || character === "(") {
+      depth += 1;
       continue;
     }
-    if (character === "}") {
-      braceDepth -= 1;
-      if (braceDepth === 0) {
+    if (character === "}" || character === "]" || character === ")") {
+      depth -= 1;
+      if (depth === 0) {
         properties.push(source.slice(propertyStart, index));
         return properties;
       }
       continue;
     }
-    if (character === "[") {
-      bracketDepth += 1;
-      continue;
-    }
-    if (character === "]") {
-      bracketDepth -= 1;
-      continue;
-    }
-    if (character === "(") {
-      parenthesisDepth += 1;
-      continue;
-    }
-    if (character === ")") {
-      parenthesisDepth -= 1;
-      continue;
-    }
-    if (character === "," && braceDepth === 1 && bracketDepth === 0 && parenthesisDepth === 0) {
+    if (character === "," && depth === 1) {
       properties.push(source.slice(propertyStart, index));
       propertyStart = index + 1;
     }
   }
 
   throwOwnershipConflict();
-}
-
-function readStaticPropertyName(property: string) {
-  let cursor = skipTrivia(property, 0);
-  if (property.startsWith("...", cursor)) {
-    return null;
-  }
-
-  const firstCharacter = property[cursor];
-  if (firstCharacter === '"' || firstCharacter === "'" || firstCharacter === "`") {
-    return readQuotedLiteral(property, cursor)?.value ?? null;
-  }
-  if (firstCharacter === "[") {
-    cursor = skipTrivia(property, cursor + 1);
-    const quotedProperty = readQuotedLiteral(property, cursor);
-    if (quotedProperty === null) {
-      return null;
-    }
-    cursor = skipTrivia(property, quotedProperty.end);
-    return property[cursor] === "]" ? quotedProperty.value : null;
-  }
-
-  const identifier = readIdentifier(property, cursor);
-  if (identifier === null) {
-    return null;
-  }
-  if (OWNED_FORMATTING_FIELDS.has(identifier.value)) {
-    return identifier.value;
-  }
-  if (identifier.value !== "get" && identifier.value !== "set" && identifier.value !== "async") {
-    return null;
-  }
-
-  cursor = skipTrivia(property, identifier.end);
-  if (property[cursor] === ":") {
-    return null;
-  }
-  return readIdentifier(property, cursor)?.value ?? null;
-}
-
-function readIdentifier(source: string, start: number) {
-  const match = /^[A-Za-z_$][A-Za-z0-9_$]*/u.exec(source.slice(start));
-  if (match === null) {
-    return null;
-  }
-  return { end: start + match[0].length, value: match[0] };
-}
-
-function readQuotedLiteral(source: string, start: number) {
-  const quote = source[start];
-  if (quote !== '"' && quote !== "'" && quote !== "`") {
-    return null;
-  }
-
-  let value = "";
-  for (let index = start + 1; index < source.length; index += 1) {
-    const character = source[index];
-    if (character === "\\") {
-      return null;
-    }
-    if (quote === "`" && character === "$" && source[index + 1] === "{") {
-      return null;
-    }
-    if (character === quote) {
-      return { end: index + 1, value };
-    }
-    value += character;
-  }
-  return null;
-}
-
-function skipTrivia(source: string, start: number) {
-  let cursor = start;
-  while (cursor < source.length) {
-    if (/\s/u.test(source[cursor] ?? "")) {
-      cursor += 1;
-      continue;
-    }
-    if (source[cursor] === "/" && source[cursor + 1] === "/") {
-      cursor = skipLineComment(source, cursor) + 1;
-      continue;
-    }
-    if (source[cursor] === "/" && source[cursor + 1] === "*") {
-      cursor = skipBlockComment(source, cursor) + 1;
-      continue;
-    }
-    break;
-  }
-  return cursor;
 }
 
 function skipQuoted(source: string, start: number, quote: string) {
