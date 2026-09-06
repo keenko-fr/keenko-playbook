@@ -234,6 +234,12 @@ function maskCommentsAndStrings(source: string, scanTemplateExpressions = false)
       const end = skipBlockComment(source, index);
       maskRange(masked, source, index, end);
       index = end;
+      continue;
+    }
+    if (scanTemplateExpressions && character === "/" && slashStartsRegularExpression(source, index, 0)) {
+      const end = skipRegularExpression(source, index);
+      maskRange(masked, source, index, end);
+      index = end;
     }
   }
   return masked.join("");
