@@ -280,6 +280,24 @@ describe("Keenko migrations", () => {
     expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
   });
 
+  test("rejects a removed formatter binding after a regex literal in a template interpolation", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "template_regex_binding_reference" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      '    ".keenko/**",',
+      `    ".keenko/**",
+    \`cache-\${/}/.test("}") ? _tabWidth : 80}\`,`
+    );
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    expect(() => {
+      removeEditorConfig(tree);
+    }).toThrow("formatter ownership fields");
+    expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
+    expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
+  });
+
   test("rejects a reference to a removed formatter binding before mutating formatter state", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "binding_reference" });
