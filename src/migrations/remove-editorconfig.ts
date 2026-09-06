@@ -133,9 +133,7 @@ function hasOwnedFormattingProperty(source: string) {
   if (formattingSpreadIndex === -1) {
     throwOwnershipConflict();
   }
-  return properties
-    .slice(0, formattingSpreadIndex)
-    .some((property) => SPREAD_PROPERTY.test(property) && !FORMATTING_SPREAD.test(property));
+  return properties.slice(0, formattingSpreadIndex).some((property) => SPREAD_PROPERTY.test(property) && !FORMATTING_SPREAD.test(property));
 }
 
 function readTopLevelProperties(source: string, objectStart: number) {
