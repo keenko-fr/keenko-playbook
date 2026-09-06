@@ -80,8 +80,12 @@ describe("Keenko migrations", () => {
     expect(tree.exists(".editorconfig")).toBe(false);
     const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
     expect(oxfmt).toContain('    "project-cache/**",');
-    expect(oxfmt).toContain("...ultracite");
-    expect(oxfmt).toContain("...(ultracite.ignorePatterns ?? [])");
+    expect(oxfmt).toContain("const formatting = ultracite;");
+    expect(oxfmt).toContain("...formatting");
+    expect(oxfmt).toContain("...(formatting.ignorePatterns ?? [])");
+    expect(oxfmt).not.toContain("endOfLine: _endOfLine");
+    expect(oxfmt).not.toContain("tabWidth: _tabWidth");
+    expect(oxfmt).not.toContain("useTabs: _useTabs");
   });
 
   test("rejects an overlapping formatter ownership customization before deleting the known editor config", async () => {
