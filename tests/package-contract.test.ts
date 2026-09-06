@@ -61,9 +61,13 @@ describe("public package contract", () => {
 
     const versions = await readFile(path.join(ROOT, "src/versions.ts"), "utf-8");
     expect(versions).not.toContain("keenko:");
+    const readme = await readFile(path.join(ROOT, "README.md"), "utf-8");
+    expect(readme).toContain("bun x nx migrate keenko@<target>");
+    expect(readme).not.toContain("bun x nx migrate keenko@0.2.0");
     const generator = await readFile(path.join(ROOT, "src/generators/preset/generator.ts"), "utf-8");
     expect(generator).toContain("generateFiles(");
-    expect(generator).toContain('joinPathFragments(import.meta.dirname, "files")');
+    expect(generator).toContain('path.join(import.meta.dirname, "files")');
+    expect(generator).not.toContain("joinPathFragments");
     expect(generator).toContain("keenko: keenkoVersion()");
     expect(generator).toContain('globalGenerators: ["keenko:sync"]');
     expect(generator).not.toContain("JSON.parse");
