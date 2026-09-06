@@ -154,6 +154,23 @@ describe("Keenko migrations", () => {
     expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
   });
 
+  test("rejects a const-derived computed formatter ownership property", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "computed_identifier_conflict" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      'import ultracite from "ultracite/oxfmt";\n',
+      'import ultracite from "ultracite/oxfmt";\n\nconst field = "tabWidth" as const;\n'
+    ).replace("export default defineConfig({\n  ...formatting,", "export default defineConfig({\n  [field]: 4,\n  ...formatting,");
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    expect(() => {
+      removeEditorConfig(tree);
+    }).toThrow("formatter ownership fields");
+    expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
+    expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
+  });
+
   test("rejects an unproven object spread before formatting ownership changes", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "spread_conflict" });
