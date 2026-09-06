@@ -120,7 +120,8 @@ function migrateOxfmtOwnership(source: string) {
   }
 
   const withoutDeclaration =
-    normalizedSource.slice(0, legacyDeclarationIndex) + normalizedSource.slice(legacyDeclarationIndex + LEGACY_FORMATTING_DECLARATION.length);
+    normalizedSource.slice(0, legacyDeclarationIndex) +
+    normalizedSource.slice(legacyDeclarationIndex + LEGACY_FORMATTING_DECLARATION.length);
   if (
     hasOwnedFormattingProperty(withoutDeclaration) ||
     REMOVED_FORMATTING_BINDING_REFERENCE.test(maskCommentsAndStrings(withoutDeclaration))
