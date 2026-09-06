@@ -18,7 +18,7 @@ const CURRENT_FORMATTING_DECLARATION = `const formatting = ultracite;
 const TRIVIA_PATTERN = String.raw`(?:\s|//[^\n]*(?:\n|$)|/\*[\s\S]*?\*/)*`;
 const OWNED_FORMATTING_FIELD = String.raw`(?:endOfLine|tabWidth|useTabs)`;
 const OWNED_FORMATTING_PROPERTY = new RegExp(
-  String.raw`^${TRIVIA_PATTERN}(?:${OWNED_FORMATTING_FIELD}\b${TRIVIA_PATTERN}(?::|\(|$)|["']${OWNED_FORMATTING_FIELD}["']${TRIVIA_PATTERN}(?::|\()|\[${TRIVIA_PATTERN}["'\`]${OWNED_FORMATTING_FIELD}["'\`]${TRIVIA_PATTERN}\]${TRIVIA_PATTERN}(?::|\())`,
+  String.raw`^${TRIVIA_PATTERN}(?:${OWNED_FORMATTING_FIELD}\b${TRIVIA_PATTERN}(?::|\(|$)|["']${OWNED_FORMATTING_FIELD}["']${TRIVIA_PATTERN}(?::|\()|\[${TRIVIA_PATTERN}["']${OWNED_FORMATTING_FIELD}["']${TRIVIA_PATTERN}\]${TRIVIA_PATTERN}(?::|\())`,
   "u"
 );
 const DEFINE_CONFIG_OBJECT = new RegExp(
