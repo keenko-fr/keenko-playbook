@@ -492,7 +492,7 @@ function readComputedMemberEnd(source: string, start: number) {
       expectedClosers.push("}");
       continue;
     }
-    if (!")] }".replace(" ", "").includes(character)) {
+    if (!")]}".includes(character)) {
       continue;
     }
     if (expectedClosers.at(-1) !== character) {
