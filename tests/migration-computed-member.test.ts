@@ -53,3 +53,22 @@ test("preserves a regex literal after contextual of with a computed member assig
   expect(oxfmt).toContain(loop);
   expect(oxfmt).toContain("const formatting = ultracite;");
 });
+
+test("preserves a regex literal after contextual of with a string-key member assignment target", () => {
+  const tree = createTreeWithEmptyWorkspace();
+  tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+  const loop = 'for (holder["value"] of /project-_tabWidth-cache/.source) { void holder["value"]; }';
+  const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+    'import ultracite from "ultracite/oxfmt";\n',
+    `import ultracite from "ultracite/oxfmt";\n\nconst holder = { value: "" };\n${loop}\n`
+  );
+  tree.write("oxfmt.config.ts", customizedOxfmt);
+
+  removeEditorConfig(tree);
+
+  expect(tree.exists(".editorconfig")).toBe(false);
+  const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+  expect(oxfmt).toContain('const holder = { value: "" };');
+  expect(oxfmt).toContain(loop);
+  expect(oxfmt).toContain("const formatting = ultracite;");
+});
