@@ -38,7 +38,8 @@ const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\
 const REGULAR_EXPRESSION_PREFIX_KEYWORD = /^(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/u;
 const FOR_HEADER = /(?:^|[^\w$.#])for(?:\s+await)?\s*$/u;
 const IDENTIFIER = String.raw`[$_\p{ID_Start}][$_\u200C\u200D\p{ID_Continue}]*`;
-const MEMBER_ASSIGNMENT_TARGET = String.raw`${IDENTIFIER}(?:\s*(?:\.\s*${IDENTIFIER}|\[\s*(?:${IDENTIFIER}|\d+)\s*\]))+`;
+const MASKED_STRING_LITERAL = String.raw`(?:"\s*"|'\s*')`;
+const MEMBER_ASSIGNMENT_TARGET = String.raw`${IDENTIFIER}(?:\s*(?:\.\s*${IDENTIFIER}|\[\s*(?:${IDENTIFIER}|\d+|${MASKED_STRING_LITERAL})\s*\]))+`;
 const FOR_OF_BINDING = new RegExp(
   String.raw`^(?:(?:(?:const|let|var)\s+)?(?:${IDENTIFIER}|\[[\s\S]*\]|\{[\s\S]*\})|(?:await\s+)?using\s+${IDENTIFIER}|${MEMBER_ASSIGNMENT_TARGET})\s*$`,
   "u"
@@ -213,13 +214,17 @@ function readTopLevelProperties(source: string, objectStart: number) {
   return throwOwnershipConflict();
 }
 
-function maskCommentsAndStrings(source: string, scanTemplateExpressions = false) {
+function maskCommentsAndStrings(source: string, scanTemplateExpressions = false, preserveQuoteDelimiters = false) {
   const masked = Array.from({ length: source.length }, (_, index) => source.charAt(index));
   for (let index = 0; index < source.length; index += 1) {
     const character = source[index];
     if (character === '"' || character === "'") {
       const end = skipQuoted(source, index, character);
-      maskRange(masked, source, index, end);
+      if (preserveQuoteDelimiters) {
+        maskRange(masked, source, index + 1, end - 1);
+      } else {
+        maskRange(masked, source, index, end);
+      }
       index = end;
       continue;
     }
@@ -399,7 +404,7 @@ function identifierAllowsRegularExpression(source: string, previousIndex: number
 }
 
 function isForOfKeyword(source: string, tokenStart: number, expressionStart: number) {
-  const prefix = maskCommentsAndStrings(source.slice(expressionStart, tokenStart));
+  const prefix = maskCommentsAndStrings(source.slice(expressionStart, tokenStart), false, true);
   let depth = 0;
 
   for (let index = prefix.length - 1; index >= 0; index -= 1) {
