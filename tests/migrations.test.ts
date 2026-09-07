@@ -317,6 +317,26 @@ describe("Keenko migrations", () => {
     expect(oxfmt).toContain("const formatting = ultracite;");
   });
 
+  test("preserves a regex literal after contextual of with a member assignment target", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    await preset(tree, { name: "member_target_for_of_regex_text" });
+    tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+    const loop = "for (holder.value of /project-_tabWidth-cache/.source) { void holder.value; }";
+    const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+      'import ultracite from "ultracite/oxfmt";\n',
+      `import ultracite from "ultracite/oxfmt";\n\nconst holder = { value: "" };\n${loop}\n`
+    );
+    tree.write("oxfmt.config.ts", customizedOxfmt);
+
+    removeEditorConfig(tree);
+
+    expect(tree.exists(".editorconfig")).toBe(false);
+    const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+    expect(oxfmt).toContain('const holder = { value: "" };');
+    expect(oxfmt).toContain(loop);
+    expect(oxfmt).toContain("const formatting = ultracite;");
+  });
+
   test("preserves a regex literal after contextual of with a destructured for-of binding", async () => {
     const tree = createTreeWithEmptyWorkspace();
     await preset(tree, { name: "destructured_for_of_regex_text" });
