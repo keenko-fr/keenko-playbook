@@ -38,7 +38,7 @@ const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\
 const REGULAR_EXPRESSION_PREFIX_KEYWORD = /^(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/u;
 const FOR_HEADER = /(?:^|[^\w$.#])for(?:\s+await)?\s*$/u;
 const IDENTIFIER = String.raw`[$_\p{ID_Start}][$_\u200C\u200D\p{ID_Continue}]*`;
-const MEMBER_ASSIGNMENT_TARGET = String.raw`${IDENTIFIER}(?:\s*\.\s*${IDENTIFIER})+`;
+const MEMBER_ASSIGNMENT_TARGET = String.raw`${IDENTIFIER}(?:\s*(?:\.\s*${IDENTIFIER}|\[\s*(?:${IDENTIFIER}|\d+)\s*\]))+`;
 const FOR_OF_BINDING = new RegExp(
   String.raw`^(?:(?:(?:const|let|var)\s+)?(?:${IDENTIFIER}|\[[\s\S]*\]|\{[\s\S]*\})|(?:await\s+)?using\s+${IDENTIFIER}|${MEMBER_ASSIGNMENT_TARGET})\s*$`,
   "u"
