@@ -38,10 +38,9 @@ const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\
 const REGULAR_EXPRESSION_PREFIX_KEYWORD = /^(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/u;
 const FOR_HEADER = /(?:^|[^\w$.#])for(?:\s+await)?\s*$/u;
 const IDENTIFIER = String.raw`[$_\p{ID_Start}][$_\u200C\u200D\p{ID_Continue}]*`;
-const MASKED_STRING_LITERAL = String.raw`(?:"\s*"|'\s*')`;
-const MEMBER_ASSIGNMENT_TARGET = String.raw`${IDENTIFIER}(?:\s*(?:\.\s*${IDENTIFIER}|\[\s*(?:${IDENTIFIER}|\d+|${MASKED_STRING_LITERAL})\s*\]))+`;
+const IDENTIFIER_PREFIX = new RegExp(String.raw`^${IDENTIFIER}`, "u");
 const FOR_OF_BINDING = new RegExp(
-  String.raw`^(?:(?:(?:const|let|var)\s+)?(?:${IDENTIFIER}|\[[\s\S]*\]|\{[\s\S]*\})|(?:await\s+)?using\s+${IDENTIFIER}|${MEMBER_ASSIGNMENT_TARGET})\s*$`,
+  String.raw`^(?:(?:(?:const|let|var)\s+)?(?:${IDENTIFIER}|\[[\s\S]*\]|\{[\s\S]*\})|(?:await\s+)?using\s+${IDENTIFIER})\s*$`,
   "u"
 );
 const LEGACY_OXFMT_CONFIG = `import { defineConfig } from "oxfmt";
@@ -426,9 +425,93 @@ function isForOfKeyword(source: string, tokenStart: number, expressionStart: num
     if (character !== "(") {
       return false;
     }
-    return FOR_HEADER.test(prefix.slice(0, index)) && FOR_OF_BINDING.test(prefix.slice(index + 1));
+    const candidate = prefix.slice(index + 1);
+    return FOR_HEADER.test(prefix.slice(0, index)) && (FOR_OF_BINDING.test(candidate) || isMemberAssignmentTarget(candidate));
   }
   return false;
+}
+
+function isMemberAssignmentTarget(source: string) {
+  const candidate = source.trim();
+  let index = readIdentifierEnd(candidate, 0);
+  if (index === -1) {
+    return false;
+  }
+
+  let memberCount = 0;
+  while (index < candidate.length) {
+    index = skipWhitespace(candidate, index);
+    if (index === candidate.length) {
+      return memberCount > 0;
+    }
+
+    const character = candidate[index];
+    if (character === ".") {
+      index = skipWhitespace(candidate, index + 1);
+      index = readIdentifierEnd(candidate, index);
+      if (index === -1) {
+        return false;
+      }
+      memberCount += 1;
+      continue;
+    }
+    if (character === "[") {
+      const end = readComputedMemberEnd(candidate, index);
+      if (end === -1) {
+        return false;
+      }
+      index = end + 1;
+      memberCount += 1;
+      continue;
+    }
+    return false;
+  }
+  return memberCount > 0;
+}
+
+function readIdentifierEnd(source: string, start: number) {
+  const match = IDENTIFIER_PREFIX.exec(source.slice(start));
+  return match === null ? -1 : start + match[0].length;
+}
+
+function readComputedMemberEnd(source: string, start: number) {
+  const expectedClosers = ["]"];
+  const expressionStart = start + 1;
+
+  for (let index = expressionStart; index < source.length; index += 1) {
+    const character = source[index] ?? "";
+    if (character === "(") {
+      expectedClosers.push(")");
+      continue;
+    }
+    if (character === "[") {
+      expectedClosers.push("]");
+      continue;
+    }
+    if (character === "{") {
+      expectedClosers.push("}");
+      continue;
+    }
+    if (!")] }".replace(" ", "").includes(character)) {
+      continue;
+    }
+    if (expectedClosers.at(-1) !== character) {
+      return -1;
+    }
+    expectedClosers.pop();
+    if (expectedClosers.length === 0) {
+      return source.slice(expressionStart, index).trim().length === 0 ? -1 : index;
+    }
+  }
+  return -1;
+}
+
+function skipWhitespace(source: string, start: number) {
+  let index = start;
+  while (/\s/u.test(source[index] ?? "")) {
+    index += 1;
+  }
+  return index;
 }
 
 function skipRegularExpression(source: string, start: number) {
