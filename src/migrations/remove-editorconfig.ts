@@ -37,8 +37,10 @@ const DEFINE_CONFIG_OBJECT = new RegExp(
 const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\b/u;
 const REGULAR_EXPRESSION_PREFIX_KEYWORD = /^(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/u;
 const FOR_HEADER = /(?:^|[^\w$.#])for(?:\s+await)?\s*$/u;
+const IF_HEADER = /(?:^|[^\w$.#])if\s*$/u;
 const IDENTIFIER = String.raw`[$_\p{ID_Start}][$_\u200C\u200D\p{ID_Continue}]*`;
-const IDENTIFIER_PREFIX = new RegExp(String.raw`^${IDENTIFIER}`, "u");
+const IDENTIFIER_START_CHARACTER = /[$_\p{ID_Start}]/u;
+const IDENTIFIER_PART_CHARACTER = /[$_\u200C\u200D\p{ID_Continue}]/u;
 const FOR_OF_BINDING = new RegExp(
   String.raw`^(?:(?:(?:const|let|var)\s+)?(?:${IDENTIFIER}|\[[\s\S]*\]|\{[\s\S]*\})|(?:await\s+)?using\s+${IDENTIFIER})\s*$`,
   "u"
@@ -230,7 +232,11 @@ function maskCommentsAndStrings(source: string, scanTemplateExpressions = false,
     if (character === "`") {
       const end = scanTemplateExpressions ? maskTemplateLiteral(masked, source, index) : skipQuoted(source, index, character);
       if (!scanTemplateExpressions) {
-        maskRange(masked, source, index, end);
+        if (preserveQuoteDelimiters) {
+          maskRange(masked, source, index + 1, end - 1);
+        } else {
+          maskRange(masked, source, index, end);
+        }
       }
       index = end;
       continue;
@@ -339,7 +345,10 @@ function slashStartsRegularExpression(source: string, slashIndex: number, expres
   if (/[A-Za-z0-9_$]/u.test(previous)) {
     return identifierAllowsRegularExpression(source, previousIndex, expressionStart);
   }
-  if (previous === '"' || previous === "'" || previous === "`" || previous === ")" || previous === "]" || previous === ".") {
+  if (previous === ")") {
+    return closingIfConditionAllowsRegularExpression(source, previousIndex, expressionStart);
+  }
+  if (previous === '"' || previous === "'" || previous === "`" || previous === "]" || previous === ".") {
     return false;
   }
   if (previous === "}") {
@@ -355,6 +364,27 @@ function slashStartsRegularExpression(source: string, slashIndex: number, expres
     return true;
   }
   return throwOwnershipConflict();
+}
+
+function closingIfConditionAllowsRegularExpression(source: string, closeIndex: number, expressionStart: number) {
+  const prefix = maskCommentsAndStrings(source.slice(expressionStart, closeIndex + 1));
+  let depth = 0;
+
+  for (let index = prefix.length - 1; index >= 0; index -= 1) {
+    const character = prefix[index] ?? "";
+    if (character === ")") {
+      depth += 1;
+      continue;
+    }
+    if (character !== "(") {
+      continue;
+    }
+    depth -= 1;
+    if (depth === 0) {
+      return IF_HEADER.test(prefix.slice(0, index));
+    }
+  }
+  return false;
 }
 
 function isPrefixBang(source: string, bangIndex: number, expressionStart: number) {
@@ -411,7 +441,7 @@ function isForOfKeyword(source: string, tokenStart: number, expressionStart: num
     if (/\s/u.test(character)) {
       continue;
     }
-    if (")]}`".includes(character)) {
+    if (")]}".includes(character)) {
       depth += 1;
       continue;
     }
@@ -426,9 +456,20 @@ function isForOfKeyword(source: string, tokenStart: number, expressionStart: num
       return false;
     }
     const candidate = prefix.slice(index + 1);
-    return FOR_HEADER.test(prefix.slice(0, index)) && (FOR_OF_BINDING.test(candidate) || isMemberAssignmentTarget(candidate));
+    return FOR_HEADER.test(prefix.slice(0, index)) && (isForOfBinding(candidate) || isMemberAssignmentTarget(candidate));
   }
   return false;
+}
+
+function isForOfBinding(source: string) {
+  const candidate = source.trim();
+  if (FOR_OF_BINDING.test(candidate)) {
+    return true;
+  }
+
+  const declaration = /^(?:(?:const|let|var)|(?:await\s+)?using)\s+/u.exec(candidate);
+  const identifierStart = declaration?.[0].length ?? 0;
+  return readIdentifierEnd(candidate, identifierStart) === candidate.length;
 }
 
 function isMemberAssignmentTarget(source: string) {
@@ -470,8 +511,61 @@ function isMemberAssignmentTarget(source: string) {
 }
 
 function readIdentifierEnd(source: string, start: number) {
-  const match = IDENTIFIER_PREFIX.exec(source.slice(start));
-  return match === null ? -1 : start + match[0].length;
+  let index = start;
+  let isStart = true;
+
+  while (index < source.length) {
+    const escape = readUnicodeIdentifierEscape(source, index);
+    if (escape !== null) {
+      const character = String.fromCodePoint(escape.codePoint);
+      const pattern = isStart ? IDENTIFIER_START_CHARACTER : IDENTIFIER_PART_CHARACTER;
+      if (!pattern.test(character)) {
+        return isStart ? -1 : index;
+      }
+      index = escape.end;
+      isStart = false;
+      continue;
+    }
+
+    const codePoint = source.codePointAt(index);
+    if (codePoint === undefined) {
+      break;
+    }
+    const character = String.fromCodePoint(codePoint);
+    const pattern = isStart ? IDENTIFIER_START_CHARACTER : IDENTIFIER_PART_CHARACTER;
+    if (!pattern.test(character)) {
+      break;
+    }
+    index += character.length;
+    isStart = false;
+  }
+
+  return isStart ? -1 : index;
+}
+
+function readUnicodeIdentifierEscape(source: string, start: number) {
+  if (source[start] !== "\\" || source[start + 1] !== "u") {
+    return null;
+  }
+
+  if (source[start + 2] === "{") {
+    const close = source.indexOf("}", start + 3);
+    if (close === -1) {
+      return null;
+    }
+    const digits = source.slice(start + 3, close);
+    if (!/^[\dA-Fa-f]{1,6}$/u.test(digits)) {
+      return null;
+    }
+    const codePoint = Number.parseInt(digits, 16);
+    return codePoint <= 0x10ffff ? { codePoint, end: close + 1 } : null;
+  }
+
+  const digits = source.slice(start + 2, start + 6);
+  if (!/^[\dA-Fa-f]{4}$/u.test(digits)) {
+    return null;
+  }
+  return { codePoint: Number.parseInt(digits, 16), end: start + 6 };
 }
 
 function readComputedMemberEnd(source: string, start: number) {
