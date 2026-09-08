@@ -26,6 +26,7 @@ import { sPresetGeneratorSchema, type PresetGeneratorSchema } from "./schema.js"
 export const devDependencies = Struct.pick(packageVersions, [
   "@effect/tsgo",
   "@nx/oxlint",
+  "@nx/vitest",
   "@typescript/native",
   "nx",
   "oxfmt",
@@ -34,12 +35,13 @@ export const devDependencies = Struct.pick(packageVersions, [
   "oxlint-tsgolint",
   "typescript",
   "ultracite",
+  "vitest",
 ]);
 
 export const scripts = {
   build: "nx run-many -t build",
   check:
-    "nx sync:check && bun run codegen && if git rev-parse --verify HEAD >/dev/null 2>&1; then generated_drift=\"$(git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts packages/backend/confect packages/backend/convex ':(exclude)packages/backend/confect/.gitkeep' ':(exclude)packages/backend/convex/convex.config.ts' ':(exclude)packages/backend/convex/tsconfig.json')\"; if [ -n \"$generated_drift\" ]; then printf 'Generated code has drifted:\\n%s\\n' \"$generated_drift\"; exit 1; fi; fi && bun run format:check && bun run lint && bun run typecheck && bun run build",
+    'nx sync:check && bun run codegen && { generated_drift="$(git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts packages/backend/confect/_generated packages/backend/convex \':(exclude)packages/backend/convex/convex.config.ts\' \':(exclude)packages/backend/convex/tsconfig.json\')" || { generated_status=$?; printf \'Unable to inspect generated code with Git.\\n\' >&2; exit "$generated_status"; }; if git rev-parse --verify HEAD >/dev/null 2>&1; then if [ -n "$generated_drift" ]; then printf \'Generated code has drifted:\\n%s\\n\' "$generated_drift"; exit 1; fi; elif [ "$(git symbolic-ref --quiet HEAD 2>/dev/null)" = "refs/heads/main" ]; then :; else printf \'Unable to resolve Git HEAD as a commit or unborn main.\\n\' >&2; exit 1; fi; } && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build',
   codegen: "nx run-many -t codegen",
   dev: "nx run-many -t dev",
   format: "oxfmt .",
@@ -47,6 +49,7 @@ export const scripts = {
   lint: "oxlint .",
   "lint:fix": "oxlint --fix .",
   prepare: "effect-tsgo patch --no-typescript --oxlint",
+  test: "nx run-many -t test",
   typecheck: "nx run-many -t typecheck",
 } satisfies Record<string, string>;
 
@@ -123,6 +126,14 @@ const configureNx = (tree: Tree) => {
     analytics: false,
     cli: { ...nxJson.cli, packageManager: "bun" },
     migrate: { ...nxJson.migrate, agentic: false, createCommits: false },
+    plugins: [
+      ...(nxJson.plugins ?? []),
+      {
+        exclude: ["apps/web/vite.config.ts"],
+        options: { testTargetName: "test" },
+        plugin: "@nx/vitest",
+      },
+    ],
     sync: {
       ...nxJson.sync,
       globalGenerators: [...(nxJson.sync?.globalGenerators ?? []), "keenko:sync"],

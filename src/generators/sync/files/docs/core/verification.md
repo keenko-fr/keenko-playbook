@@ -36,7 +36,7 @@ Focused checks do not replace the repository's canonical complete verification. 
 3. `format:check`;
 4. `lint`;
 5. `typecheck`;
-6. tests;
+6. tests through the root Nx aggregate;
 7. builds;
 8. project-specific delivery/security checks.
 

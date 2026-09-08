@@ -5,7 +5,13 @@ import { packageVersions } from "../../versions.js";
 
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
 const dependencies = Struct.pick(packageVersions, ["@confect/core", "@confect/server", "convex", "effect"]);
-const devDependencies = Struct.pick(packageVersions, ["@confect/cli", "@typescript/native", "typescript"]);
+const devDependencies = Struct.pick(packageVersions, [
+  "@confect/cli",
+  "@edge-runtime/vm",
+  "@typescript/native",
+  "convex-test",
+  "typescript",
+]);
 
 // GENERATE --------------------------------------------------------------------------------------------------------------------------------
 export const generateBackend = E.fn("keenko.preset.generateBackend")(function* (tree: Tree, workspace: string) {

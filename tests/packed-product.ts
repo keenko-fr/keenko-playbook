@@ -61,7 +61,9 @@ const command = E.fn("product.command")(
 const sVersionPackage = S.fromJsonString(S.Struct({ version: S.String }));
 const sNamedPackage = S.fromJsonString(S.Struct({ name: S.String }));
 const sDependenciesPackage = S.fromJsonString(S.Struct({ dependencies: S.Record(S.String, S.String) }));
+const sDevDependenciesPackage = S.fromJsonString(S.Struct({ devDependencies: S.Record(S.String, S.String) }));
 const sManifest = S.fromJsonString(S.Record(S.String, S.Unknown));
+const sProject = S.fromJsonString(S.Struct({ targets: S.Record(S.String, S.Unknown) }));
 
 const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   source: PackageSource,
@@ -186,7 +188,7 @@ const product = E.gen(function* () {
   const createArguments = [
     "create-nx-workspace@23.2.0",
     identity,
-    `--preset=keenko@${packageVersion}`,
+    source._tag === "local" ? "--preset=keenko" : `--preset=keenko@${packageVersion}`,
     "--packageManager=bun",
     "--nxCloud=skip",
     "--interactive=false",
@@ -204,6 +206,13 @@ const product = E.gen(function* () {
   ]) {
     const manifest = yield* S.decodeEffect(sNamedPackage)(yield* fs.readFileString(path.join(workspace, file)));
     yield* assert(manifest.name === name, `Incorrect package name at ${file}`);
+  }
+
+  for (const project of [`@${identity}/web`, `@${identity}/backend`, `@${identity}/ui`, `@${identity}/shared`]) {
+    const configuration = yield* S.decodeEffect(sProject)(
+      yield* command(workspace, env, "bun", ["x", "nx", "show", "project", project, "--json"])
+    );
+    yield* assert(Object.hasOwn(configuration.targets, "test"), `${project} is missing its inferred Vitest target`);
   }
 
   for (const file of [
@@ -226,6 +235,10 @@ const product = E.gen(function* () {
     yield* fs.readFileString(path.join(workspace, "node_modules/keenko/package.json"))
   );
   yield* assert(installedPackage.version === packageVersion, `The consumer did not install Keenko ${packageVersion}`);
+  const webPackage = yield* S.decodeEffect(sDevDependenciesPackage)(
+    yield* fs.readFileString(path.join(workspace, "apps/web/package.json"))
+  );
+  yield* assert(webPackage.devDependencies["@types/node"] === "24.13.3", "Generated web does not use Node 24 types");
   const packedLicense = yield* fs.readFileString(
     path.join(workspace, "node_modules/keenko/dist/generators/sync/files/skills/grilling/LICENSE")
   );
@@ -233,6 +246,7 @@ const product = E.gen(function* () {
     yield* assert(packedLicense === localLicense.value, "The packed Keenko artifact changed the representative skill license");
 
   const routeTree = path.join(workspace, "apps/web/src/routeTree.gen.ts");
+  const routeTreeAfterCreation = yield* fs.readFileString(routeTree);
   const ignoredParaglide = path.join(workspace, "apps/web/src/paraglide/messages.js");
   for (const generated of [
     "apps/web/src/routeTree.gen.ts",
@@ -254,7 +268,6 @@ const product = E.gen(function* () {
   yield* command(workspace, env, "bun", ["run", "check"]);
   yield* command(workspace, env, "git", ["check-ignore", "apps/web/src/paraglide/messages.js"]);
 
-  const routeTreeAfterCreation = yield* fs.readFileString(routeTree);
   yield* assert(
     (yield* fs.readFileString(routeTree)) === routeTreeAfterCreation,
     "Check changed the fresh route tree before the first commit"
@@ -267,6 +280,36 @@ const product = E.gen(function* () {
     (yield* command(workspace, env, "git", ["ls-files", "--error-unmatch", "apps/web/src/routeTree.gen.ts"])).trim() !== "",
     "Fresh route tree is not tracked"
   );
+
+  const realGit = (yield* command(workspace, env, "which", ["git"])).trim();
+  const gitShim = path.join(workspace, "node_modules/.bin/git");
+  yield* fs.writeFileString(
+    gitShim,
+    `#!/bin/sh
+if [ "$KEENKO_TEST_GIT_FAILURE" = "status" ] && [ "$1" = "status" ]; then exit 73; fi
+if [ "$KEENKO_TEST_GIT_FAILURE" = "head" ] && [ "$1" = "rev-parse" ] && [ "$2" = "--verify" ]; then exit 74; fi
+if [ "$KEENKO_TEST_GIT_FAILURE" = "head" ] && [ "$1" = "symbolic-ref" ]; then exit 75; fi
+exec "${realGit}" "$@"
+`
+  );
+  yield* command(workspace, env, "chmod", ["+x", gitShim]);
+  const statusFailure = yield* command(workspace, { ...env, KEENKO_TEST_GIT_FAILURE: "status" }, "bun", ["run", "check"], "failure");
+  yield* assert(statusFailure.includes("Unable to inspect generated code with Git."), "Git status failure was not propagated");
+  const headFailure = yield* command(workspace, { ...env, KEENKO_TEST_GIT_FAILURE: "head" }, "bun", ["run", "check"], "failure");
+  yield* assert(headFailure.includes("Unable to resolve Git HEAD"), "Unexpected rev-parse failure was treated as unborn Git");
+  yield* fs.remove(gitShim);
+
+  const failingTest = path.join(workspace, "packages/shared/src/acceptance.test.ts");
+  yield* fs.writeFileString(
+    failingTest,
+    'import { expect, test } from "vitest";\n\ntest("packed check executes Vitest", () => {\n  expect(true).toBe(false);\n});\n'
+  );
+  const failingTestOutput = yield* command(workspace, env, "bun", ["run", "check"], "failure");
+  yield* assert(
+    failingTestOutput.includes("packed check executes Vitest"),
+    `Check did not execute the failing Nx/Vitest target:\n${failingTestOutput}`
+  );
+  yield* fs.remove(failingTest);
 
   const driftRoute = path.join(workspace, "apps/web/src/routes/generated-drift.tsx");
   yield* fs.writeFileString(
@@ -301,13 +344,20 @@ const product = E.gen(function* () {
   yield* fs.remove(newGenerated);
 
   const projectOwned = path.join(workspace, "packages/shared/src/unrelated.ts");
+  const authoredConfect = path.join(workspace, "packages/backend/confect/authored.ts");
   yield* fs.writeFileString(projectOwned, "export const unrelated = true;\n");
+  yield* fs.writeFileString(authoredConfect, "export const authored = true;\n");
   yield* fs.writeFileString(ignoredParaglide, "deliberately stale ignored output\n");
   yield* command(workspace, env, "bun", ["run", "check"]);
   yield* assert(
     (yield* command(workspace, env, "git", ["status", "--porcelain"])).includes("packages/shared/src/unrelated.ts"),
     "Canonical check did not preserve unrelated project-owned dirty state"
   );
+  yield* assert(
+    (yield* command(workspace, env, "git", ["status", "--porcelain"])).includes("packages/backend/confect/authored.ts"),
+    "Canonical check did not preserve authored Confect dirty state"
+  );
+  yield* fs.remove(authoredConfect);
   yield* fs.remove(projectOwned);
 
   const tooling = path.join(workspace, ".keenko/docs/core/tooling.md");

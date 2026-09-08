@@ -24,18 +24,20 @@ const expectedWorkspaces = ["apps/*", "packages/*"];
 const expectedScripts = {
   build: "nx run-many -t build",
   check:
-    "nx sync:check && bun run codegen && if git rev-parse --verify HEAD >/dev/null 2>&1; then generated_drift=\"$(git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts packages/backend/confect packages/backend/convex ':(exclude)packages/backend/confect/.gitkeep' ':(exclude)packages/backend/convex/convex.config.ts' ':(exclude)packages/backend/convex/tsconfig.json')\"; if [ -n \"$generated_drift\" ]; then printf 'Generated code has drifted:\\n%s\\n' \"$generated_drift\"; exit 1; fi; fi && bun run format:check && bun run lint && bun run typecheck && bun run build",
+    'nx sync:check && bun run codegen && { generated_drift="$(git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts packages/backend/confect/_generated packages/backend/convex \':(exclude)packages/backend/convex/convex.config.ts\' \':(exclude)packages/backend/convex/tsconfig.json\')" || { generated_status=$?; printf \'Unable to inspect generated code with Git.\\n\' >&2; exit "$generated_status"; }; if git rev-parse --verify HEAD >/dev/null 2>&1; then if [ -n "$generated_drift" ]; then printf \'Generated code has drifted:\\n%s\\n\' "$generated_drift"; exit 1; fi; elif [ "$(git symbolic-ref --quiet HEAD 2>/dev/null)" = "refs/heads/main" ]; then :; else printf \'Unable to resolve Git HEAD as a commit or unborn main.\\n\' >&2; exit 1; fi; } && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build',
   codegen: "nx run-many -t codegen",
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
   lint: "oxlint .",
   "lint:fix": "oxlint --fix .",
+  test: "nx run-many -t test",
   typecheck: "nx run-many -t typecheck",
 } satisfies Record<string, string>;
 
 const expectedDevDependencies = Struct.pick(packageVersions, [
   "@effect/tsgo",
   "@nx/oxlint",
+  "@nx/vitest",
   "@typescript/native",
   "nx",
   "oxfmt",
@@ -44,6 +46,7 @@ const expectedDevDependencies = Struct.pick(packageVersions, [
   "oxlint-tsgolint",
   "typescript",
   "ultracite",
+  "vitest",
 ]);
 
 const expectedTypecheckTarget = {
@@ -147,7 +150,17 @@ describe("keenko preset", () => {
           "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy url baseLocale --no-emit-readme && tsr generate"
         );
         expect(viteConfig).toContain("emitReadme: false");
-        expect(web.devDependencies).toMatchObject(Struct.pick(packageVersions, ["@inlang/paraglide-js", "@tanstack/router-cli"]));
+        expect(web.devDependencies).toMatchObject(
+          Struct.pick(packageVersions, [
+            "@inlang/paraglide-js",
+            "@tanstack/router-cli",
+            "@testing-library/dom",
+            "@testing-library/react",
+            "@types/node",
+            "jsdom",
+          ])
+        );
+        expect(web.devDependencies?.["@types/node"]).toBe("24.13.3");
         expect(web.nx?.targets?.codegen).toBeUndefined();
         expect(tree.exists("apps/web/project.inlang/settings.json")).toBe(true);
         expect(tree.exists("apps/web/tsr.config.json")).toBe(true);
@@ -164,6 +177,37 @@ describe("keenko preset", () => {
         expect(tree.exists("packages/backend/package.json")).toBe(true);
         expect(tree.exists("packages/shared/package.json")).toBe(true);
         expect(tree.exists("packages/ui/package.json")).toBe(true);
+      })
+    ));
+
+  test("configures inferred Vitest targets for every fixed workspace", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+
+        for (const config of [
+          "apps/web/vitest.config.ts",
+          "packages/backend/vitest.config.ts",
+          "packages/shared/vitest.config.ts",
+          "packages/ui/vitest.config.ts",
+        ])
+          expect(tree.read(config, "utf-8")).toContain("passWithNoTests: true");
+
+        expect(tree.read("apps/web/vitest.config.ts", "utf-8")).toContain('environment: "jsdom"');
+        expect(tree.read("packages/ui/vitest.config.ts", "utf-8")).toContain('environment: "jsdom"');
+        expect(tree.read("packages/shared/vitest.config.ts", "utf-8")).toContain('environment: "node"');
+
+        const backendConfig = tree.read("packages/backend/vitest.config.ts", "utf-8");
+        expect(backendConfig).toContain('environment: "node"');
+        expect(backendConfig).toContain('environment: "edge-runtime"');
+        expect(backendConfig).toContain('include: ["convex/**/*.test.{ts,js}"]');
+
+        expect(readJson<PackageJson>(tree, "packages/backend/package.json").devDependencies).toMatchObject(
+          Struct.pick(packageVersions, ["@edge-runtime/vm", "convex-test"])
+        );
+        expect(readJson<PackageJson>(tree, "packages/ui/package.json").devDependencies).toMatchObject(
+          Struct.pick(packageVersions, ["@testing-library/dom", "@testing-library/react", "jsdom"])
+        );
       })
     ));
 
@@ -273,13 +317,13 @@ describe("keenko preset", () => {
         expect(packageJson.scripts?.check?.split(" && ")).toEqual([
           "nx sync:check",
           "bun run codegen",
-          "if git rev-parse --verify HEAD >/dev/null 2>&1; then generated_drift=\"$(git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts packages/backend/confect packages/backend/convex ':(exclude)packages/backend/confect/.gitkeep' ':(exclude)packages/backend/convex/convex.config.ts' ':(exclude)packages/backend/convex/tsconfig.json')\"; if [ -n \"$generated_drift\" ]; then printf 'Generated code has drifted:\\n%s\\n' \"$generated_drift\"; exit 1; fi; fi",
+          '{ generated_drift="$(git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts packages/backend/confect/_generated packages/backend/convex \':(exclude)packages/backend/convex/convex.config.ts\' \':(exclude)packages/backend/convex/tsconfig.json\')" || { generated_status=$?; printf \'Unable to inspect generated code with Git.\\n\' >&2; exit "$generated_status"; }; if git rev-parse --verify HEAD >/dev/null 2>&1; then if [ -n "$generated_drift" ]; then printf \'Generated code has drifted:\\n%s\\n\' "$generated_drift"; exit 1; fi; elif [ "$(git symbolic-ref --quiet HEAD 2>/dev/null)" = "refs/heads/main" ]; then :; else printf \'Unable to resolve Git HEAD as a commit or unborn main.\\n\' >&2; exit 1; fi; }',
           "bun run format:check",
           "bun run lint",
           "bun run typecheck",
+          "bun run test",
           "bun run build",
         ]);
-        expect(packageJson.scripts).not.toHaveProperty("test");
         expect(packageJson.devDependencies).toMatchObject(expectedDevDependencies);
 
         expect(packageJson).toMatchObject({
@@ -305,6 +349,13 @@ describe("keenko preset", () => {
             agentic: false,
             createCommits: false,
           },
+          plugins: [
+            {
+              exclude: ["apps/web/vite.config.ts"],
+              options: { testTargetName: "test" },
+              plugin: "@nx/vitest",
+            },
+          ],
           sync: {
             globalGenerators: ["keenko:sync"],
           },

@@ -69,8 +69,20 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
   addDependenciesToPackageJson(
     tree,
     { [`@${workspace}/ui`]: "workspace:*" },
-    Struct.pick(packageVersions, ["@inlang/paraglide-js", "@tanstack/router-cli"]),
+    Struct.pick(packageVersions, [
+      "@inlang/paraglide-js",
+      "@tanstack/router-cli",
+      "@testing-library/dom",
+      "@testing-library/react",
+      "@types/node",
+      "jsdom",
+    ]),
     "apps/web/package.json"
+  );
+
+  tree.write(
+    "apps/web/vitest.config.ts",
+    'import { defineConfig } from "vitest/config";\n\nexport default defineConfig({ test: { environment: "jsdom", passWithNoTests: true } });\n'
   );
 
   tree.write("apps/web/src/styles.css", `@import "@${workspace}/ui/globals.css";\n`);

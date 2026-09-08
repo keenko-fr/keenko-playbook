@@ -154,7 +154,7 @@ The common tooling surface includes:
 - `typecheck`: run compiler/type verification;
 - `check`: run the complete merge-ready aggregate.
 
-Expose `build`, `test`, `codegen`, and other concern-specific scripts when those concerns actually exist.
+Expose `build`, `codegen`, and other concern-specific scripts when those concerns actually exist. Every Keenko application exposes the root `test` aggregate because all four fixed workspaces have a real Vitest capability.
 
 Do not add placeholder scripts merely for uniformity.
 
@@ -194,7 +194,7 @@ managed-state drift
 -> format
 -> lint
 -> typecheck
--> tests when applicable
+-> tests
 -> build when applicable
 -> project-specific delivery/security checks when applicable
 ```

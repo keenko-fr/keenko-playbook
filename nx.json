@@ -12,6 +12,7 @@
     "projects": ["keenko"],
     "versionPlans": true,
     "version": {
+      "adjustSemverBumpsForZeroMajorVersion": false,
       "preVersionCommand": "bunx nx run-many -t build"
     },
     "changelog": {
