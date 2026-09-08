@@ -396,14 +396,14 @@ function isRegexStatementHeader(source: string) {
     if (keywordStart === 0) {
       return true;
     }
-    const previous = Array.from(header.slice(0, keywordStart)).at(-1) ?? "";
+    const previous = [...header.slice(0, keywordStart)].at(-1) ?? "";
     return previous !== "." && previous !== "#" && !identifierPartEndsAt(header, keywordStart);
   }
   return false;
 }
 
 function identifierPartEndsAt(source: string, end: number) {
-  const previous = Array.from(source.slice(0, end)).at(-1) ?? "";
+  const previous = [...source.slice(0, end)].at(-1) ?? "";
   if (IDENTIFIER_PART_CHARACTER.test(previous)) {
     return true;
   }
