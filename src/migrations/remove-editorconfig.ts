@@ -410,20 +410,27 @@ function characterBefore(source: string, end: number) {
 }
 
 function identifierPartEndsAt(source: string, end: number) {
+  return precedingIdentifierPartStart(source, end) !== -1;
+}
+
+function precedingIdentifierPartStart(source: string, end: number) {
   const previous = characterBefore(source, end);
   if (IDENTIFIER_PART_CHARACTER.test(previous)) {
-    return true;
+    return end - previous.length;
   }
   if (previous !== "}") {
-    return false;
+    return -1;
   }
 
   const escapeStart = source.lastIndexOf("\\u{", end - 1);
   if (escapeStart === -1) {
-    return false;
+    return -1;
   }
   const escape = readUnicodeIdentifierEscape(source, escapeStart);
-  return escape?.end === end && IDENTIFIER_PART_CHARACTER.test(String.fromCodePoint(escape.codePoint));
+  if (escape?.end !== end || !IDENTIFIER_PART_CHARACTER.test(String.fromCodePoint(escape.codePoint))) {
+    return -1;
+  }
+  return escapeStart;
 }
 
 function isPrefixBang(source: string, bangIndex: number, expressionStart: number) {
@@ -453,8 +460,12 @@ function isPrefixBang(source: string, bangIndex: number, expressionStart: number
 
 function identifierAllowsRegularExpression(source: string, previousIndex: number, expressionStart: number) {
   let tokenStart = previousIndex;
-  while (tokenStart > expressionStart && /[A-Za-z0-9_$]/u.test(source[tokenStart - 1] ?? "")) {
-    tokenStart -= 1;
+  while (tokenStart > expressionStart) {
+    const precedingStart = precedingIdentifierPartStart(source, tokenStart);
+    if (precedingStart < expressionStart) {
+      break;
+    }
+    tokenStart = precedingStart;
   }
   const token = source.slice(tokenStart, previousIndex + 1);
   if (token === "of") {

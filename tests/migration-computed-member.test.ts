@@ -163,6 +163,23 @@ test("rejects a removed formatter binding after a Unicode identifier ending in i
   expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
 });
 
+test("rejects a removed formatter binding after a Unicode identifier ending in a regex-prefix keyword", () => {
+  const tree = createTreeWithEmptyWorkspace();
+  tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+  const statements = "const πreturn = 8; const width = πreturn / _tabWidth / 2;";
+  const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+    'import ultracite from "ultracite/oxfmt";\n',
+    `import ultracite from "ultracite/oxfmt";\n\n${statements}\n`
+  );
+  tree.write("oxfmt.config.ts", customizedOxfmt);
+
+  expect(() => {
+    removeEditorConfig(tree);
+  }).toThrow("formatter ownership fields");
+  expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
+  expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
+});
+
 test("rejects a removed formatter binding after spaced keyword-shaped member access", () => {
   const tree = createTreeWithEmptyWorkspace();
   tree.write(".editorconfig", LEGACY_EDITORCONFIG);
