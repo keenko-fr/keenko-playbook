@@ -61,6 +61,9 @@ jobs:
       - name: Verify release plan
         run: bun x nx release plan:check
 
+      - name: Verify packed product before publication
+        run: bun run test:product
+
       - name: Configure release identity
         env:
           GH_TOKEN: ${{ steps.release-app.outputs.token }}

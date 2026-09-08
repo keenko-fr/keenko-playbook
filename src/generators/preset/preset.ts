@@ -39,7 +39,7 @@ export const devDependencies = Struct.pick(packageVersions, [
 export const scripts = {
   build: "nx run-many -t build",
   check:
-    "nx sync:check && bun run codegen && git diff --exit-code HEAD -- apps/web/src/routeTree.gen.ts packages/backend/confect packages/backend/convex ':(exclude)packages/backend/confect/.gitkeep' ':(exclude)packages/backend/convex/convex.config.ts' ':(exclude)packages/backend/convex/tsconfig.json' && bun run format:check && bun run lint && bun run typecheck && bun run build",
+    "nx sync:check && bun run codegen && if git rev-parse --verify HEAD >/dev/null 2>&1; then generated_drift=\"$(git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts packages/backend/confect packages/backend/convex ':(exclude)packages/backend/confect/.gitkeep' ':(exclude)packages/backend/convex/convex.config.ts' ':(exclude)packages/backend/convex/tsconfig.json')\"; if [ -n \"$generated_drift\" ]; then printf 'Generated code has drifted:\\n%s\\n' \"$generated_drift\"; exit 1; fi; fi && bun run format:check && bun run lint && bun run typecheck && bun run build",
   codegen: "nx run-many -t codegen",
   dev: "nx run-many -t dev",
   format: "oxfmt .",

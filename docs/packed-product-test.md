@@ -2,14 +2,14 @@
 
 ## Local unpublished package
 
-From the repository root, install the reference Node and Bun toolchain, then run the optional development check:
+From the repository root, install the reference Node and Bun toolchain, then run the required packed-product gate:
 
 ```sh
 bun install --frozen-lockfile
 bun run test:product
 ```
 
-This mode starts the repository's `keenko:local-registry` Nx target, builds and packs Keenko, assigns a disposable `<repository-version>-product.<unique-run-id>` version, and publishes the archive to the loopback Verdaccio registry at `http://127.0.0.1:4873`. It uses `npx create-nx-workspace@23.2.0` only to bootstrap the unpublished local preset from that registry. Verdaccio is a local development convenience and is not part of production release acceptance.
+This mode starts the repository's `keenko:local-registry` Nx target, builds and packs Keenko, assigns a unique disposable `<repository-version>-product.<unique-run-id>` version, and publishes the archive to the loopback Verdaccio registry at `http://127.0.0.1:4873`. A disposable install primes an isolated Bun cache with the pinned `create-nx-workspace` bootstrap through that registry, after which the documented `bunx create-nx-workspace@23.2.0` command runs unchanged against the unique unpublished preset version. Verdaccio is a local development convenience and is not part of production release acceptance.
 
 ## Exact published package
 
@@ -21,9 +21,9 @@ bun run test:published -- <exact-version>
 
 The argument must be one concrete SemVer, including an optional prerelease or build suffix. Missing arguments, caret/tilde ranges, and dist-tags such as `latest` or `next` fail before any workspace or registry process is created. This mode does not pack repository source, rewrite a package version, start Verdaccio, or override registry configuration. It runs the canonical public bootstrap with `bunx create-nx-workspace@23.2.0 --preset=keenko@<exact-version>` and verifies that exact version in the consumer's installed `node_modules/keenko/package.json`.
 
-The disposable consumer verifies representative package and shipped-file state, initial generated state from creation, canonical codegen/build/check behavior, tracked generated drift preservation, ignored generated output, unrelated dirty project files, one sync drift-and-repair cycle, first-party shadcn routing and dependency installation, Nx/Oxlint boundary enforcement, discovery of an additional workspace package, and a frozen reinstall. Narrow assertions call their owning command; the complete `bun run check` runs only at generated-state and complete-consumer milestones.
+The disposable consumer verifies representative package and shipped-file state, initial generated state from creation, canonical codegen/build/check behavior, modified and newly created tracked-intent generated drift, ignored generated output, unrelated dirty project files, one sync drift-and-repair cycle, first-party shadcn routing and dependency installation, Nx/Oxlint boundary enforcement, discovery of an additional workspace package, and a frozen reinstall. Narrow assertions call their owning command; the complete `bun run check` runs only at generated-state and complete-consumer milestones.
 
-The published path uses the Git repository initialized by `create-nx-workspace`; local unpublished mode initializes its disposable repository after creation for test isolation. The final phase commits a valid generated workspace, removes installed `node_modules` directories, and runs:
+Both paths use the Git repository initialized by `create-nx-workspace`. Acceptance verifies unborn `main`, runs `bun run check` successfully before the first commit, then creates disposable commits only for later drift baselines. The final phase removes installed `node_modules` directories and runs:
 
 ```sh
 bun install --frozen-lockfile
@@ -39,6 +39,6 @@ The executable procedure lives in `tests/packed-product.ts`. Effect scope stops 
 
 ## Release workflow and recovery
 
-The release workflow installs from the lockfile, runs `bun run check` (which includes `pack:check`), and validates version plans before invoking `bun x nx release --yes`. Nx remains the sole versioning, changelog, tag, push, and npm publication authority. After Nx succeeds, the workflow reads the version Nx wrote to the root `package.json` and passes it to published acceptance; it does not calculate a version independently.
+The release workflow installs from the lockfile, runs `bun run check` (which includes `pack:check`), validates version plans, and runs `bun run test:product` before invoking `bun x nx release --yes`. Nx remains the sole versioning, changelog, tag, push, and npm publication authority. After Nx succeeds, the workflow reads the version Nx wrote to the root `package.json` and passes it to published acceptance; it does not calculate a version independently.
 
 If post-publication acceptance fails, the workflow fails visibly. The npm publication and release tag are immutable release events: do not unpublish, delete the tag, rewrite the release, or force-push history. Diagnose the consumer failure and ship a subsequent corrective release through the same Nx version-plan process.

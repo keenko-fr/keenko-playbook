@@ -84,6 +84,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const registry = "http://127.0.0.1:4873";
   const npmrc = path.join(temporary, "npmrc");
+  const bunCache = path.join(temporary, "bun-cache");
   yield* fs.writeFileString(npmrc, `registry=${registry}\n//127.0.0.1:4873/:_authToken=secretVerdaccioToken\n`);
   const npmEnv = {
     ...env,
@@ -94,7 +95,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   const bootstrapEnv = {
     ...npmEnv,
     BUN_CONFIG_REGISTRY: registry,
-    BUN_INSTALL_CACHE_DIR: path.join(temporary, "bun-cache"),
+    BUN_INSTALL_CACHE_DIR: bunCache,
   };
 
   yield* spawner.spawn(
@@ -141,9 +142,17 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     "--loglevel=error",
   ]);
 
+  const bootstrapPrime = path.join(temporary, "bootstrap-prime");
+  yield* fs.makeDirectory(bootstrapPrime);
+  yield* fs.writeFileString(
+    path.join(bootstrapPrime, "package.json"),
+    yield* S.encodeEffect(sManifest)({ dependencies: { "create-nx-workspace": "23.2.0" }, private: true })
+  );
+  yield* command(bootstrapPrime, bootstrapEnv, "bun", ["install", "--ignore-scripts"]);
+
   return {
     bootstrapEnv,
-    bootstrapExecutable: "npx",
+    bootstrapExecutable: "bunx",
     localLicense: O.some(yield* fs.readFileString(path.join(repository, "src/generators/sync/files/skills/grilling/LICENSE"))),
     packageVersion,
   };
@@ -158,10 +167,11 @@ const product = E.gen(function* () {
   const temporary = yield* fs.makeTempDirectoryScoped({ prefix: "keenko-product-" });
   const env = {
     CI: "true",
-    GIT_AUTHOR_EMAIL: "product-test@example.invalid",
-    GIT_AUTHOR_NAME: "Keenko product test",
-    GIT_COMMITTER_EMAIL: "product-test@example.invalid",
-    GIT_COMMITTER_NAME: "Keenko product test",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_GLOBAL: path.join(temporary, "gitconfig-global"),
+    GIT_CONFIG_KEY_0: "user.useConfigOnly",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_VALUE_0: "true",
     NX_DAEMON: "false",
     NX_INTERACTIVE: "false",
   };
@@ -180,7 +190,6 @@ const product = E.gen(function* () {
     "--packageManager=bun",
     "--nxCloud=skip",
     "--interactive=false",
-    ...(source._tag === "local" ? ["--skipGit=true"] : []),
     "--trustThirdPartyPreset",
   ];
   yield* command(temporary, bootstrapEnv, bootstrapExecutable, createArguments);
@@ -233,35 +242,30 @@ const product = E.gen(function* () {
   ])
     yield* assert(yield* fs.exists(path.join(workspace, generated)), `Fresh creation did not materialize ${generated}`);
 
-  yield* source._tag === "local"
-    ? E.gen(function* () {
-        yield* command(workspace, env, "git", ["init", "-b", "main"]);
-        yield* command(workspace, env, "git", ["add", "."]);
-        yield* command(workspace, env, "git", ["commit", "-m", "Record fresh generated workspace"]);
-      })
-    : E.gen(function* () {
-        const gitWorkTree = yield* command(workspace, env, "git", ["rev-parse", "--is-inside-work-tree"]);
-        yield* assert(
-          gitWorkTree.trim() === "true",
-          "Published acceptance did not use the Git repository initialized by create-nx-workspace"
-        );
-        yield* assert(
-          (yield* command(workspace, env, "git", ["status", "--porcelain"])).trim() === "",
-          "Published creation did not commit its initial generated state"
-        );
-      });
-  yield* command(workspace, env, "git", ["rev-parse", "--verify", "HEAD"]);
   yield* assert(
-    (yield* command(workspace, env, "git", ["ls-files", "--error-unmatch", "apps/web/src/routeTree.gen.ts"])).trim() !== "",
-    "Fresh route tree is not tracked"
+    (yield* command(workspace, env, "git", ["rev-parse", "--is-inside-work-tree"])).trim() === "true",
+    "Canonical creation did not initialize Git"
   );
+  yield* assert(
+    (yield* command(workspace, env, "git", ["symbolic-ref", "--short", "HEAD"])).trim() === "main",
+    "Canonical creation did not leave Git on main"
+  );
+  yield* command(workspace, env, "git", ["rev-parse", "--verify", "HEAD"], "failure");
+  yield* command(workspace, env, "bun", ["run", "check"]);
   yield* command(workspace, env, "git", ["check-ignore", "apps/web/src/paraglide/messages.js"]);
 
   const routeTreeAfterCreation = yield* fs.readFileString(routeTree);
-  yield* command(workspace, env, "bun", ["run", "build"]);
   yield* assert(
     (yield* fs.readFileString(routeTree)) === routeTreeAfterCreation,
-    "TanStack build changed routeTree.gen.ts after fresh creation"
+    "Check changed the fresh route tree before the first commit"
+  );
+  yield* command(workspace, env, "git", ["config", "user.email", "product-test@example.invalid"]);
+  yield* command(workspace, env, "git", ["config", "user.name", "Keenko product test"]);
+  yield* command(workspace, env, "git", ["add", "."]);
+  yield* command(workspace, env, "git", ["commit", "-m", "Record fresh generated workspace"]);
+  yield* assert(
+    (yield* command(workspace, env, "git", ["ls-files", "--error-unmatch", "apps/web/src/routeTree.gen.ts"])).trim() !== "",
+    "Fresh route tree is not tracked"
   );
 
   const driftRoute = path.join(workspace, "apps/web/src/routes/generated-drift.tsx");
@@ -277,6 +281,24 @@ const product = E.gen(function* () {
   );
   yield* command(workspace, env, "git", ["add", "apps/web/src/routes/generated-drift.tsx", "apps/web/src/routeTree.gen.ts"]);
   yield* command(workspace, env, "git", ["commit", "-m", "Accept generated route update"]);
+
+  const backendManifestPath = path.join(workspace, "packages/backend/package.json");
+  const expectedBackendManifest = yield* fs.readFileString(backendManifestPath);
+  const newGenerated = path.join(workspace, "packages/backend/confect/_generated/new-generated.ts");
+  const changedBackendManifest = expectedBackendManifest.replace(
+    '"codegen": "confect codegen"',
+    '"codegen": "confect codegen && printf generated > confect/_generated/new-generated.ts"'
+  );
+  yield* assert(changedBackendManifest !== expectedBackendManifest, "Could not configure the new generated-file scenario");
+  yield* fs.writeFileString(backendManifestPath, changedBackendManifest);
+  const newGeneratedOutput = yield* command(workspace, env, "bun", ["run", "check"], "failure");
+  yield* assert(
+    newGeneratedOutput.includes("packages/backend/confect/_generated/new-generated.ts"),
+    `Check did not report newly generated tracked-intent output:\n${newGeneratedOutput}`
+  );
+  yield* assert(yield* fs.exists(newGenerated), "Check did not leave newly generated output available for review");
+  yield* fs.writeFileString(backendManifestPath, expectedBackendManifest);
+  yield* fs.remove(newGenerated);
 
   const projectOwned = path.join(workspace, "packages/shared/src/unrelated.ts");
   yield* fs.writeFileString(projectOwned, "export const unrelated = true;\n");

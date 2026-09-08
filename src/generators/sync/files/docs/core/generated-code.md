@@ -19,7 +19,7 @@ CI should detect drift for tracked generated artifacts. Never claim generation/c
 
 Fresh Keenko creation runs the aggregate `bun run codegen` command after dependencies are installed, so source-required generated state exists before development begins. Normal development uses the first-party generators and watch behavior owned by each project; `bun run codegen` remains the explicit way to regenerate every participating project.
 
-`bun run check` runs real codegen in the working tree after `bun x nx sync:check`, then asks Git whether the tracked generator-owned surfaces changed relative to `HEAD`. A drift failure leaves regenerated files in place for review and commit. The comparison covers the tracked TanStack Router route tree and Confect/Convex generated surfaces while excluding authored Convex configuration.
+`bun run check` runs real codegen in the working tree after `bun x nx sync:check`, then asks Git whether tracked generator-owned surfaces are modified, deleted, or contain new unignored files. A drift failure leaves regenerated files in place for review and commit. The comparison covers the tracked-intent TanStack Router route tree and Confect/Convex generated surfaces while excluding authored Convex configuration. On an unborn branch, there is no committed baseline to compare, so a fresh untouched workspace can run the complete check before its first commit.
 
 Git-ignored reproducible output, including Paraglide compiler output, is regenerated for the checks that consume it but is not Git drift. Unrelated dirty project-owned files are outside the generated pathspec and do not cause a generated-drift failure.
 

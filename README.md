@@ -51,7 +51,7 @@ bun run deps:update
 ```
 
 - `check` is the deterministic repository gate.
-- `test:product` is the optional, slower Verdaccio-backed acceptance test for an unpublished local package.
+- `test:product` is the required Verdaccio-backed acceptance test for the unpublished packed artifact.
 - `test:published` is the release-grade fresh-consumer acceptance test for one exact version already published to npm.
 - `deps:update` updates compatibility pins for maintainer review.
 
