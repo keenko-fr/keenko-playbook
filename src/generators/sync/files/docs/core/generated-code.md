@@ -21,7 +21,7 @@ From an installed generated workspace, run `bun run codegen:check`. It copies th
 
 The check covers every project participating in root codegen, including web Paraglide/Router and backend Confect. A zero exit means regeneration produced the same state. A stale-state failure lists changed paths. A generator failure reports its exit code. Both failures leave the original workspace unchanged; Effect scope removes the temporary copy on completion or interruption.
 
-To resolve drift, run `bun run codegen` in the real workspace, review the diff, and rerun `bun run codegen:check`. `bun run check` invokes the freshness check after `nx sync:check`. Fix generator errors at their owning project before retrying. Keep the same Bun/Node runtimes and generator environment used for normal codegen; install dependencies with `bun install --frozen-lockfile` first.
+To resolve drift, run `bun run codegen` in the real workspace, review the diff, and rerun `bun run codegen:check`. `bun run check` invokes the freshness check after `bun x nx sync:check`. Fix generator errors at their owning project before retrying. Keep the same Bun/Node runtimes and generator environment used for normal codegen; install dependencies with `bun install --frozen-lockfile` first.
 
 Git metadata, Nx and tool caches (`.nx`, `.cache`, `.tanstack`), `.DS_Store`, and TypeScript build info are excluded. Installed `node_modules` are copied for execution but excluded from comparison. Ordinary generated files and directories are isolated, regenerated, and compared by sanitized state. Copying installed dependencies requires temporary disk space comparable to the workspace installation.
 

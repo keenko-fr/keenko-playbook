@@ -31,7 +31,7 @@ Manual verification is evidence, not a replacement for automatable behavior test
 
 Focused checks do not replace the repository's canonical complete verification. Keenko TypeScript repositories expose a non-remediating `bun run check`; it is the canonical merge-ready aggregate. Its applicable stages run in this conceptual order:
 
-1. `nx sync:check`;
+1. `bun x nx sync:check`;
 2. other applicable managed-state checks;
 3. `format:check`;
 4. `lint`;
@@ -40,7 +40,7 @@ Focused checks do not replace the repository's canonical complete verification. 
 7. builds;
 8. project-specific delivery/security checks.
 
-`check` must not rewrite tracked source. `nx sync` is the remediation command for Keenko-managed state; `nx sync:check` proves that state was already synchronized. Other generated-code systems may expose their own non-remediating drift verification when required.
+`check` must not rewrite tracked source. `bun x nx sync` is the remediation command for Keenko-managed state; `bun x nx sync:check` proves that state was already synchronized. Other generated-code systems may expose their own non-remediating drift verification when required.
 
 Generated contract changes require deterministic regeneration verification.
 

@@ -297,7 +297,7 @@ describe("keenko sync", () => {
         const result = yield* runSync(tree);
 
         expect(result).toEqual({
-          outOfSyncMessage: "Keenko guidance is out of sync. Run `nx sync`.",
+          outOfSyncMessage: "Keenko guidance is out of sync. Run `bun x nx sync`.",
         });
       })
     ));

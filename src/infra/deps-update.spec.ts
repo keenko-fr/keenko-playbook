@@ -100,7 +100,7 @@ describe("dependency updater", () => {
       "@nx/devkit": "23.2.0",
       "@nx/oxlint": "23.2.0",
       nx: "23.2.0",
-      oxlint: "1.81.0",
+      oxlint: "1.82.0",
       typescript: "6.0.2",
     });
     expect(Object.values(compatibilityVersionOverrides).every(isExactPackageVersion)).toBe(true);

@@ -9,7 +9,7 @@ export const syncProgram = E.fn("keenko.sync")(function* (tree: Tree) {
   yield* syncManagedState(tree);
 
   return {
-    outOfSyncMessage: "Keenko guidance is out of sync. Run `nx sync`.",
+    outOfSyncMessage: "Keenko guidance is out of sync. Run `bun x nx sync`.",
   };
 });
 
