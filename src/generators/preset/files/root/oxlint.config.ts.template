@@ -11,12 +11,12 @@ export default defineConfig({
   extends: [core],
   ignorePatterns: [
     ...(core.ignorePatterns ?? []),
-    
+
     ".agents/skills/**",
     ".claude/skills/**",
     ".keenko/**",
     ".tmp/**",
-    
+
     "**/.output/**",
     "**/build/**",
     "**/coverage/**",
