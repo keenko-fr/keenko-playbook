@@ -2,101 +2,133 @@
   "name": "keenko",
   "version": "0.2.0",
   "private": false,
-  "description": "Opinionated Nx-based Keenko TypeScript application distribution.",
+  "description": "An opinionated Nx-based TypeScript application distribution.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/keenko-fr/keenko-playbook.git"
   },
+  "bin": {
+    "keenko-codegen-check": "./dist/infra/codegen-check-cli.js"
+  },
   "files": [
-    "dist/src/",
-    "docs/",
+    "dist",
+    "!**/*.tsbuildinfo",
     "generators.json",
     "migrations.json",
-    "src/generators/preset/schema.json",
-    "src/generators/sync/schema.json",
-    "skills/",
-    "templates/",
-    "vendor/matt-pocock/LICENSE",
-    "vendor/matt-pocock/VENDORED.json",
-    "vendor/matt-pocock/skills/engineering/ask-matt/",
-    "vendor/matt-pocock/skills/engineering/code-review/",
-    "vendor/matt-pocock/skills/engineering/codebase-design/",
-    "vendor/matt-pocock/skills/engineering/diagnosing-bugs/",
-    "vendor/matt-pocock/skills/engineering/domain-modeling/",
-    "vendor/matt-pocock/skills/engineering/grill-with-docs/",
-    "vendor/matt-pocock/skills/engineering/implement/",
-    "vendor/matt-pocock/skills/engineering/improve-codebase-architecture/",
-    "vendor/matt-pocock/skills/engineering/prototype/",
-    "vendor/matt-pocock/skills/engineering/resolving-merge-conflicts/",
-    "vendor/matt-pocock/skills/engineering/tdd/",
-    "vendor/matt-pocock/skills/engineering/to-spec/",
-    "vendor/matt-pocock/skills/engineering/to-tickets/",
-    "vendor/matt-pocock/skills/engineering/wizard/",
-    "vendor/matt-pocock/skills/productivity/grilling/",
-    "vendor/matt-pocock/skills/productivity/handoff/",
-    "vendor/pstack/LICENSE",
-    "vendor/pstack/VENDORED.json",
-    "vendor/pstack/skills/unslop/",
-    "vendor/effect-ts/LICENSE",
-    "vendor/effect-ts/VENDORED.json",
-    "vendor/effect-ts/skills/effect-ts/"
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
+    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "default": "./dist/src/index.js"
-    },
-    "./preset": {
-      "types": "./dist/src/generators/preset/generator.d.ts",
-      "default": "./dist/src/generators/preset/generator.js"
-    },
-    "./package.json": "./package.json"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
+    "prepare": "effect-tsgo patch --no-typescript --oxlint",
+    "build": "nx run-many -t build",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run pack:check",
+    "deps:update": "bun run src/infra/deps-update.ts",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test --path-ignore-patterns tests/packed-product.test.ts --path-ignore-patterns tests/packed-upgrade-preservation.test.ts && bun run test:product",
-    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
-    "check:release": "bun run check && bun run vendor:check && bun pm pack --dry-run",
-    "vendor:sync": "bun cli/vendor-sync.ts",
-    "vendor:check": "bun cli/vendor-sync.ts --check",
-    "vendor:update": "bun cli/vendor-sync.ts --update",
-    "build": "bun -e 'import { rmSync } from \"node:fs\"; rmSync(\"dist\", { force: true, recursive: true })' && tsc -p tsconfig.build.json",
-    "release": "nx release",
-    "release:plan": "nx release plan",
-    "release:plan:check": "nx release plan:check",
-    "prepack": "bun run build",
-    "test:product": "bun test tests/packed-product.test.ts tests/packed-upgrade-preservation.test.ts"
+    "pack:check": "nx run keenko:pack:check",
+    "test": "bun test",
+    "test:product": "bun run tests/packed-product.ts",
+    "test:published": "bun run tests/packed-product.ts --published",
+    "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@effect/platform-node": "4.0.0-rc.112",
     "@nx/devkit": "23.2.0",
     "@tanstack/create": "0.70.0",
-    "oxfmt": "0.65.0",
-    "semver": "^7.6.3"
+    "effect": "4.0.0-rc.112",
+    "tslib": "2.8.1",
+    "validate-npm-package-name": "8.0.0"
   },
   "devDependencies": {
+    "@effect/tsgo": "0.43.0",
     "@nx/js": "23.2.0",
-    "@types/bun": "1.4.0",
+    "@nx/oxlint": "23.2.0",
+    "@types/bun": "1.4.2",
+    "@types/node": "26.5.0",
+    "@types/validate-npm-package-name": "4.0.2",
     "@typescript/native": "npm:typescript@7.0.2",
     "nx": "23.2.0",
-    "oxlint": "1.81.0",
+    "oxfmt": "0.67.0",
+    "oxlint": "1.82.0",
+    "oxlint-plugin-effect": "0.12.1",
     "oxlint-tsgolint": "7.0.2001",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
-    "ultracite": "7.10.7"
+    "typescript": "6.0.2",
+    "ultracite": "7.11.0",
+    "verdaccio": "6.10.3"
   },
   "engines": {
+    "bun": ">=1.4.0 <2",
     "node": ">=24 <25"
   },
-  "packageManager": "bun@1.4.0",
   "generators": "./generators.json",
-  "nx": {},
-  "nx-migrations": "./migrations.json"
+  "nx": {
+    "targets": {
+      "build": {
+        "executor": "@nx/js:tsc",
+        "outputs": [
+          "{options.outputPath}"
+        ],
+        "options": {
+          "outputPath": "dist",
+          "main": "src/index.ts",
+          "tsConfig": "tsconfig.lib.json",
+          "rootDir": "src",
+          "generatePackageJson": false,
+          "assets": [
+            {
+              "input": "./src",
+              "glob": "**/!(*.ts)",
+              "output": "."
+            },
+            {
+              "input": "./src",
+              "glob": "**/*.d.ts",
+              "output": "."
+            }
+          ]
+        }
+      },
+      "local-registry": {
+        "executor": "@nx/js:verdaccio",
+        "options": {
+          "port": 4873,
+          "listenAddress": "127.0.0.1",
+          "location": "none",
+          "config": ".verdaccio/config.yml",
+          "storage": "tmp/local-registry/storage",
+          "clear": false
+        }
+      },
+      "pack:check": {
+        "dependsOn": [
+          "build"
+        ],
+        "command": "bun pm pack --dry-run --ignore-scripts",
+        "options": {
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
+  "nx-migrations": {
+    "migrations": "./migrations.json"
+  }
 }

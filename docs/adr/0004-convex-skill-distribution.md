@@ -12,7 +12,6 @@ Keenko still needs project-specific behavior that the upstream suite cannot own:
 
 ## Decision
 
-- Keep the reviewed upstream Convex revision in `vendor/sources.json` as external provenance with its declared Apache-2.0 license.
 - Do not automatically install or redistribute the complete upstream suite in the default Keenko project.
-- Ship the Keenko-owned `convex` specialist in both supported harness trees. It routes agents to installed Convex source/types, current first-party documentation, Keenko backend/Confect rules, and the pinned upstream provenance record when useful.
+- Ship the Keenko-owned selected `convex` specialist as release-versioned sync content in both supported harness trees. It routes agents to installed Convex source/types, current first-party documentation, and Keenko backend/Confect rules for version-sensitive behavior.
 - A project may install the official Convex suite separately when a human deliberately chooses it. That external installation does not replace Keenko authority.

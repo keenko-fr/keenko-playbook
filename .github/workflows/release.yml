@@ -2,11 +2,10 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      expected_sha:
-        description: Exact releasable main commit
-        required: true
-        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -14,6 +13,7 @@ permissions:
 
 jobs:
   release:
+    name: Release
     runs-on: ubuntu-latest
     steps:
       - name: Create Keenko Release token
@@ -23,32 +23,44 @@ jobs:
           client-id: ${{ vars.KEENKO_RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.KEENKO_RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Check out release revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ inputs.expected_sha }}
+          ref: ${{ github.sha }}
           token: ${{ steps.release-app.outputs.token }}
-      - uses: actions/setup-node@v5
+
+      - name: Verify protected mainline revision
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$GITHUB_SHA"
+          git switch -C main "$GITHUB_SHA"
+          git branch --set-upstream-to=origin/main main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+          package-manager-cache: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.0
-      - name: Verify exact releasable main commit
-        run: |
-          git fetch origin main --tags
-          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
-          test "$(git rev-parse origin/main)" = "${{ inputs.expected_sha }}"
-          git checkout -B main "${{ inputs.expected_sha }}"
-          git branch --set-upstream-to=origin/main main
-          test "$(git symbolic-ref --short HEAD)" = "main"
-          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
-      - run: bun install --frozen-lockfile
-      - name: Release-grade verification
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bun run check:release
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify repository
+        run: bun run check
+
+      - name: Verify release plan
+        run: bun x nx release plan:check
+
       - name: Configure release identity
         env:
           GH_TOKEN: ${{ steps.release-app.outputs.token }}
@@ -57,9 +69,17 @@ jobs:
           release_app_id="$(gh api "/users/${RELEASE_APP_SLUG}[bot]" --jq .id)"
           git config user.name "${RELEASE_APP_SLUG}[bot]"
           git config user.email "${release_app_id}+${RELEASE_APP_SLUG}[bot]@users.noreply.github.com"
+
       - name: Release with Nx
+        run: bun x nx release --yes
         env:
           GITHUB_TOKEN: ${{ steps.release-app.outputs.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
-        run: bun x nx release --yes
+
+      - name: Read Nx-published version
+        id: published
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify published product
+        run: bun run test:published -- "${{ steps.published.outputs.version }}"

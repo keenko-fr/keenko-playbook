@@ -1,28 +1,23 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "analytics": false,
   "defaultBase": "main",
-  "neverConnectToCloud": true,
-  "release": {
-    "projects": ["keenko"],
-    "releaseTag": {
-      "pattern": "v{version}"
-    },
-    "versionPlans": true,
-    "version": {
-      "adjustSemverBumpsForZeroMajorVersion": false
-    },
-    "changelog": {
-      "automaticFromRef": true,
-      "workspaceChangelog": {
-        "file": "{workspaceRoot}/CHANGELOG.md",
-        "createRelease": "github"
-      }
+  "targetDefaults": {
+    "@nx/js:tsc": {
+      "cache": true,
+      "dependsOn": ["^build"]
     }
   },
-  "targetDefaults": {
-    "check": {
-      "cache": true,
-      "dependsOn": ["^check"]
+  "release": {
+    "projects": ["keenko"],
+    "versionPlans": true,
+    "version": {
+      "preVersionCommand": "bunx nx run-many -t build"
+    },
+    "changelog": {
+      "projectChangelogs": {
+        "createRelease": "github"
+      }
     }
   }
 }

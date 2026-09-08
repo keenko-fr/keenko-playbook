@@ -1,0 +1,23 @@
+{
+  "name": "@<%= workspace %>/backend",
+  "exports": {},
+  "scripts": {
+    "codegen": "confect codegen",
+    "dev": "bun run --parallel \"dev:*\"",
+    "dev:confect": "confect dev",
+    "dev:convex": "convex dev"
+  },
+  "nx": {
+    "tags": ["type:package", "scope:backend"],
+    "targets": {
+      "typecheck": {
+        "command": "node ../../node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.json",
+        "options": {
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,598 @@
+import { describe, expect, test } from "bun:test";
+
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { readJson, type Tree } from "@nx/devkit";
+import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
+import { YAML } from "bun";
+import { Effect as E, FileSystem, Layer as L, Option as O, Path, Struct } from "effect";
+
+import type { PackageJson } from "../helpers.js";
+import { packageVersions, runtimeVersions } from "../versions.js";
+import { START_ROUTE_TREE_FOOTER } from "./helpers/apps-web.js";
+import { presetProgram } from "./preset.js";
+
+// TYPES -----------------------------------------------------------------------------------------------------------------------------------
+type ExpectedPackageScope = "backend" | "shared" | "ui";
+
+// CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
+const packageScopes: readonly ExpectedPackageScope[] = ["backend", "shared", "ui"];
+
+const managedRoots = ["apps/web", "packages/backend", "packages/shared", "packages/ui"];
+
+const expectedWorkspaces = ["apps/*", "packages/*"];
+
+const expectedScripts = {
+  build: "nx run-many -t build",
+  check: "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build",
+  codegen: "nx run-many -t codegen",
+  "codegen:check": "keenko-codegen-check",
+  format: "oxfmt .",
+  "format:check": "oxfmt --check .",
+  lint: "oxlint .",
+  "lint:fix": "oxlint --fix .",
+  typecheck: "nx run-many -t typecheck",
+} satisfies Record<string, string>;
+
+const expectedDevDependencies = Struct.pick(packageVersions, [
+  "@effect/tsgo",
+  "@nx/oxlint",
+  "@typescript/native",
+  "nx",
+  "oxfmt",
+  "oxlint",
+  "oxlint-plugin-effect",
+  "oxlint-tsgolint",
+  "typescript",
+  "ultracite",
+]);
+
+const expectedTypecheckTarget = {
+  command: "node ../../node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.json",
+  options: {
+    cwd: "{projectRoot}",
+  },
+};
+
+const platformLayer = L.mergeAll(NodeFileSystem.layer, NodePath.layer);
+
+// HELPERS ---------------------------------------------------------------------------------------------------------------------------------
+const runPreset = (tree: Tree, name = "test") => presetProgram(tree, { name }).pipe(E.provide(platformLayer));
+
+const generatePreset = (name = "test") =>
+  E.gen(function* () {
+    const tree = createTreeWithEmptyWorkspace();
+
+    yield* runPreset(tree, name);
+
+    return tree;
+  });
+
+const readTemplate = (source: URL) =>
+  E.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+
+    return yield* fs.readFileString(yield* path.fromFileUrl(source));
+  }).pipe(E.provide(platformLayer));
+
+// TESTS -----------------------------------------------------------------------------------------------------------------------------------
+describe("keenko preset", () => {
+  test("replaces initial Nx boilerplate with a concise consumer README", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        tree.write("README.md", "# Nx boilerplate\n");
+        yield* runPreset(tree);
+        const readme = O.getOrThrow(O.fromNullishOr(tree.read("README.md", "utf-8")));
+
+        expect(readme).toBe(yield* readTemplate(new URL("files/root/README.md", import.meta.url)));
+        expect(readme).not.toContain("Nx boilerplate");
+        for (const command of ["dev", "codegen", "check"]) {
+          expect(readme).toContain(`bun run ${command}`);
+          expect(readJson<PackageJson>(tree, "package.json").scripts?.[command]).toBeTypeOf("string");
+        }
+        for (const root of managedRoots) {
+          expect(readme).toContain(root);
+          expect(tree.exists(`${root}/package.json`)).toBe(true);
+        }
+        expect(readme).toContain("bun x nx sync");
+        expect(readme).toContain("bun x nx sync:check");
+        for (const document of ["CONTEXT.md", "docs/project/architecture.md"]) {
+          expect(readme).toContain(`](${document})`);
+          expect(tree.exists(document)).toBe(true);
+        }
+      })
+    ));
+
+  test("generates a minimal consumer CI gate owned by the canonical check", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+        const workflowPath = ".github/workflows/check.yml";
+        expect(tree.exists(workflowPath)).toBe(true);
+        const workflow = O.getOrThrow(O.fromNullishOr(tree.read(workflowPath, "utf-8")));
+        const checkoutAction: unknown = expect.stringMatching(/^actions\/checkout@[a-f\d]{40}$/u);
+        const nodeAction: unknown = expect.stringMatching(/^actions\/setup-node@[a-f\d]{40}$/u);
+        const bunAction: unknown = expect.stringMatching(/^oven-sh\/setup-bun@[a-f\d]{40}$/u);
+
+        expect(YAML.parse(workflow)).toEqual({
+          jobs: {
+            check: {
+              "runs-on": "ubuntu-latest",
+              steps: [
+                { uses: checkoutAction, with: { "persist-credentials": false } },
+                { uses: nodeAction, with: { "node-version": runtimeVersions.nodeRange } },
+                { uses: bunAction, with: { "bun-version": runtimeVersions.bun } },
+                { run: "bun install --frozen-lockfile" },
+                { run: "bun run check" },
+              ],
+            },
+          },
+          name: "Check",
+          on: { pull_request: {}, push: { branches: ["main"] } },
+          permissions: { contents: "read" },
+        });
+      })
+    ));
+
+  test("owns web codegen through its package script and canonical dependency specs", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+        const web = readJson<PackageJson>(tree, "apps/web/package.json");
+        const tsrConfig = readJson<{ routeTreeFileFooter?: string[] }>(tree, "apps/web/tsr.config.json");
+        const viteConfig = tree.read("apps/web/vite.config.ts", "utf-8");
+
+        expect(web.scripts?.codegen).toBe(
+          "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy url baseLocale --no-emit-readme && tsr generate"
+        );
+        expect(viteConfig).toContain("emitReadme: false");
+        expect(web.devDependencies).toMatchObject(Struct.pick(packageVersions, ["@inlang/paraglide-js", "@tanstack/router-cli"]));
+        expect(web.nx?.targets?.codegen).toBeUndefined();
+        expect(tree.exists("apps/web/project.inlang/settings.json")).toBe(true);
+        expect(tree.exists("apps/web/tsr.config.json")).toBe(true);
+        expect(tsrConfig.routeTreeFileFooter).toEqual([START_ROUTE_TREE_FOOTER]);
+      })
+    ));
+
+  test("generates the initial workspace topology", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+
+        expect(tree.exists("apps/web/package.json")).toBe(true);
+        expect(tree.exists("packages/backend/package.json")).toBe(true);
+        expect(tree.exists("packages/shared/package.json")).toBe(true);
+        expect(tree.exists("packages/ui/package.json")).toBe(true);
+      })
+    ));
+
+  test("uses the Nx workspace name unchanged as the Keenko identity", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("my-project");
+
+        expect(readJson<PackageJson>(tree, "package.json").name).toBe("my-project");
+        expect(readJson<PackageJson>(tree, "apps/web/package.json").name).toBe("@my-project/web");
+
+        for (const scope of packageScopes)
+          expect(readJson<PackageJson>(tree, `packages/${scope}/package.json`).name).toBe(`@my-project/${scope}`);
+      })
+    ));
+
+  test("accepts valid npm identity forms without normalization", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("my_app");
+
+        expect(readJson<PackageJson>(tree, "package.json").name).toBe("my_app");
+        expect(readJson<PackageJson>(tree, "apps/web/package.json").name).toBe("@my_app/web");
+        expect(readJson<PackageJson>(tree, "packages/backend/package.json").name).toBe("@my_app/backend");
+        expect(readJson<PackageJson>(tree, "packages/shared/package.json").name).toBe("@my_app/shared");
+        expect(readJson<PackageJson>(tree, "packages/ui/package.json").name).toBe("@my_app/ui");
+      })
+    ));
+
+  test("rejects an invalid workspace identity before generation", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+
+        const exit = yield* E.exit(runPreset(tree, "myProject"));
+
+        expect(exit._tag).toBe("Failure");
+
+        expect(tree.exists("apps/web/package.json")).toBe(false);
+        expect(tree.exists("packages/backend/package.json")).toBe(false);
+        expect(tree.exists("packages/shared/package.json")).toBe(false);
+        expect(tree.exists("packages/ui/package.json")).toBe(false);
+      })
+    ));
+
+  test("does not partially write when a managed target is occupied", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+
+        tree.write("packages/ui/existing.ts", "");
+
+        const failure = yield* runPreset(tree).pipe(E.flip);
+
+        expect(failure).toMatchObject({
+          _tag: "WorkspaceFailure",
+          issue: "target_occupied",
+        });
+
+        expect(tree.exists("apps/web/package.json")).toBe(false);
+        expect(tree.exists("packages/backend/package.json")).toBe(false);
+        expect(tree.exists("packages/shared/package.json")).toBe(false);
+        expect(tree.exists("packages/ui/existing.ts")).toBe(true);
+      })
+    ));
+
+  for (const root of managedRoots)
+    test(`refuses occupied ${root}`, () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = createTreeWithEmptyWorkspace();
+
+          tree.write(`${root}/existing.ts`, "");
+
+          const failure = yield* runPreset(tree).pipe(E.flip);
+
+          expect(failure).toMatchObject({
+            _tag: "WorkspaceFailure",
+            issue: "target_occupied",
+          });
+
+          expect(tree.exists(`${root}/existing.ts`)).toBe(true);
+          expect(tree.exists("apps/web/package.json")).toBe(false);
+          expect(tree.exists("packages/backend/package.json")).toBe(false);
+          expect(tree.exists("packages/shared/package.json")).toBe(false);
+          expect(tree.exists("packages/ui/package.json")).toBe(false);
+        })
+      ));
+
+  test("configures the Bun workspace roots", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+
+        expect(readJson<PackageJson>(tree, "package.json").workspaces).toEqual(expectedWorkspaces);
+      })
+    ));
+
+  test("configures the canonical root project lifecycle", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+        const packageJson = readJson<PackageJson>(tree, "package.json");
+
+        expect(packageJson.scripts).toMatchObject(expectedScripts);
+        expect(packageJson.scripts?.check?.split(" && ")).toEqual([
+          "nx sync:check",
+          "bun run codegen:check",
+          "bun run format:check",
+          "bun run lint",
+          "bun run typecheck",
+          "bun run build",
+        ]);
+        expect(packageJson.scripts).not.toHaveProperty("test");
+        expect(packageJson.devDependencies).toMatchObject(expectedDevDependencies);
+
+        expect(packageJson).toMatchObject({
+          engines: {
+            bun: runtimeVersions.bunRange,
+            node: runtimeVersions.nodeRange,
+          },
+
+          name: "test",
+
+          nx: {
+            includedScripts: [],
+          },
+          packageManager: `bun@${runtimeVersions.bun}`,
+          private: true,
+        });
+
+        expect(readJson(tree, "nx.json")).toMatchObject({
+          cli: {
+            packageManager: "bun",
+          },
+          migrate: {
+            agentic: false,
+            createCommits: false,
+          },
+          sync: {
+            globalGenerators: ["keenko:sync"],
+          },
+        });
+      })
+    ));
+
+  test("configures the workspace development loop", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        const rootPackageJson = readJson<PackageJson>(tree, "package.json");
+        const backendPackageJson = readJson<PackageJson>(tree, "packages/backend/package.json");
+
+        expect(rootPackageJson.scripts?.dev).toBe("nx run-many -t dev");
+
+        expect(backendPackageJson.scripts).toMatchObject({
+          dev: 'bun run --parallel "dev:*"',
+          "dev:confect": "confect dev",
+          "dev:convex": "convex dev",
+        });
+      })
+    ));
+
+  test("generates the canonical root tooling configuration", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+
+        expect(tree.exists("oxfmt.config.ts")).toBe(true);
+        expect(tree.exists("oxlint.config.ts")).toBe(true);
+        expect(tree.read("bunfig.toml", "utf-8")).toBe('[install]\nlinker = "hoisted"\n');
+
+        expect(readJson(tree, "tsconfig.base.json")).toMatchObject({
+          compilerOptions: {
+            moduleResolution: "bundler",
+            noEmit: true,
+            strict: true,
+          },
+        });
+      })
+    ));
+
+  test("configures package typecheck targets", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+
+        for (const scope of packageScopes) {
+          const packageJson = readJson<PackageJson>(tree, `packages/${scope}/package.json`);
+
+          expect(packageJson.nx?.targets?.typecheck).toEqual(expectedTypecheckTarget);
+        }
+      })
+    ));
+
+  test("configures web typechecking without replacing TanStack configuration", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+        const packageJson = readJson<PackageJson>(tree, "apps/web/package.json");
+
+        expect(packageJson.nx).toMatchObject({
+          tags: ["type:app", "scope:web"],
+          targets: {
+            typecheck: expectedTypecheckTarget,
+          },
+        });
+
+        expect(tree.exists("apps/web/tsconfig.json")).toBe(true);
+      })
+    ));
+
+  test("keeps shared domain-neutral and private until a real contract exists", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        const packageJson = readJson<PackageJson>(tree, "packages/shared/package.json");
+        const tsconfig = readJson<{ include: string[] }>(tree, "packages/shared/tsconfig.json");
+
+        expect(packageJson.exports).toEqual({});
+        expect(packageJson.dependencies).toBeUndefined();
+        expect(tsconfig.include).toEqual(["src/**/*.ts"]);
+
+        expect(tree.read("packages/shared/src/index.ts", "utf-8")).toBe("");
+      })
+    ));
+
+  test("creates a domain-neutral Confect backend baseline", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        expect(tree.exists("packages/backend/confect/.gitkeep")).toBe(true);
+        expect(tree.exists("packages/backend/convex/convex.config.ts")).toBe(true);
+
+        const packageJson = readJson<PackageJson>(tree, "packages/backend/package.json");
+
+        expect(packageJson.scripts).toMatchObject({
+          codegen: "confect codegen",
+          "dev:confect": "confect dev",
+          "dev:convex": "convex dev",
+        });
+      })
+    ));
+
+  test("connects the web app to the shared ui stylesheet", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        expect(tree.read("apps/web/src/styles.css", "utf-8")).toBe('@import "@acme/ui/globals.css";\n');
+
+        const packageJson = readJson<PackageJson>(tree, "apps/web/package.json");
+
+        expect(packageJson.dependencies).toMatchObject({
+          "@acme/ui": "workspace:*",
+        });
+      })
+    ));
+
+  test("configures ui runtime and styling dependencies", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
+        const uiPackageJson = readJson<PackageJson>(tree, "packages/ui/package.json");
+
+        expect(uiPackageJson.dependencies).toMatchObject({
+          ...Struct.pick(packageVersions, ["@base-ui/react", "class-variance-authority", "cn", "lucide-react", "shadcn", "tw-animate-css"]),
+          react: webPackageJson.dependencies?.react,
+          "react-dom": webPackageJson.dependencies?.["react-dom"],
+        });
+
+        expect(uiPackageJson.devDependencies).toMatchObject(Struct.pick(packageVersions, ["tailwindcss"]));
+
+        expect(uiPackageJson.dependencies).not.toHaveProperty("clsx");
+        expect(uiPackageJson.dependencies).not.toHaveProperty("tailwind-merge");
+      })
+    ));
+
+  test("keeps ui on the React versions selected by TanStack", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
+        const uiPackageJson = readJson<PackageJson>(tree, "packages/ui/package.json");
+
+        expect(uiPackageJson.dependencies?.react).toBe(webPackageJson.dependencies?.react);
+        expect(uiPackageJson.dependencies?.["react-dom"]).toBe(webPackageJson.dependencies?.["react-dom"]);
+      })
+    ));
+
+  test("creates the shadcn utility entrypoint", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        expect(tree.read("packages/ui/src/lib/utils.ts", "utf-8")).toBe('export { cn } from "cn";\n');
+      })
+    ));
+
+  test("creates the shared Tailwind and shadcn stylesheet", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        const css = tree.read("packages/ui/src/styles/globals.css", "utf-8");
+
+        expect(css).toContain('@import "tailwindcss";');
+        expect(css).toContain('@import "tw-animate-css";');
+        expect(css).toContain('@import "shadcn/tailwind.css";');
+
+        expect(css).toContain('@source "../**/*.{ts,tsx}";');
+
+        expect(css).toContain("@theme inline");
+        expect(css).toContain(":root");
+        expect(css).toContain(".dark");
+        expect(css).toContain("@layer base");
+
+        expect(css).not.toContain("../../../../apps");
+      })
+    ));
+
+  test("routes shadcn components to the ui workspace", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        const webComponentsJson = readJson<PackageJson>(tree, "apps/web/components.json");
+        const uiComponentsJson = readJson<PackageJson>(tree, "packages/ui/components.json");
+
+        expect(webComponentsJson).toMatchObject({
+          aliases: {
+            components: "#components",
+            hooks: "#hooks",
+            lib: "#lib",
+            ui: "@acme/ui/components",
+            utils: "@acme/ui/lib/utils",
+          },
+          iconLibrary: "lucide",
+          rsc: false,
+          style: "base-nova",
+          tailwind: {
+            baseColor: "neutral",
+            config: "",
+            css: "../../packages/ui/src/styles/globals.css",
+            cssVariables: true,
+          },
+          tsx: true,
+        });
+
+        expect(uiComponentsJson).toMatchObject({
+          aliases: {
+            components: "#components",
+            hooks: "#hooks",
+            lib: "#lib",
+            ui: "#components",
+            utils: "#lib/utils",
+          },
+          iconLibrary: "lucide",
+          rsc: false,
+          style: "base-nova",
+          tailwind: {
+            baseColor: "neutral",
+            config: "",
+            css: "src/styles/globals.css",
+            cssVariables: true,
+          },
+          tsx: true,
+        });
+      })
+    ));
+
+  test("exports the ui surfaces used by shadcn and web", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset("acme");
+
+        const packageJson = readJson<PackageJson>(tree, "packages/ui/package.json");
+
+        expect(packageJson.exports).toEqual({
+          "./components/*": "./src/components/*.tsx",
+          "./globals.css": "./src/styles/globals.css",
+          "./hooks/*": "./src/hooks/*.ts",
+          "./lib/*": "./src/lib/*.ts",
+        });
+      })
+    ));
+
+  test("synchronizes Keenko-managed guidance in a fresh workspace", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+
+        expect(tree.exists(".keenko/docs/core/tooling.md")).toBe(true);
+
+        expect(tree.exists(".keenko/skills/confect/SKILL.md")).toBe(true);
+
+        expect(tree.exists(".agents/skills/confect/SKILL.md")).toBe(true);
+        expect(tree.exists(".claude/skills/confect/SKILL.md")).toBe(true);
+
+        expect(tree.read("AGENTS.md", "utf-8")).toContain("<!-- keenko:start -->");
+
+        expect(tree.read("CLAUDE.md", "utf-8")).toContain("<!-- keenko:start -->");
+      })
+    ));
+
+  test("seeds project-owned guidance", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+
+        expect(tree.read("CONTEXT.md", "utf-8")).toBe(yield* readTemplate(new URL("files/root/CONTEXT.md", import.meta.url)));
+
+        expect(tree.read("docs/project/architecture.md", "utf-8")).toBe(
+          yield* readTemplate(new URL("files/root/docs/project/architecture.md", import.meta.url))
+        );
+
+        expect(tree.read("docs/project/overrides.md", "utf-8")).toBe(
+          yield* readTemplate(new URL("files/root/docs/project/overrides.md", import.meta.url))
+        );
+
+        expect(tree.read("docs/project/ui.md", "utf-8")).toBe(
+          yield* readTemplate(new URL("files/root/docs/project/ui.md", import.meta.url))
+        );
+      })
+    ));
+});
