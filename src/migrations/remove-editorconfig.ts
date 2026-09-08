@@ -403,7 +403,7 @@ function isRegexStatementHeader(source: string) {
 }
 
 function characterBefore(source: string, end: number) {
-  return /.$/us.exec(source.slice(0, end))?.[0] ?? "";
+  return /[\s\S]$/u.exec(source.slice(0, end))?.[0] ?? "";
 }
 
 function identifierPartEndsAt(source: string, end: number) {
