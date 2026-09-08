@@ -351,7 +351,7 @@ function slashStartsRegularExpression(source: string, slashIndex: number, expres
     return false;
   }
   if (previous === "}") {
-    return throwOwnershipConflict();
+    return closingStatementBlockAllowsRegularExpression(source, previousIndex, expressionStart);
   }
   if (previous === "!") {
     return isPrefixBang(source, previousIndex, expressionStart);
@@ -384,6 +384,40 @@ function closingStatementHeaderAllowsRegularExpression(source: string, closeInde
     }
   }
   return false;
+}
+
+function closingStatementBlockAllowsRegularExpression(source: string, closeIndex: number, expressionStart: number) {
+  const prefix = maskCommentsAndStrings(source.slice(expressionStart, closeIndex + 1));
+  let depth = 0;
+
+  for (let index = prefix.length - 1; index >= 0; index -= 1) {
+    const character = prefix[index] ?? "";
+    if (character === "}") {
+      depth += 1;
+      continue;
+    }
+    if (character !== "{") {
+      continue;
+    }
+    depth -= 1;
+    if (depth !== 0) {
+      continue;
+    }
+
+    let headerEnd = index - 1;
+    while (headerEnd >= 0 && /\s/u.test(prefix[headerEnd] ?? "")) {
+      headerEnd -= 1;
+    }
+    if (
+      headerEnd >= 0 &&
+      prefix[headerEnd] === ")" &&
+      closingStatementHeaderAllowsRegularExpression(prefix, headerEnd, 0)
+    ) {
+      return true;
+    }
+    return throwOwnershipConflict();
+  }
+  return throwOwnershipConflict();
 }
 
 function isRegexStatementHeader(source: string) {
@@ -479,7 +513,7 @@ function identifierAllowsRegularExpression(source: string, previousIndex: number
   while (contextIndex >= expressionStart && /\s/u.test(source[contextIndex] ?? "")) {
     contextIndex -= 1;
   }
-  return contextIndex < expressionStart || source[contextIndex] !== ".";
+  return contextIndex < expressionStart || (source[contextIndex] !== "." && source[contextIndex] !== "#");
 }
 
 function isForOfKeyword(source: string, tokenStart: number, expressionStart: number) {
