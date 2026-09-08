@@ -408,11 +408,7 @@ function closingStatementBlockAllowsRegularExpression(source: string, closeIndex
     while (headerEnd >= 0 && /\s/u.test(prefix[headerEnd] ?? "")) {
       headerEnd -= 1;
     }
-    if (
-      headerEnd >= 0 &&
-      prefix[headerEnd] === ")" &&
-      closingStatementHeaderAllowsRegularExpression(prefix, headerEnd, 0)
-    ) {
+    if (headerEnd >= 0 && prefix[headerEnd] === ")" && closingStatementHeaderAllowsRegularExpression(prefix, headerEnd, 0)) {
       return true;
     }
     return throwOwnershipConflict();
