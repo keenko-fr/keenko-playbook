@@ -91,3 +91,57 @@ test("preserves a regex literal after contextual of with an expression-key membe
   expect(oxfmt).toContain(loop);
   expect(oxfmt).toContain("const formatting = ultracite;");
 });
+
+test("preserves a regex literal after contextual of with a template-key member assignment target", () => {
+  const tree = createTreeWithEmptyWorkspace();
+  tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+  const loop = "for (holder[`value`] of /project-_tabWidth-cache/.source) { void holder[`value`]; }";
+  const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+    'import ultracite from "ultracite/oxfmt";\n',
+    `import ultracite from "ultracite/oxfmt";\n\nconst holder = { value: "" };\n${loop}\n`
+  );
+  tree.write("oxfmt.config.ts", customizedOxfmt);
+
+  removeEditorConfig(tree);
+
+  expect(tree.exists(".editorconfig")).toBe(false);
+  const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+  expect(oxfmt).toContain(loop);
+  expect(oxfmt).toContain("const formatting = ultracite;");
+});
+
+test("preserves a regex literal after contextual of with an escaped identifier binding", () => {
+  const tree = createTreeWithEmptyWorkspace();
+  tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+  const loop = "for (const \\u0061 of /project-_tabWidth-cache/.source) { void \\u0061; }";
+  const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+    'import ultracite from "ultracite/oxfmt";\n',
+    `import ultracite from "ultracite/oxfmt";\n\n${loop}\n`
+  );
+  tree.write("oxfmt.config.ts", customizedOxfmt);
+
+  removeEditorConfig(tree);
+
+  expect(tree.exists(".editorconfig")).toBe(false);
+  const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+  expect(oxfmt).toContain(loop);
+  expect(oxfmt).toContain("const formatting = ultracite;");
+});
+
+test("preserves a regex literal used as an if statement body", () => {
+  const tree = createTreeWithEmptyWorkspace();
+  tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+  const statement = 'if (true) /project-_tabWidth-cache/.test("");';
+  const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+    'import ultracite from "ultracite/oxfmt";\n',
+    `import ultracite from "ultracite/oxfmt";\n\n${statement}\n`
+  );
+  tree.write("oxfmt.config.ts", customizedOxfmt);
+
+  removeEditorConfig(tree);
+
+  expect(tree.exists(".editorconfig")).toBe(false);
+  const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+  expect(oxfmt).toContain(statement);
+  expect(oxfmt).toContain("const formatting = ultracite;");
+});
