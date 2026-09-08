@@ -558,7 +558,7 @@ function readUnicodeIdentifierEscape(source: string, start: number) {
       return null;
     }
     const codePoint = Number.parseInt(digits, 16);
-    return codePoint <= 0x10_ffff ? { codePoint, end: close + 1 } : null;
+    return codePoint <= 0x10_ff_ff ? { codePoint, end: close + 1 } : null;
   }
 
   const digits = source.slice(start + 2, start + 6);
