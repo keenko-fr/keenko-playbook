@@ -513,7 +513,10 @@ function identifierAllowsRegularExpression(source: string, previousIndex: number
   while (contextIndex >= expressionStart && /\s/u.test(source[contextIndex] ?? "")) {
     contextIndex -= 1;
   }
-  return contextIndex < expressionStart || (source[contextIndex] !== "." && source[contextIndex] !== "#");
+  if (contextIndex < expressionStart) {
+    return true;
+  }
+  return source[contextIndex] !== "." && source[contextIndex] !== "#";
 }
 
 function isForOfKeyword(source: string, tokenStart: number, expressionStart: number) {
