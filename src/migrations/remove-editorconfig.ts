@@ -37,7 +37,6 @@ const DEFINE_CONFIG_OBJECT = new RegExp(
 const REMOVED_FORMATTING_BINDING_REFERENCE = /\b_(?:endOfLine|tabWidth|useTabs)\b/u;
 const REGULAR_EXPRESSION_PREFIX_KEYWORD = /^(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/u;
 const FOR_HEADER = /(?:^|[^\w$.#])for(?:\s+await)?\s*$/u;
-const IF_HEADER = /(?:^|[^\w$.#])if\s*$/u;
 const IDENTIFIER = String.raw`[$_\p{ID_Start}][$_\u200C\u200D\p{ID_Continue}]*`;
 const IDENTIFIER_START_CHARACTER = /[$_\p{ID_Start}]/u;
 const IDENTIFIER_PART_CHARACTER = /[$_\u200C\u200D\p{ID_Continue}]/u;
@@ -346,7 +345,7 @@ function slashStartsRegularExpression(source: string, slashIndex: number, expres
     return identifierAllowsRegularExpression(source, previousIndex, expressionStart);
   }
   if (previous === ")") {
-    return closingIfConditionAllowsRegularExpression(source, previousIndex, expressionStart);
+    return closingStatementHeaderAllowsRegularExpression(source, previousIndex, expressionStart);
   }
   if (previous === '"' || previous === "'" || previous === "`" || previous === "]" || previous === ".") {
     return false;
@@ -366,7 +365,7 @@ function slashStartsRegularExpression(source: string, slashIndex: number, expres
   return throwOwnershipConflict();
 }
 
-function closingIfConditionAllowsRegularExpression(source: string, closeIndex: number, expressionStart: number) {
+function closingStatementHeaderAllowsRegularExpression(source: string, closeIndex: number, expressionStart: number) {
   const prefix = maskCommentsAndStrings(source.slice(expressionStart, closeIndex + 1));
   let depth = 0;
 
@@ -381,10 +380,43 @@ function closingIfConditionAllowsRegularExpression(source: string, closeIndex: n
     }
     depth -= 1;
     if (depth === 0) {
-      return IF_HEADER.test(prefix.slice(0, index));
+      return isRegexStatementHeader(prefix.slice(0, index));
     }
   }
   return false;
+}
+
+function isRegexStatementHeader(source: string) {
+  const header = source.trimEnd();
+  for (const keyword of ["if", "while", "for"]) {
+    const keywordStart = header.length - keyword.length;
+    if (keywordStart < 0 || header.slice(keywordStart) !== keyword) {
+      continue;
+    }
+    if (keywordStart === 0) {
+      return true;
+    }
+    const previous = Array.from(header.slice(0, keywordStart)).at(-1) ?? "";
+    return previous !== "." && previous !== "#" && !identifierPartEndsAt(header, keywordStart);
+  }
+  return false;
+}
+
+function identifierPartEndsAt(source: string, end: number) {
+  const previous = Array.from(source.slice(0, end)).at(-1) ?? "";
+  if (IDENTIFIER_PART_CHARACTER.test(previous)) {
+    return true;
+  }
+  if (previous !== "}") {
+    return false;
+  }
+
+  const escapeStart = source.lastIndexOf("\\u{", end - 1);
+  if (escapeStart === -1) {
+    return false;
+  }
+  const escape = readUnicodeIdentifierEscape(source, escapeStart);
+  return escape?.end === end && IDENTIFIER_PART_CHARACTER.test(String.fromCodePoint(escape.codePoint));
 }
 
 function isPrefixBang(source: string, bangIndex: number, expressionStart: number) {
