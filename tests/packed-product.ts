@@ -277,6 +277,7 @@ const product = E.gen(function* () {
   );
   yield* fs.writeFileString(forbiddenImport, `import "@${identity}/ui/lib/utils";\n`);
   yield* command(workspace, env, "bun", ["install"]);
+  yield* command(workspace, env, "bun", ["run", "format"]);
   for (const directory of [".nx/cache", ".nx/workspace-data"])
     yield* fs.remove(path.join(workspace, directory), { force: true, recursive: true });
   const boundaryOutput = yield* command(workspace, env, "bun", ["run", "check"], "failure");
