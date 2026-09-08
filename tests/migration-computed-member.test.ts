@@ -163,6 +163,23 @@ test("rejects a removed formatter binding after a Unicode identifier ending in i
   expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
 });
 
+test("rejects a removed formatter binding after spaced keyword-shaped member access", () => {
+  const tree = createTreeWithEmptyWorkspace();
+  tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+  const statements = "const obj = { if: () => 8 };\nconst width = obj . if(true) / _tabWidth / 2;";
+  const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+    'import ultracite from "ultracite/oxfmt";\n',
+    `import ultracite from "ultracite/oxfmt";\n\n${statements}\n`
+  );
+  tree.write("oxfmt.config.ts", customizedOxfmt);
+
+  expect(() => {
+    removeEditorConfig(tree);
+  }).toThrow("formatter ownership fields");
+  expect(tree.read(".editorconfig", "utf-8")).toBe(LEGACY_EDITORCONFIG);
+  expect(tree.read("oxfmt.config.ts", "utf-8")).toBe(customizedOxfmt);
+});
+
 test("preserves a regex literal used as a while statement body", () => {
   const tree = createTreeWithEmptyWorkspace();
   tree.write(".editorconfig", LEGACY_EDITORCONFIG);
@@ -185,6 +202,24 @@ test("preserves a regex literal used as an ordinary for statement body", () => {
   const tree = createTreeWithEmptyWorkspace();
   tree.write(".editorconfig", LEGACY_EDITORCONFIG);
   const statement = 'for (; false; ) /project-_tabWidth-cache/.test("");';
+  const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
+    'import ultracite from "ultracite/oxfmt";\n',
+    `import ultracite from "ultracite/oxfmt";\n\n${statement}\n`
+  );
+  tree.write("oxfmt.config.ts", customizedOxfmt);
+
+  removeEditorConfig(tree);
+
+  expect(tree.exists(".editorconfig")).toBe(false);
+  const oxfmt = tree.read("oxfmt.config.ts", "utf-8") ?? "";
+  expect(oxfmt).toContain(statement);
+  expect(oxfmt).toContain("const formatting = ultracite;");
+});
+
+test("preserves a regex literal used as a for await statement body", () => {
+  const tree = createTreeWithEmptyWorkspace();
+  tree.write(".editorconfig", LEGACY_EDITORCONFIG);
+  const statement = "async function scan(xs) { for await (const x of xs) /project-_tabWidth-cache/.test(x); }";
   const customizedOxfmt = LEGACY_OXFMT_CONFIG.replace(
     'import ultracite from "ultracite/oxfmt";\n',
     `import ultracite from "ultracite/oxfmt";\n\n${statement}\n`

@@ -388,18 +388,21 @@ function closingStatementHeaderAllowsRegularExpression(source: string, closeInde
 
 function isRegexStatementHeader(source: string) {
   const header = source.trimEnd();
-  for (const keyword of ["if", "while", "for"]) {
-    const keywordStart = header.length - keyword.length;
-    if (keywordStart < 0 || header.slice(keywordStart) !== keyword) {
-      continue;
-    }
-    if (keywordStart === 0) {
-      return true;
-    }
-    const previous = characterBefore(header, keywordStart);
-    return previous !== "." && previous !== "#" && !identifierPartEndsAt(header, keywordStart);
+  const statementHeader = /(?:if|while|for(?:\s+await)?)$/u.exec(header);
+  if (statementHeader === null) {
+    return false;
   }
-  return false;
+
+  let contextEnd = statementHeader.index;
+  while (contextEnd > 0 && /\s/u.test(header[contextEnd - 1] ?? "")) {
+    contextEnd -= 1;
+  }
+  if (contextEnd === 0) {
+    return true;
+  }
+
+  const previous = characterBefore(header, contextEnd);
+  return previous !== "." && previous !== "#" && !identifierPartEndsAt(header, contextEnd);
 }
 
 function characterBefore(source: string, end: number) {
