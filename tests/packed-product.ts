@@ -55,7 +55,7 @@ const command = E.fn("product.command")(
     return output;
   },
   E.scoped,
-  E.timeout("5 minutes")
+  E.timeout("10 minutes")
 );
 
 const sVersionPackage = S.fromJsonString(S.Struct({ version: S.String }));
@@ -223,17 +223,70 @@ const product = E.gen(function* () {
   if (O.isSome(localLicense))
     yield* assert(packedLicense === localLicense.value, "The packed Keenko artifact changed the representative skill license");
 
-  yield* command(workspace, env, "bun", ["run", "codegen"]);
-  yield* command(workspace, env, "bun", ["run", "codegen:check"]);
   const routeTree = path.join(workspace, "apps/web/src/routeTree.gen.ts");
-  yield* assert(yield* fs.exists(routeTree), "Canonical codegen did not create apps/web/src/routeTree.gen.ts");
-  const routeTreeAfterCodegen = yield* fs.readFileString(routeTree);
+  const ignoredParaglide = path.join(workspace, "apps/web/src/paraglide/messages.js");
+  for (const generated of [
+    "apps/web/src/routeTree.gen.ts",
+    "apps/web/src/paraglide/messages.js",
+    "packages/backend/confect/_generated/schema.ts",
+    "packages/backend/convex/schema.ts",
+  ])
+    yield* assert(yield* fs.exists(path.join(workspace, generated)), `Fresh creation did not materialize ${generated}`);
+
+  yield* source._tag === "local"
+    ? E.gen(function* () {
+        yield* command(workspace, env, "git", ["init", "-b", "main"]);
+        yield* command(workspace, env, "git", ["add", "."]);
+        yield* command(workspace, env, "git", ["commit", "-m", "Record fresh generated workspace"]);
+      })
+    : E.gen(function* () {
+        const gitWorkTree = yield* command(workspace, env, "git", ["rev-parse", "--is-inside-work-tree"]);
+        yield* assert(
+          gitWorkTree.trim() === "true",
+          "Published acceptance did not use the Git repository initialized by create-nx-workspace"
+        );
+        yield* assert(
+          (yield* command(workspace, env, "git", ["status", "--porcelain"])).trim() === "",
+          "Published creation did not commit its initial generated state"
+        );
+      });
+  yield* command(workspace, env, "git", ["rev-parse", "--verify", "HEAD"]);
+  yield* assert(
+    (yield* command(workspace, env, "git", ["ls-files", "--error-unmatch", "apps/web/src/routeTree.gen.ts"])).trim() !== "",
+    "Fresh route tree is not tracked"
+  );
+  yield* command(workspace, env, "git", ["check-ignore", "apps/web/src/paraglide/messages.js"]);
+
+  const routeTreeAfterCreation = yield* fs.readFileString(routeTree);
   yield* command(workspace, env, "bun", ["run", "build"]);
   yield* assert(
-    (yield* fs.readFileString(routeTree)) === routeTreeAfterCodegen,
-    "TanStack build changed routeTree.gen.ts after canonical codegen"
+    (yield* fs.readFileString(routeTree)) === routeTreeAfterCreation,
+    "TanStack build changed routeTree.gen.ts after fresh creation"
   );
+
+  const driftRoute = path.join(workspace, "apps/web/src/routes/generated-drift.tsx");
+  yield* fs.writeFileString(
+    driftRoute,
+    'import { createFileRoute } from "@tanstack/react-router";\n\nexport const Route = createFileRoute("/generated-drift")({ component: () => null });\n'
+  );
+  const driftOutput = yield* command(workspace, env, "bun", ["run", "check"], "failure");
+  yield* assert(driftOutput.includes("apps/web/src/routeTree.gen.ts"), `Check did not report tracked generated drift:\n${driftOutput}`);
+  yield* assert(
+    (yield* fs.readFileString(routeTree)) !== routeTreeAfterCreation,
+    "Check did not leave the regenerated route tree available for review"
+  );
+  yield* command(workspace, env, "git", ["add", "apps/web/src/routes/generated-drift.tsx", "apps/web/src/routeTree.gen.ts"]);
+  yield* command(workspace, env, "git", ["commit", "-m", "Accept generated route update"]);
+
+  const projectOwned = path.join(workspace, "packages/shared/src/unrelated.ts");
+  yield* fs.writeFileString(projectOwned, "export const unrelated = true;\n");
+  yield* fs.writeFileString(ignoredParaglide, "deliberately stale ignored output\n");
   yield* command(workspace, env, "bun", ["run", "check"]);
+  yield* assert(
+    (yield* command(workspace, env, "git", ["status", "--porcelain"])).includes("packages/shared/src/unrelated.ts"),
+    "Canonical check did not preserve unrelated project-owned dirty state"
+  );
+  yield* fs.remove(projectOwned);
 
   const tooling = path.join(workspace, ".keenko/docs/core/tooling.md");
   const expectedTooling = yield* fs.readFileString(tooling);
@@ -277,14 +330,13 @@ const product = E.gen(function* () {
   );
   yield* fs.writeFileString(forbiddenImport, `import "@${identity}/ui/lib/utils";\n`);
   yield* command(workspace, env, "bun", ["install"]);
-  yield* command(workspace, env, "bun", ["run", "format"]);
   for (const directory of [".nx/cache", ".nx/workspace-data"])
     yield* fs.remove(path.join(workspace, directory), { force: true, recursive: true });
-  const boundaryOutput = yield* command(workspace, env, "bun", ["run", "check"], "failure");
+  const boundaryOutput = yield* command(workspace, env, "bun", ["run", "lint"], "failure");
   const boundaryRule = "@nx/enforce-module-boundaries";
   yield* assert(
     boundaryOutput.includes(boundaryRule) || boundaryOutput.includes(`${boundaryRule.replace("/", "(")})`),
-    `Canonical check did not report the Nx boundary diagnostic:\n${boundaryOutput}`
+    `Lint did not report the Nx boundary diagnostic:\n${boundaryOutput}`
   );
   yield* fs.remove(forbiddenImport);
   yield* fs.writeFileString(sharedManifestPath, expectedSharedManifest);
@@ -310,25 +362,13 @@ const product = E.gen(function* () {
   yield* command(workspace, env, "bun", ["x", "oxlint", "--fix-dangerously", "packages/ui/src/components"]);
   yield* command(workspace, env, "bun", ["run", "format"]);
   yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
-  yield* command(workspace, env, "bun", ["run", "codegen"]);
   yield* command(workspace, env, "bun", ["run", "check"]);
-
-  yield* source._tag === "local"
-    ? command(workspace, env, "git", ["init", "-b", "main"])
-    : E.gen(function* () {
-        const gitWorkTree = yield* command(workspace, env, "git", ["rev-parse", "--is-inside-work-tree"]);
-        yield* assert(
-          gitWorkTree.trim() === "true",
-          "Published acceptance did not use the Git repository initialized by create-nx-workspace"
-        );
-      });
   yield* command(workspace, env, "git", ["add", "."]);
-  yield* command(workspace, env, "git", ["commit", "-m", "Materialize acceptance workspace"]);
+  yield* command(workspace, env, "git", ["commit", "-m", "Materialize acceptance changes"]);
   for (const directory of ["", "apps/web", "packages/backend", "packages/ui", "packages/shared", "packages/extra"])
     yield* fs.remove(path.join(workspace, directory, "node_modules"), { force: true, recursive: true });
 
   yield* command(workspace, env, "bun", ["install", "--frozen-lockfile"]);
-  yield* command(workspace, env, "bun", ["run", "codegen:check"]);
   yield* command(workspace, env, "bun", ["run", "check"]);
   yield* assert(
     (yield* command(workspace, env, "git", ["status", "--porcelain"])).trim() === "",

@@ -1,4 +1,4 @@
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { NodeFileSystem, NodePath, NodeServices } from "@effect/platform-node";
 import {
   addDependenciesToPackageJson,
   generateFiles,
@@ -9,6 +9,7 @@ import {
   type Tree,
 } from "@nx/devkit";
 import { Effect as E, HashSet as HS, Layer as L, Path, Schema as S, Struct } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { WorkspaceFailure } from "../errors.js";
 import type { PackageJson } from "../helpers.js";
@@ -37,9 +38,9 @@ export const devDependencies = Struct.pick(packageVersions, [
 
 export const scripts = {
   build: "nx run-many -t build",
-  check: "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build",
+  check:
+    "nx sync:check && bun run codegen && git diff --exit-code HEAD -- apps/web/src/routeTree.gen.ts packages/backend/confect packages/backend/convex ':(exclude)packages/backend/confect/.gitkeep' ':(exclude)packages/backend/convex/convex.config.ts' ':(exclude)packages/backend/convex/tsconfig.json' && bun run format:check && bun run lint && bun run typecheck && bun run build",
   codegen: "nx run-many -t codegen",
-  "codegen:check": "keenko-codegen-check",
   dev: "nx run-many -t dev",
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
@@ -79,11 +80,25 @@ export default function presetGenerator(tree: Tree, options: PresetGeneratorSche
     presetProgram(tree, options).pipe(
       E.as(() => {
         installPackagesTask(tree);
+        return E.runPromise(materializeInitialGeneratedState(tree.root).pipe(E.provide(NodeServices.layer)));
       }),
       E.provide(L.mergeAll(NodeFileSystem.layer, NodePath.layer))
     )
   );
 }
+
+const materializeInitialGeneratedState = E.fn("keenko.preset.materializeInitialGeneratedState")(function* (workspace: string) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const exitCode = yield* spawner.exitCode(
+    ChildProcess.make("bun", ["run", "codegen"], {
+      cwd: workspace,
+      stderr: "inherit",
+      stdout: "inherit",
+    })
+  );
+
+  if (exitCode !== 0) return yield* new WorkspaceFailure({ exitCode, issue: "initial_codegen_failed" });
+});
 
 // INTERNALS -------------------------------------------------------------------------------------------------------------------------------
 const configureRootPackageJson = (tree: Tree, workspace: string) => {

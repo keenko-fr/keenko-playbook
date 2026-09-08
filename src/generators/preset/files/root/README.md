@@ -9,7 +9,7 @@ A Bun and Nx application workspace created with Keenko.
 
 From the workspace root, install dependencies with `bun install` and run `bun run dev` to start web and backend development.
 
-Run `bun run codegen` to regenerate Paraglide, the TanStack Router route tree, and Confect contracts. Run `bun run check` before review to verify synchronized managed state, generated code, formatting, lint, types, and builds without intentionally rewriting tracked source.
+Run `bun run codegen` to regenerate Paraglide, the TanStack Router route tree, and Confect contracts. Fresh creation materializes their required initial state. Run `bun run check` before review: it regenerates in place, fails when tracked generator-owned artifacts drift, and leaves those changes available to review and commit.
 
 Keenko-managed guidance and skills use the Nx sync lifecycle. Run `bun x nx sync` to refresh them, or `bun x nx sync:check` to check for drift without applying changes.
 

@@ -9,9 +9,10 @@ export class TanStackCreateFailure extends S.TaggedError<TanStackCreateFailure>(
 }) {}
 
 // WORKSPACE -------------------------------------------------------------------------------------------------------------------------------
-export const sWorkspaceIssue = S.Literals(["target_occupied"]);
+export const sWorkspaceIssue = S.Literals(["initial_codegen_failed", "target_occupied"]);
 
 export class WorkspaceFailure extends S.TaggedError<WorkspaceFailure>()("WorkspaceFailure", {
+  exitCode: S.optional(S.Finite),
   issue: sWorkspaceIssue,
 }) {}
 

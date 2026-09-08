@@ -154,7 +154,7 @@ The common tooling surface includes:
 - `typecheck`: run compiler/type verification;
 - `check`: run the complete merge-ready aggregate.
 
-Expose `build`, `test`, `codegen`, `codegen:check`, and other concern-specific scripts when those concerns actually exist.
+Expose `build`, `test`, `codegen`, and other concern-specific scripts when those concerns actually exist.
 
 Do not add placeholder scripts merely for uniformity.
 
@@ -184,7 +184,7 @@ bun x nx sync:check
 
 detects managed-state drift without rewriting files.
 
-`bun run check` is non-remediating. It runs the applicable merge-ready checks without intentionally rewriting project-owned tracked source.
+`bun run check` regenerates compiler-owned output in place, then fails if tracked generator-owned artifacts changed. Regenerated drift remains available for review and commit; unrelated project-owned changes and ignored reproducible output do not count as generated Git drift.
 
 The exact sequence belongs to the generated script rather than this documentation. The conceptual contract is:
 

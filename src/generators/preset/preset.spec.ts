@@ -23,9 +23,9 @@ const expectedWorkspaces = ["apps/*", "packages/*"];
 
 const expectedScripts = {
   build: "nx run-many -t build",
-  check: "nx sync:check && bun run codegen:check && bun run format:check && bun run lint && bun run typecheck && bun run build",
+  check:
+    "nx sync:check && bun run codegen && git diff --exit-code HEAD -- apps/web/src/routeTree.gen.ts packages/backend/confect packages/backend/convex ':(exclude)packages/backend/confect/.gitkeep' ':(exclude)packages/backend/convex/convex.config.ts' ':(exclude)packages/backend/convex/tsconfig.json' && bun run format:check && bun run lint && bun run typecheck && bun run build",
   codegen: "nx run-many -t codegen",
-  "codegen:check": "keenko-codegen-check",
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
   lint: "oxlint .",
@@ -269,9 +269,11 @@ describe("keenko preset", () => {
         const packageJson = readJson<PackageJson>(tree, "package.json");
 
         expect(packageJson.scripts).toMatchObject(expectedScripts);
+        expect(packageJson.scripts).not.toHaveProperty("codegen:check");
         expect(packageJson.scripts?.check?.split(" && ")).toEqual([
           "nx sync:check",
-          "bun run codegen:check",
+          "bun run codegen",
+          "git diff --exit-code HEAD -- apps/web/src/routeTree.gen.ts packages/backend/confect packages/backend/convex ':(exclude)packages/backend/confect/.gitkeep' ':(exclude)packages/backend/convex/convex.config.ts' ':(exclude)packages/backend/convex/tsconfig.json'",
           "bun run format:check",
           "bun run lint",
           "bun run typecheck",
