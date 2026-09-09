@@ -68,6 +68,8 @@ const sDependenciesPackage = S.fromJsonString(S.Struct({ dependencies: S.Record(
 const sDevDependenciesPackage = S.fromJsonString(S.Struct({ devDependencies: S.Record(S.String, S.String) }));
 const sManifest = S.fromJsonString(S.Record(S.String, S.Unknown));
 const sProject = S.fromJsonString(S.Struct({ targets: S.Record(S.String, S.Unknown) }));
+const sInlangSettings = S.fromJsonString(S.Struct({ baseLocale: S.String, locales: S.Array(S.String) }));
+const sMessages = S.fromJsonString(S.Record(S.String, S.String));
 
 const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   source: PackageSource,
@@ -261,6 +263,13 @@ const product = E.gen(function* () {
   const integrations = path.join(workspace, "apps/web/src/integrations");
   const router = path.join(workspace, "apps/web/src/router.tsx");
   const rootRoute = path.join(workspace, "apps/web/src/routes/__root.tsx");
+
+  const homeRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
+  const inlangSettings = path.join(workspace, "apps/web/project.inlang/settings.json");
+  const frenchMessages = path.join(workspace, "apps/web/messages/fr.json");
+  const englishMessages = path.join(workspace, "apps/web/messages/en.json");
+  const germanMessages = path.join(workspace, "apps/web/messages/de.json");
+
   yield* assert(!(yield* fs.exists(components)), "Fresh creation retained TanStack's generated components directory");
   yield* assert(!(yield* fs.exists(integrations)), "Fresh creation retained TanStack's generated integrations directory");
   yield* assert(
@@ -268,6 +277,40 @@ const product = E.gen(function* () {
     "Fresh creation did not install the Keenko router baseline"
   );
   yield* assert(!(yield* fs.readFileString(rootRoute)).includes("MyRouterContext"), "Fresh creation retained tutorial context naming");
+
+  const settings = yield* S.decodeEffect(sInlangSettings)(yield* fs.readFileString(inlangSettings));
+
+  yield* assert(settings.baseLocale === "fr", "Fresh web base locale is not fr");
+  yield* assert(isDeepStrictEqual(settings.locales, ["fr", "en"]), "Fresh web locales are not exactly fr/en");
+
+  yield* assert(yield* fs.exists(frenchMessages), "Fresh web is missing messages/fr.json");
+  yield* assert(yield* fs.exists(englishMessages), "Fresh web is missing messages/en.json");
+  yield* assert(!(yield* fs.exists(germanMessages)), "Fresh web retained TanStack's messages/de.json");
+
+  const french = yield* S.decodeEffect(sMessages)(yield* fs.readFileString(frenchMessages));
+  const english = yield* S.decodeEffect(sMessages)(yield* fs.readFileString(englishMessages));
+
+  const starterMessages = {
+    calm_green_otter: {
+      en: "Welcome to Keenko",
+      fr: "Bienvenue chez Keenko",
+    },
+  } as const;
+
+  for (const [id, messages] of Object.entries(starterMessages)) {
+    yield* assert(french[id] === messages.fr, `French starter message ${id} is incorrect`);
+    yield* assert(english[id] === messages.en, `English starter message ${id} is incorrect`);
+  }
+
+  const home = yield* fs.readFileString(homeRoute);
+
+  yield* assert(home.includes("#/paraglide/messages"), "Fresh home route does not use generated Paraglide messages");
+
+  for (const id of Object.keys(starterMessages))
+    yield* assert(home.includes(`m.${id}(`), `Fresh home route does not use Paraglide message ${id}`);
+
+  yield* assert(!home.includes("Welcome to TanStack Start"), "Fresh home route retained TanStack's hard-coded welcome copy");
+
   const webRuntime = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
   for (const dependency of ["@convex-dev/react-query", "convex", "effect", `@${identity}/shared`, `@${identity}/ui`])
     yield* assert(Object.hasOwn(webRuntime.dependencies, dependency), `Generated web is missing ${dependency}`);

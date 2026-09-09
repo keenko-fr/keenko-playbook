@@ -7,6 +7,7 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { ConvexProvider, type ConvexReactClient } from "convex/react";
 
 import { getLocale } from "#/paraglide/runtime";
+import * as m from "#/paraglide/messages";
 
 import appCss from "#/styles.css?url";
 
@@ -14,7 +15,7 @@ import appCss from "#/styles.css?url";
 export const Route = createRootRouteWithContext<RootRouteContext>()({
   head: () => ({
     links: [{ href: appCss, rel: "stylesheet" }],
-    meta: [{ charSet: "utf-8" }, { content: "width=device-width, initial-scale=1", name: "viewport" }, { title: "Keenko Starter" }],
+    meta: [{ charSet: "utf-8" }, { content: "width=device-width, initial-scale=1", name: "viewport" }, { title: m.calm_green_otter() }],
   }),
   shellComponent: RootDocument,
 });

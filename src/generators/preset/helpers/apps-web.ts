@@ -75,7 +75,8 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
   output.files["vite.config.ts"] = configuredVite;
 
   for (const [relativePath, contents] of Object.entries(output.files)) {
-    if (relativePath.startsWith("src/components/") || relativePath.startsWith("src/integrations/")) continue;
+    if (relativePath.startsWith("src/components/") || relativePath.startsWith("src/integrations/") || relativePath.startsWith("messages/"))
+      continue;
     tree.write(joinPathFragments("apps/web", relativePath), contents);
   }
 

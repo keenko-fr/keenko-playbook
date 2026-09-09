@@ -418,11 +418,50 @@ describe("keenko preset", () => {
         expect(router).toContain('declare module "@tanstack/react-router"');
 
         expect(rootRoute).not.toContain("MyRouterContext");
-        expect(rootRoute).toContain('title: "Keenko Starter"');
+        expect(rootRoute).toContain("title: m.calm_green_otter()");
         expect(rootRoute).toContain("<ConvexProvider client={convexClient}>");
 
         expect(oxlintConfig).toContain('files: ["apps/web/**/*.{ts,tsx}"]');
         expect(oxlintConfig).toContain('"eslint/sort-keys": "off"');
+      })
+    ));
+
+  test("seeds the canonical Paraglide starter baseline", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+
+        const settings = readJson<{
+          baseLocale: string;
+          locales: string[];
+        }>(tree, "apps/web/project.inlang/settings.json");
+
+        const french = readJson<Record<string, string>>(tree, "apps/web/messages/fr.json");
+        const english = readJson<Record<string, string>>(tree, "apps/web/messages/en.json");
+
+        const homeRoute = tree.read("apps/web/src/routes/index.tsx", "utf-8");
+
+        expect(settings).toMatchObject({
+          baseLocale: "fr",
+          locales: ["fr", "en"],
+        });
+
+        expect(tree.exists("apps/web/messages/fr.json")).toBe(true);
+        expect(tree.exists("apps/web/messages/en.json")).toBe(true);
+        expect(tree.exists("apps/web/messages/de.json")).toBe(false);
+
+        // Replace these with the actual stable Sherlock IDs you chose.
+        expect(french).toMatchObject({
+          calm_green_otter: "Bienvenue chez Keenko",
+        });
+
+        expect(english).toMatchObject({
+          calm_green_otter: "Welcome to Keenko",
+        });
+
+        expect(homeRoute).toContain("#/paraglide/messages");
+
+        expect(homeRoute).toContain("m.calm_green_otter()");
       })
     ));
 
