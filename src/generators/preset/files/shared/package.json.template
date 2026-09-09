@@ -1,6 +1,8 @@
 {
   "name": "@<%= workspace %>/shared",
-  "exports": {},
+  "exports": {
+    "./*": "./src/*.ts"
+  },
   "nx": {
     "tags": ["type:package", "scope:shared"],
     "targets": {
