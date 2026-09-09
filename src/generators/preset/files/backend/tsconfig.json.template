@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": [
+    "confect/**/*.ts",
+    "convex/**/*.ts",
+    "data/**/*.ts",
+    "features/**/*.ts",
+    "infra/**/*.ts",
+    "schemas/**/*.ts"
+  ]
+}

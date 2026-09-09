@@ -1,0 +1,27 @@
+{
+  "name": "@<%= workspace %>/ui",
+  "exports": {
+    "./components/*": "./src/components/*.tsx",
+    "./globals.css": "./src/styles/globals.css",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./lib/*": "./src/lib/*.ts"
+  },
+  "imports": {
+    "#components/*": "./src/components/*.tsx",
+    "#hooks/*": "./src/hooks/*.ts",
+    "#lib/*": "./src/lib/*.ts"
+  },
+  "nx": {
+    "tags": ["type:package", "scope:ui"],
+    "targets": {
+      "typecheck": {
+        "command": "node ../../node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.json",
+        "options": {
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
+  "private": true,
+  "type": "module"
+}

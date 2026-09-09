@@ -1,0 +1,149 @@
+import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";
+import { defineConfig } from "oxlint";
+import { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";
+import core from "ultracite/oxlint/core";
+
+const effectRules = Object.fromEntries(
+  Object.entries(effectRecommended).map(([rule, config]) => [rule, typeof config === "string" ? config : [...config]])
+);
+
+export default defineConfig({
+  extends: [core],
+  ignorePatterns: [
+    ...(core.ignorePatterns ?? []),
+
+    ".agents/skills/**",
+    ".claude/skills/**",
+    ".keenko/**",
+    ".tmp/**",
+
+    "**/.output/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/dist/**",
+    "**/vendor/**",
+
+    "packages/backend/confect/_generated/**/*",
+    "packages/backend/convex/**/*",
+    "!packages/backend/convex/convex.config.ts",
+  ],
+  jsPlugins: ["@nx/oxlint/boundaries-plugin", "oxlint-plugin-effect/plugin"],
+  options: {
+    typeAware: true,
+  },
+  overrides: [
+    // The pinned TanStack starter owns these initial files. Accept its conventions
+    // without rewriting upstream output or disabling workspace boundaries.
+    {
+      files: ["apps/web/vite.config.ts", "apps/web/src/router.tsx", "apps/web/src/routes/__root.tsx", "apps/web/src/components/LocaleSwitcher.tsx"],
+      rules: {
+        "eslint/sort-keys": "off",
+      },
+    },
+    {
+      files: ["apps/web/src/routes/__root.tsx"],
+      rules: {
+        "eslint/curly": "off",
+        "eslint/require-await": "off",
+      },
+    },
+    {
+      files: ["apps/web/src/components/LocaleSwitcher.tsx"],
+      rules: {
+        "typescript/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
+        "typescript/promise-function-async": "off",
+        "typescript/strict-void-return": "off",
+        "unicorn/filename-case": "off",
+      },
+    },
+    {
+      files: ["apps/web/src/integrations/tanstack-query/root-provider.tsx"],
+      rules: {
+        "eslint/no-empty-function": "off",
+      },
+    },
+    {
+      files: ["packages/shared/src/index.ts"],
+      rules: {
+        "unicorn/no-empty-file": "off",
+      },
+    },
+    {
+      files: ["packages/backend/**/*.ts"],
+      rules: {
+        ...effectRules,
+        ...effectTsgoRecommended.rules,
+        "effect/noTernary": "off",
+        "effecttsgo/async-function": "off",
+        "effecttsgo/crypto-random-uuid": "off",
+        "effecttsgo/crypto-random-uuid-in-effect": "off",
+        "effecttsgo/global-console": "off",
+        "effecttsgo/global-console-in-effect": "off",
+        "effecttsgo/global-date": "off",
+        "effecttsgo/global-date-in-effect": "off",
+        "effecttsgo/global-fetch": "off",
+        "effecttsgo/global-fetch-in-effect": "off",
+        "effecttsgo/global-random": "off",
+        "effecttsgo/global-random-in-effect": "off",
+        "effecttsgo/global-timers": "off",
+        "effecttsgo/global-timers-in-effect": "off",
+        "effecttsgo/new-promise": "off",
+        "effecttsgo/node-builtin-import": "off",
+        "effecttsgo/prefer-schema-over-json": "off",
+        "effecttsgo/process-env": "off",
+        "effecttsgo/process-env-in-effect": "off",
+        "effecttsgo/try-catch-in-effect-gen": "off",
+        "eslint/require-await": "off",
+        "func-names": ["error", "always", { generators: "never" }],
+        "max-classes-per-file": "off",
+        "no-use-before-define": "off",
+        "promise/prefer-await-to-callbacks": "off",
+        "promise/prefer-await-to-then": "off",
+        "typescript/promise-function-async": "off",
+        "typescript/return-await": "off",
+        "unicorn/no-array-method-this-argument": "off",
+        "unicorn/throw-new-error": "off",
+      },
+    },
+  ],
+  plugins: ["effecttsgo"],
+  rules: {
+    "@nx/enforce-module-boundaries": [
+      "error",
+      {
+        allow: [],
+        depConstraints: [
+          { onlyDependOnLibsWithTags: ["type:package"], sourceTag: "type:package" },
+          { onlyDependOnLibsWithTags: ["scope:backend", "scope:ui", "scope:shared"], sourceTag: "scope:web" },
+          { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:backend" },
+          { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:ui" },
+          { onlyDependOnLibsWithTags: [], sourceTag: "scope:shared" },
+        ],
+      },
+    ],
+    "consistent-return": "off",
+     curly: ["error", "multi"],
+    "eslint/no-plusplus": "off",
+    "eslint/no-unused-vars": [
+      "error",
+      {
+        args: "all",
+        argsIgnorePattern: "^_",
+        caughtErrors: "all",
+        fix: {
+          imports: "safe-fix",
+          variables: "off",
+        },
+      },
+    ],
+    "func-style": "off",
+    "import/consistent-type-specifier-style": ["error", "prefer-top-level-if-only-type-imports"],
+    "no-use-before-define": [
+      "error",
+      {
+        functions: false,
+        typedefs: false,
+      },
+    ],
+  },
+});

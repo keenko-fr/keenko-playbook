@@ -1,0 +1,17 @@
+{
+  "name": "@<%= workspace %>/shared",
+  "exports": {},
+  "nx": {
+    "tags": ["type:package", "scope:shared"],
+    "targets": {
+      "typecheck": {
+        "command": "node ../../node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.json",
+        "options": {
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
+  "private": true,
+  "type": "module"
+}

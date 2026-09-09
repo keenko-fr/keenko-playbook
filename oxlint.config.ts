@@ -1,23 +1,76 @@
+import { recommended as effectTsgoRecommended } from "@effect/tsgo/oxlint-presets";
 import { defineConfig } from "oxlint";
+import { recommended as effectRecommended } from "oxlint-plugin-effect/presets/recommended";
 import core from "ultracite/oxlint/core";
+
+const effectRules = Object.fromEntries(
+  Object.entries(effectRecommended).map(([rule, config]) => [rule, typeof config === "string" ? config : [...config]])
+);
 
 export default defineConfig({
   extends: [core],
   ignorePatterns: [
+    ...(core.ignorePatterns ?? []),
+
     ".agents/skills/**",
     ".claude/skills/**",
     ".keenko/**",
     ".tmp/**",
-    ".output/**",
-    "build/**",
-    "coverage/**",
-    "dist/**",
-    "vendor/**",
+
+    "**/*.template",
+    "**/.output/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/dist/**",
+    "**/vendor/**",
   ],
+  jsPlugins: ["oxlint-plugin-effect/plugin"],
   options: {
     typeAware: true,
   },
+  overrides: [
+    {
+      files: ["src/**/*.ts", "tests/**/*.ts"],
+      rules: {
+        ...effectRules,
+        ...effectTsgoRecommended.rules,
+        "effect/noTernary": "off",
+        "effecttsgo/async-function": "off",
+        "effecttsgo/crypto-random-uuid": "off",
+        "effecttsgo/crypto-random-uuid-in-effect": "off",
+        "effecttsgo/global-console": "off",
+        "effecttsgo/global-console-in-effect": "off",
+        "effecttsgo/global-date": "off",
+        "effecttsgo/global-date-in-effect": "off",
+        "effecttsgo/global-fetch": "off",
+        "effecttsgo/global-fetch-in-effect": "off",
+        "effecttsgo/global-random": "off",
+        "effecttsgo/global-random-in-effect": "off",
+        "effecttsgo/global-timers": "off",
+        "effecttsgo/global-timers-in-effect": "off",
+        "effecttsgo/new-promise": "off",
+        "effecttsgo/node-builtin-import": "off",
+        "effecttsgo/prefer-schema-over-json": "off",
+        "effecttsgo/process-env": "off",
+        "effecttsgo/process-env-in-effect": "off",
+        "effecttsgo/try-catch-in-effect-gen": "off",
+        "eslint/require-await": "off",
+        "func-names": ["error", "always", { generators: "never" }],
+        "max-classes-per-file": "off",
+        "no-use-before-define": "off",
+        "promise/prefer-await-to-callbacks": "off",
+        "promise/prefer-await-to-then": "off",
+        "typescript/promise-function-async": "off",
+        "typescript/return-await": "off",
+        "unicorn/no-array-method-this-argument": "off",
+        "unicorn/throw-new-error": "off",
+      },
+    },
+  ],
+  plugins: ["effecttsgo"],
   rules: {
+    "consistent-return": "off",
+    curly: ["error", "multi"],
     "eslint/no-plusplus": "off",
     "eslint/no-unused-vars": [
       "error",

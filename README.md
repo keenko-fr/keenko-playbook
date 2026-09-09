@@ -1,78 +1,66 @@
 # Keenko
 
-Keenko is one opinionated, versioned TypeScript application distribution built as an Nx plugin. It owns the preset, compatible stack versions, engineering conventions, generated guidance, sync generators, and forward migrations. Nx owns the lifecycle commands.
+Keenko is an opinionated Nx-based TypeScript application distribution. It provides a versioned application preset, compatible tooling, project guidance, synchronization, and forward migrations through native Nx lifecycle commands.
 
-## Lifecycle
-
-Node 24 is the tooling runtime. Bun `>=1.4.0 <2` owns package installation, workspace script entry, the v2 lockfile, and supported application execution.
-
-Create a project with the canonical exact-pinned Nx command. Bun is the fixed package manager and Nx Cloud is skipped:
-
-```sh
-bunx create-nx-workspace@23.2.0 my-project \
-  --preset=keenko \
-  --packageManager=bun \
-  --nxCloud=skip \
-  --interactive=false \
-  --trustThirdPartyPreset
-cd my-project
-bun run check
-```
-
-A fresh project starts with:
+A new project starts with this topology:
 
 ```text
-apps/
-  web/
-packages/
-  backend/
-  ui/
-  shared/
+apps/web
+packages/backend
+packages/ui
+packages/shared
 ```
 
-Those four workspaces are the initial topology, not a permanent workspace-count invariant. Add another workspace when it represents a real ownership or reuse boundary and give it the Nx tags required by the project boundary policy.
+These are the initial projects, not a permanent maximum.
 
-The Nx workspace `name` is the Keenko project identity. Keenko uses it unchanged as the root package name and workspace package scope, for example `my-project`, `@my-project/web`, and `@my-project/backend`. The preset rejects a name that cannot be represented as both the Nx workspace name and the npm package or scope name. It does not normalize names or maintain a second package-scope setting.
-
-The stack is fixed: TypeScript, Nx, React, Effect 4, Convex, Confect, TanStack Start/Router/Query/Form/Table, Paraglide, shadcn with Tailwind CSS 4 and Base UI 1, the Keenko testing conventions, Oxfmt, Oxlint, and Ultracite.
-
-`apps/web` comes from the exact-pinned public `@tanstack/create` API. `packages/ui` follows shadcn's monorepo `components.json`, package-import, and package-export conventions. `packages/backend` owns Effect/Convex/Confect application functions. `packages/shared` remains runtime-neutral and minimal.
-
-## Synchronization and upgrades
-
-Keenko generated guidance is a global Nx sync generator. Apply it with:
+## Create a project
 
 ```sh
-bun x nx sync
+bunx create-nx-workspace@23.2.0 <project> --preset=keenko --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
 ```
 
-`bun run check` runs the synchronization check through the package script, where Bun resolves the workspace-local Nx binary. Generated guidance drift therefore fails the merge-ready check without rewriting tracked files.
+From the created project, `bun run check` is the canonical merge-ready verification command.
 
-Upgrade Keenko through normal Nx migrations:
+## Upgrade a project
+
+Use the native Nx migration and synchronization lifecycle:
 
 ```sh
-bun x nx migrate keenko@0.2.0
+cd <project>
+bun x nx migrate keenko@<target>
 bun install
 bun x nx migrate --run-migrations
 bun x nx sync
 bun run codegen
-bun run check
 ```
 
-A Keenko release encodes its package and dependency compatibility changes in Nx migration metadata and migration generators. There is no Keenko wrapper that chooses a release or adds clean-tree, downgrade, prerelease, future-major, or same-version policy. Native Nx owns those invocation semantics.
+Run `bun run check` before merging the result.
 
-Nx Release owns versions, changelogs, tags, and publication. User-visible changes require a file-based version plan under `.nx/version-plans/`. Publication remains an explicitly dispatched, human-owned operation.
+## Runtime support
 
-## Guidance
+Keenko supports Node 24 and Bun `>=1.4.0 <2`; the current reference Bun version is `1.4.2`. Exact dependency compatibility pins are owned by the package source and migration metadata.
 
-Generated, read-only convention and skill assets live under `.keenko/`; native skill copies live under `.agents/skills/` and `.claude/skills/`. `AGENTS.md` and `CLAUDE.md` contain one managed routing block while project facts remain owned in `CONTEXT.md` and `docs/project/`.
-
-Repository development uses:
+## Repository development
 
 ```sh
 bun install --frozen-lockfile
 bun run check
-bun run check:release
+bun run test:product
+bun run test:published -- <exact-version>
+bun run deps:update
 ```
 
-`bun run check` is the non-remediating merge-ready contract. The release check additionally verifies pinned vendor sources and inspects the npm pack list.
+- `check` is the deterministic repository gate.
+- `test:product` is the required Verdaccio-backed acceptance test for the unpublished packed artifact.
+- `test:published` is the release-grade fresh-consumer acceptance test for one exact version already published to npm.
+- `deps:update` updates compatibility pins for maintainer review.
+
+## Release
+
+User-visible and project-visible changes require an Nx version plan. Releases are manually initiated through the repository's [Release workflow](.github/workflows/release.yml); Nx Release owns versioning, changelog generation, tagging, and npm publication.
+
+npm trusted publishing and the dedicated Keenko Release App must be configured for the workflow.
+
+## License
+
+Keenko is available under the [MIT License](LICENSE). Third-party assets included by Keenko retain their own license notices.
