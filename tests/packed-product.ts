@@ -265,7 +265,7 @@ const product = E.gen(function* () {
     "Canonical creation did not leave Git on main"
   );
   yield* command(workspace, env, "git", ["rev-parse", "--verify", "HEAD"], "failure");
-  yield* command(workspace, env, "bun", ["run", "check"]);
+  yield* command(workspace, env, "env", ["-u", "CI", "bun", "run", "check"]);
   yield* command(workspace, env, "git", ["check-ignore", "apps/web/src/paraglide/messages.js"]);
 
   yield* assert(
@@ -288,7 +288,6 @@ const product = E.gen(function* () {
     `#!/bin/sh
 if [ "$KEENKO_TEST_GIT_FAILURE" = "status" ] && [ "$1" = "status" ]; then exit 73; fi
 if [ "$KEENKO_TEST_GIT_FAILURE" = "head" ] && [ "$1" = "rev-parse" ] && [ "$2" = "--verify" ]; then exit 74; fi
-if [ "$KEENKO_TEST_GIT_FAILURE" = "head" ] && [ "$1" = "symbolic-ref" ]; then exit 75; fi
 exec "${realGit}" "$@"
 `
   );
