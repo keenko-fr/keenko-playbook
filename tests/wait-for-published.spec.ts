@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { NodeServices } from "@effect/platform-node";
-import { Effect as E } from "effect";
+import { Effect as E, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 
 import {
   PublishedVersionUnavailable,
@@ -65,6 +66,40 @@ describe("published version registry wait", () => {
         expect(attempts).toBe(3);
       })
     ));
+
+  test("hard timeout bounds a non-completing registry lookup", () => {
+    const hardTimeoutPolicy = {
+      interval: "1 hour",
+      maxAttempts: 3,
+      timeout: "10 millis",
+      timeoutLabel: "10 millis",
+    } satisfies PublishedVersionWaitPolicy;
+
+    return E.runPromise(
+      E.gen(function* () {
+        let attempts = 0;
+        const lookup: RegistryLookup = () =>
+          E.suspend(() => {
+            attempts += 1;
+            return E.never;
+          });
+        const fiber = yield* waitForPublishedVersion(version, lookup, hardTimeoutPolicy).pipe(E.flip, E.forkChild);
+
+        yield* TestClock.adjust("10 millis");
+        const failure = yield* Fiber.join(fiber);
+
+        expect(failure).toBeInstanceOf(PublishedVersionUnavailable);
+        expect(failure).toMatchObject({ attempts: 1, maxAttempts: 3, packageName: "keenko", version });
+        expect(failure.message).toContain("Hard timeout of 10 millis elapsed");
+        expect(failure.message).not.toContain("Last lookup failure: No version matching");
+        expect(attempts).toBe(1);
+
+        yield* TestClock.adjust("2 hours");
+        yield* E.yieldNow;
+        expect(attempts).toBe(1);
+      }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
+    );
+  });
 
   test("does not accept another available version", () =>
     run(
