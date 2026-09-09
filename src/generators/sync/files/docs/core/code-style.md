@@ -10,7 +10,7 @@ Oxfmt is the canonical owner of arbitrary source formatting. Follow its output i
 - Oxfmt owns mechanical import ordering through the configured Ultracite baseline. Do not manually arrange imports to satisfy an independent Keenko style convention.
 - Do not create convenience `index.ts` barrels inside implementation trees. A barrel is appropriate only when it deliberately defines a package/module public API.
 - Prefer named exports. Use default exports only when a framework/tooling contract naturally requires one.
-- Use lowercase `kebab-case` filenames unless framework-special filenames require another form.
+- Use lowercase `kebab-case` by default for Keenko-owned filenames. A concrete framework, tool, generator, or ecosystem filename contract takes precedence over the Keenko default.
 
 ### Architectural module imports
 
@@ -71,7 +71,7 @@ Use `SCREAMING_SNAKE_CASE` for true static module-level constants. The chosen fr
 ## Comments and suppressions
 
 - Comments explain rationale, invariants, external constraints, or dangerous edge cases, not straightforward code.
-- Canonical structural section separators defined by file-topology conventions are an explicit exception: they are navigation/file-structure markers, not explanatory comments. Follow the owning topology document's section names, levels, order, 140-column width, spacing, and empty-section omission rules.
+- Canonical structural section separators defined by file-topology conventions are an explicit exception: they are navigation/file-structure markers, not explanatory comments. Follow the owning topology document's conditions, section names, order, spacing, and empty-section omission rules.
 - Use the narrowest lint suppression possible and include a concrete reason.
 - Do not merge vague TODO/FIXME notes. A temporary note must describe a useful local constraint or reference tracked work.
 - Remove commented-out implementation code; Git owns history.

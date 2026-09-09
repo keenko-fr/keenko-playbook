@@ -32,36 +32,6 @@ export default defineConfig({
     typeAware: true,
   },
   overrides: [
-    // The pinned TanStack starter owns these initial files. Accept its conventions
-    // without rewriting upstream output or disabling workspace boundaries.
-    {
-      files: ["apps/web/vite.config.ts", "apps/web/src/router.tsx", "apps/web/src/routes/__root.tsx", "apps/web/src/components/LocaleSwitcher.tsx"],
-      rules: {
-        "eslint/sort-keys": "off",
-      },
-    },
-    {
-      files: ["apps/web/src/routes/__root.tsx"],
-      rules: {
-        "eslint/curly": "off",
-        "eslint/require-await": "off",
-      },
-    },
-    {
-      files: ["apps/web/src/components/LocaleSwitcher.tsx"],
-      rules: {
-        "typescript/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
-        "typescript/promise-function-async": "off",
-        "typescript/strict-void-return": "off",
-        "unicorn/filename-case": "off",
-      },
-    },
-    {
-      files: ["apps/web/src/integrations/tanstack-query/root-provider.tsx"],
-      rules: {
-        "eslint/no-empty-function": "off",
-      },
-    },
     {
       files: ["packages/shared/src/index.ts"],
       rules: {

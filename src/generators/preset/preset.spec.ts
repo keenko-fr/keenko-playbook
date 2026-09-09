@@ -388,6 +388,7 @@ describe("keenko preset", () => {
         expect(tree.exists("oxfmt.config.ts")).toBe(true);
         expect(tree.exists("oxlint.config.ts")).toBe(true);
         expect(tree.read("bunfig.toml", "utf-8")).toBe('[install]\nlinker = "hoisted"\n');
+        expect(readJson<PackageJson>(tree, "package.json").type).toBe("module");
 
         expect(readJson(tree, "tsconfig.base.json")).toMatchObject({
           compilerOptions: {
@@ -396,6 +397,38 @@ describe("keenko preset", () => {
             strict: true,
           },
         });
+      })
+    ));
+
+  test("normalizes TanStack editable source into the Keenko baseline", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+        const localeSwitcher = tree.read("apps/web/src/components/locale-switcher.tsx", "utf-8");
+        const queryProvider = tree.read("apps/web/src/integrations/tanstack-query/root-provider.tsx", "utf-8");
+        const rootRoute = tree.read("apps/web/src/routes/__root.tsx", "utf-8");
+        const indexRoute = tree.read("apps/web/src/routes/index.tsx", "utf-8");
+        const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
+
+        expect(tree.exists("apps/web/src/components/LocaleSwitcher.tsx")).toBe(false);
+        expect(localeSwitcher).toContain("export function LocaleSwitcher()");
+        expect(localeSwitcher).toContain("void setLocale(locale);");
+        expect(localeSwitcher).toContain("React handlers return void while Paraglide locale changes are asynchronous");
+        expect(localeSwitcher).not.toContain("export default");
+
+        expect(queryProvider).toContain("export function createRouterContext()");
+        expect(queryProvider).not.toContain("TanstackQueryProvider");
+        expect(queryProvider).not.toContain("export default");
+
+        expect(rootRoute).not.toContain("MyRouterContext");
+        expect(rootRoute).toContain("title: m.home_page()");
+        expect(indexRoute).toContain("<h1>{m.example_message()}</h1>");
+        expect(indexRoute).toContain("<LocaleSwitcher />");
+
+        expect(oxlintConfig).not.toContain("pinned TanStack starter");
+        expect(oxlintConfig).not.toContain("LocaleSwitcher.tsx");
+        expect(oxlintConfig).not.toContain('"unicorn/filename-case": "off"');
+        expect(oxlintConfig).not.toContain('"eslint/no-empty-function": "off"');
       })
     ));
 

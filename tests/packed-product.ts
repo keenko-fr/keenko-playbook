@@ -194,7 +194,8 @@ const product = E.gen(function* () {
     "--interactive=false",
     "--trustThirdPartyPreset",
   ];
-  yield* command(temporary, bootstrapEnv, bootstrapExecutable, createArguments);
+  const createOutput = yield* command(temporary, bootstrapEnv, bootstrapExecutable, createArguments);
+  yield* assert(!createOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Creation emitted a module-typeless package warning");
 
   const workspace = path.join(temporary, identity);
   for (const [file, name] of [
@@ -239,6 +240,25 @@ const product = E.gen(function* () {
     yield* fs.readFileString(path.join(workspace, "apps/web/package.json"))
   );
   yield* assert(webPackage.devDependencies["@types/node"] === "24.13.3", "Generated web does not use Node 24 types");
+  const rootManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "package.json")));
+  yield* assert(rootManifest.type === "module", "Generated root package is not explicitly an ES module");
+
+  const localeSwitcher = path.join(workspace, "apps/web/src/components/locale-switcher.tsx");
+  const oldLocaleSwitcher = path.join(workspace, "apps/web/src/components/LocaleSwitcher.tsx");
+  const queryProvider = path.join(workspace, "apps/web/src/integrations/tanstack-query/root-provider.tsx");
+  const rootRoute = path.join(workspace, "apps/web/src/routes/__root.tsx");
+  const indexRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
+  yield* assert(yield* fs.exists(localeSwitcher), "Fresh creation did not rename the locale switcher to kebab-case");
+  yield* assert(!(yield* fs.exists(oldLocaleSwitcher)), "Fresh creation retained the upstream LocaleSwitcher filename");
+  yield* assert(
+    !(yield* fs.readFileString(queryProvider)).includes("TanstackQueryProvider"),
+    "Fresh creation retained the unused query provider"
+  );
+  yield* assert(!(yield* fs.readFileString(rootRoute)).includes("MyRouterContext"), "Fresh creation retained tutorial context naming");
+  yield* assert(
+    (yield* fs.readFileString(indexRoute)).includes("m.example_message()"),
+    "Fresh starter copy does not use the Paraglide catalog"
+  );
   const packedLicense = yield* fs.readFileString(
     path.join(workspace, "node_modules/keenko/dist/generators/sync/files/skills/grilling/LICENSE")
   );
@@ -265,7 +285,8 @@ const product = E.gen(function* () {
     "Canonical creation did not leave Git on main"
   );
   yield* command(workspace, env, "git", ["rev-parse", "--verify", "HEAD"], "failure");
-  yield* command(workspace, env, "env", ["-u", "CI", "bun", "run", "check"]);
+  const initialCheckOutput = yield* command(workspace, env, "env", ["-u", "CI", "bun", "run", "check"]);
+  yield* assert(!initialCheckOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Fresh check emitted a module-typeless package warning");
   yield* command(workspace, env, "git", ["check-ignore", "apps/web/src/paraglide/messages.js"]);
 
   yield* assert(
