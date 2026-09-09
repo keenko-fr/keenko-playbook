@@ -41,6 +41,7 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "pack:check": "nx run keenko:pack:check",
+    "release:wait-for-published": "bun run tests/wait-for-published.ts",
     "release:version:check": "bun run tests/release-version.ts",
     "test": "bun test",
     "test:product": "bun run tests/packed-product.ts",
