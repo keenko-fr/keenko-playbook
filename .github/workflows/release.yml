@@ -84,7 +84,7 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for published version to resolve
+      - name: Wait for published version to be Bun-installable
         run: bun run release:wait-for-published -- "${{ steps.published.outputs.version }}"
 
       - name: Verify published product
