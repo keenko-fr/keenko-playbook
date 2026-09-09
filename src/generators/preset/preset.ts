@@ -91,15 +91,18 @@ export default function presetGenerator(tree: Tree, options: PresetGeneratorSche
   );
 }
 
+export const makeInitialCodegenCommand = (workspace: string) =>
+  ChildProcess.make("bun", ["run", "codegen"], {
+    cwd: workspace,
+    env: { NX_TUI: "false" },
+    extendEnv: true,
+    stderr: "inherit",
+    stdout: "inherit",
+  });
+
 const materializeInitialGeneratedState = E.fn("keenko.preset.materializeInitialGeneratedState")(function* (workspace: string) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const exitCode = yield* spawner.exitCode(
-    ChildProcess.make("bun", ["run", "codegen"], {
-      cwd: workspace,
-      stderr: "inherit",
-      stdout: "inherit",
-    })
-  );
+  const exitCode = yield* spawner.exitCode(makeInitialCodegenCommand(workspace));
 
   if (exitCode !== 0) return yield* new WorkspaceFailure({ exitCode, issue: "initial_codegen_failed" });
 });
