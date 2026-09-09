@@ -295,7 +295,7 @@ const product = E.gen(function* () {
       en: "Welcome to Keenko",
       fr: "Bienvenue chez Keenko",
     },
-  } as const;
+  };
 
   for (const [id, messages] of Object.entries(starterMessages)) {
     yield* assert(french[id] === messages.fr, `French starter message ${id} is incorrect`);
