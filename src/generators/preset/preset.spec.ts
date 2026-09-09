@@ -9,7 +9,7 @@ import { Effect as E, FileSystem, Layer as L, Option as O, Path, Struct } from "
 import type { PackageJson } from "../helpers.js";
 import { packageVersions, runtimeVersions } from "../versions.js";
 import { START_ROUTE_TREE_FOOTER } from "./helpers/apps-web.js";
-import { generatedDriftCheck, presetProgram } from "./preset.js";
+import { generatedDriftCheck, makeInitialCodegenCommand, presetProgram } from "./preset.js";
 
 // TYPES -----------------------------------------------------------------------------------------------------------------------------------
 type ExpectedPackageScope = "backend" | "shared" | "ui";
@@ -79,6 +79,21 @@ const readTemplate = (source: URL) =>
 
 // TESTS -----------------------------------------------------------------------------------------------------------------------------------
 describe("keenko preset", () => {
+  test("disables the Nx TUI for initial codegen while preserving the parent environment", () => {
+    expect(makeInitialCodegenCommand("workspace")).toMatchObject({
+      _tag: "StandardCommand",
+      args: ["run", "codegen"],
+      command: "bun",
+      options: {
+        cwd: "workspace",
+        env: { NX_TUI: "false" },
+        extendEnv: true,
+        stderr: "inherit",
+        stdout: "inherit",
+      },
+    });
+  });
+
   test("replaces initial Nx boilerplate with a concise consumer README", () =>
     E.runPromise(
       E.gen(function* () {
