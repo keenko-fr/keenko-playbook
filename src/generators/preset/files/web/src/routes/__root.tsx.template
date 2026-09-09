@@ -1,9 +1,10 @@
 import type { ConvexQueryClient } from "@convex-dev/react-query";
+import { TanStackDevtools } from "@tanstack/react-devtools";
 import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { HeadContent, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { ConvexProvider } from "convex/react";
+import { ConvexProvider, type ConvexReactClient } from "convex/react";
 
 import { getLocale } from "#/paraglide/runtime";
 
@@ -17,14 +18,19 @@ export const Route = createRootRouteWithContext<RootRouteContext>()({
   }),
   shellComponent: RootDocument,
 });
-type RootRouteContext = { queryClient: QueryClient; convexQueryClient: ConvexQueryClient; token: string | undefined };
+interface RootRouteContext {
+  convexClient: ConvexReactClient;
+  convexQueryClient: ConvexQueryClient;
+  queryClient: QueryClient;
+  token: string | undefined;
+}
 
 // DOCUMENT --------------------------------------------------------------------------------------------------------------------------------
 function RootDocument({ children }: React.PropsWithChildren) {
-  const { convexQueryClient, queryClient } = Route.useRouteContext();
+  const { convexClient, queryClient } = Route.useRouteContext();
 
   return (
-    <ConvexProvider client={convexQueryClient}>
+    <ConvexProvider client={convexClient}>
       <QueryClientProvider client={queryClient}>
         <html lang={getLocale()} suppressHydrationWarning>
           <head>

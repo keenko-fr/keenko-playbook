@@ -33,6 +33,12 @@ export default defineConfig({
   },
   overrides: [
     {
+      files: ["apps/web/**/*.{ts,tsx}"],
+      rules: {
+        "eslint/sort-keys": "off",
+      },
+    },
+    {
       files: ["packages/shared/src/index.ts"],
       rules: {
         "unicorn/no-empty-file": "off",

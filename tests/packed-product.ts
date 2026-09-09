@@ -243,22 +243,29 @@ const product = E.gen(function* () {
   const rootManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "package.json")));
   yield* assert(rootManifest.type === "module", "Generated root package is not explicitly an ES module");
 
-  const localeSwitcher = path.join(workspace, "apps/web/src/components/locale-switcher.tsx");
-  const oldLocaleSwitcher = path.join(workspace, "apps/web/src/components/LocaleSwitcher.tsx");
-  const queryProvider = path.join(workspace, "apps/web/src/integrations/tanstack-query/root-provider.tsx");
+  const components = path.join(workspace, "apps/web/src/components");
+  const integrations = path.join(workspace, "apps/web/src/integrations");
+  const router = path.join(workspace, "apps/web/src/router.tsx");
   const rootRoute = path.join(workspace, "apps/web/src/routes/__root.tsx");
   const indexRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
-  yield* assert(yield* fs.exists(localeSwitcher), "Fresh creation did not rename the locale switcher to kebab-case");
-  yield* assert(!(yield* fs.exists(oldLocaleSwitcher)), "Fresh creation retained the upstream LocaleSwitcher filename");
+  yield* assert(!(yield* fs.exists(components)), "Fresh creation retained TanStack's generated components directory");
+  yield* assert(!(yield* fs.exists(integrations)), "Fresh creation retained TanStack's generated integrations directory");
   yield* assert(
-    !(yield* fs.readFileString(queryProvider)).includes("TanstackQueryProvider"),
-    "Fresh creation retained the unused query provider"
+    (yield* fs.readFileString(router)).includes("new ConvexQueryClient(convexClient)"),
+    "Fresh creation did not install the Keenko router baseline"
   );
   yield* assert(!(yield* fs.readFileString(rootRoute)).includes("MyRouterContext"), "Fresh creation retained tutorial context naming");
   yield* assert(
     (yield* fs.readFileString(indexRoute)).includes("m.example_message()"),
     "Fresh starter copy does not use the Paraglide catalog"
   );
+  const webRuntime = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
+  for (const dependency of ["@convex-dev/react-query", "convex", "effect", `@${identity}/shared`, `@${identity}/ui`])
+    yield* assert(Object.hasOwn(webRuntime.dependencies, dependency), `Generated web is missing ${dependency}`);
+  const sharedRuntime = yield* S.decodeEffect(sDependenciesPackage)(
+    yield* fs.readFileString(path.join(workspace, "packages/shared/package.json"))
+  );
+  yield* assert(Object.hasOwn(sharedRuntime.dependencies, "effect"), "Generated shared package is missing effect");
   const packedLicense = yield* fs.readFileString(
     path.join(workspace, "node_modules/keenko/dist/generators/sync/files/skills/grilling/LICENSE")
   );

@@ -400,35 +400,31 @@ describe("keenko preset", () => {
       })
     ));
 
-  test("normalizes TanStack editable source into the Keenko baseline", () =>
+  test("replaces TanStack editable source with the Keenko web baseline", () =>
     E.runPromise(
       E.gen(function* () {
         const tree = yield* generatePreset();
-        const localeSwitcher = tree.read("apps/web/src/components/locale-switcher.tsx", "utf-8");
-        const queryProvider = tree.read("apps/web/src/integrations/tanstack-query/root-provider.tsx", "utf-8");
+        const router = tree.read("apps/web/src/router.tsx", "utf-8");
         const rootRoute = tree.read("apps/web/src/routes/__root.tsx", "utf-8");
         const indexRoute = tree.read("apps/web/src/routes/index.tsx", "utf-8");
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(tree.exists("apps/web/src/components/LocaleSwitcher.tsx")).toBe(false);
-        expect(localeSwitcher).toContain("export function LocaleSwitcher()");
-        expect(localeSwitcher).toContain("void setLocale(locale);");
-        expect(localeSwitcher).toContain("React handlers return void while Paraglide locale changes are asynchronous");
-        expect(localeSwitcher).not.toContain("export default");
+        expect(tree.exists("apps/web/src/integrations/tanstack-query/devtools.tsx")).toBe(false);
+        expect(tree.exists("apps/web/src/integrations/tanstack-query/root-provider.tsx")).toBe(false);
 
-        expect(queryProvider).toContain("export function createRouterContext()");
-        expect(queryProvider).not.toContain("TanstackQueryProvider");
-        expect(queryProvider).not.toContain("export default");
+        expect(tree.exists("apps/web/src/config/env.ts")).toBe(true);
+        expect(router).toContain("new ConvexReactClient(convexUrl)");
+        expect(router).toContain("new ConvexQueryClient(convexClient)");
+        expect(router).toContain('declare module "@tanstack/react-router"');
 
         expect(rootRoute).not.toContain("MyRouterContext");
         expect(rootRoute).toContain("title: m.home_page()");
+        expect(rootRoute).toContain("<ConvexProvider client={convexClient}>");
         expect(indexRoute).toContain("<h1>{m.example_message()}</h1>");
-        expect(indexRoute).toContain("<LocaleSwitcher />");
 
-        expect(oxlintConfig).not.toContain("pinned TanStack starter");
-        expect(oxlintConfig).not.toContain("LocaleSwitcher.tsx");
-        expect(oxlintConfig).not.toContain('"unicorn/filename-case": "off"');
-        expect(oxlintConfig).not.toContain('"eslint/no-empty-function": "off"');
+        expect(oxlintConfig).toContain('files: ["apps/web/**/*.{ts,tsx}"]');
+        expect(oxlintConfig).toContain('"eslint/sort-keys": "off"');
       })
     ));
 
@@ -462,7 +458,7 @@ describe("keenko preset", () => {
       })
     ));
 
-  test("keeps shared domain-neutral and private until a real contract exists", () =>
+  test("configures the shared package contract", () =>
     E.runPromise(
       E.gen(function* () {
         const tree = yield* generatePreset("acme");
@@ -470,11 +466,12 @@ describe("keenko preset", () => {
         const packageJson = readJson<PackageJson>(tree, "packages/shared/package.json");
         const tsconfig = readJson<{ include: string[] }>(tree, "packages/shared/tsconfig.json");
 
-        expect(packageJson.exports).toEqual({});
-        expect(packageJson.dependencies).toBeUndefined();
+        expect(packageJson.exports).toEqual({ "./*": "./src/*.ts" });
+        expect(packageJson.dependencies).toEqual(Struct.pick(packageVersions, ["effect"]));
         expect(tsconfig.include).toEqual(["src/**/*.ts"]);
 
         expect(tree.read("packages/shared/src/index.ts", "utf-8")).toBe("");
+        expect(tree.exists("packages/shared/src/schemas/string.ts")).toBe(true);
       })
     ));
 
@@ -506,6 +503,8 @@ describe("keenko preset", () => {
         const packageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
         expect(packageJson.dependencies).toMatchObject({
+          ...Struct.pick(packageVersions, ["@convex-dev/react-query", "convex", "effect"]),
+          "@acme/shared": "workspace:*",
           "@acme/ui": "workspace:*",
         });
       })
