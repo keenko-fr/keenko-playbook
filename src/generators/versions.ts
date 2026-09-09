@@ -3,6 +3,7 @@ export const packageVersions = {
   "@confect/cli": "10.0.0-next.21",
   "@confect/core": "10.0.0-next.21",
   "@confect/server": "10.0.0-next.21",
+  "@convex-dev/react-query": "0.1.0",
   "@edge-runtime/vm": "5.0.0",
   "@effect/platform-node": "4.0.0-rc.112",
   "@effect/tsgo": "0.43.0",

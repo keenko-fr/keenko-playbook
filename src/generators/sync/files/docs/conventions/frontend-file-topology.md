@@ -1,6 +1,6 @@
 # Frontend file topology
 
-For React route, page, layout, and component files, use only the sections the file needs and keep this canonical order:
+Frontend concern sections are navigation aids for files with multiple meaningful concerns, not required ceremony. Omit separators in a trivial or single-concern file. When sections materially clarify a React route, page, layout, or component file, use only the sections it needs and keep this canonical order:
 
 ```ts
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
@@ -13,7 +13,7 @@ For React route, page, layout, and component files, use only the sections the fi
 // TYPES -----------------------------------------------------------------------------------------------------------------------------------
 ```
 
-Use the exact 140-character concern separators and canonical section names. Do not invent synonyms such as `CONSTS`, `UTILS`, `FUNCTIONS`, or `PRESENTATION`. Empty sections are omitted.
+Use the canonical section names, but do not treat an exact separator width as normative. Keep separators visually consistent within a file and do not invent synonyms such as `CONSTS`, `UTILS`, `FUNCTIONS`, or `PRESENTATION`. Empty sections are omitted.
 
 A frontend concern separator is a level-1/major separator. When it follows existing code, place one blank line before the separator and no blank line after it; the first declaration in that section follows immediately. At the start of a file there is naturally no preceding blank line.
 
@@ -26,9 +26,9 @@ A frontend concern separator is a level-1/major separator. When it follows exist
 - main rendered unit: the page/layout/component.
 - `COMPONENTS`: file-local subordinate React components.
 - `HELPERS`: non-React local implementation functions.
-- `TYPES`: non-props file-local types; it is final and nothing follows it.
+- `TYPES`: file-level or shared local types without a stronger owner; when used, it is final and nothing follows it.
 
-Keep a component/page/layout props type immediately after the function it describes, with no blank line, rather than moving props to final `TYPES`.
+Type locality takes precedence over collecting types in a trailing section. Keep a component/page/layout props type beside the construct it describes rather than moving it to final `TYPES`. Keep other strongly-owned types near their owning schema, configuration, component, or helper.
 
 When a frontend file owns an Effect Schema and a corresponding TypeScript representation, keep the schema-derived type immediately below the schema declaration instead of collecting it in `TYPES`.
 

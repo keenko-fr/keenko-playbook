@@ -1,4 +1,4 @@
-import { addDependenciesToPackageJson, joinPathFragments, updateJson, type Tree } from "@nx/devkit";
+import { addDependenciesToPackageJson, generateFiles, joinPathFragments, updateJson, type Tree } from "@nx/devkit";
 import { createApp, createMemoryEnvironment, finalizeAddOns, getFrameworkById, populateAddOnOptionsDefaults } from "@tanstack/create";
 import { Effect as E, Option as O, Path, Struct } from "effect";
 
@@ -15,6 +15,16 @@ declare module '@tanstack/react-start' {
     router: Awaited<ReturnType<typeof getRouter>>
   }
 }`;
+
+const dependencies = Struct.pick(packageVersions, ["@convex-dev/react-query", "convex", "effect"]);
+const devDependencies = Struct.pick(packageVersions, [
+  "@inlang/paraglide-js",
+  "@tanstack/router-cli",
+  "@testing-library/dom",
+  "@testing-library/react",
+  "@types/node",
+  "jsdom",
+]);
 
 // GENERATE --------------------------------------------------------------------------------------------------------------------------------
 export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tree, workspace: string) {
@@ -64,19 +74,19 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
   if (configuredVite === viteConfig) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
   output.files["vite.config.ts"] = configuredVite;
 
-  for (const [relativePath, contents] of Object.entries(output.files)) tree.write(joinPathFragments("apps/web", relativePath), contents);
+  for (const [relativePath, contents] of Object.entries(output.files)) {
+    if (relativePath.startsWith("src/components/") || relativePath.startsWith("src/integrations/") || relativePath.startsWith("messages/"))
+      continue;
+    tree.write(joinPathFragments("apps/web", relativePath), contents);
+  }
+
+  const webFiles = yield* path.fromFileUrl(new URL("../files/web", import.meta.url)).pipe(E.orDie);
+  generateFiles(tree, webFiles, "apps/web", { workspace });
 
   addDependenciesToPackageJson(
     tree,
-    { [`@${workspace}/ui`]: "workspace:*" },
-    Struct.pick(packageVersions, [
-      "@inlang/paraglide-js",
-      "@tanstack/router-cli",
-      "@testing-library/dom",
-      "@testing-library/react",
-      "@types/node",
-      "jsdom",
-    ]),
+    { ...dependencies, [`@${workspace}/shared`]: "workspace:*", [`@${workspace}/ui`]: "workspace:*" },
+    devDependencies,
     "apps/web/package.json"
   );
 

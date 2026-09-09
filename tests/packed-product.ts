@@ -1,6 +1,10 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+
+import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-4-0.js";
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 
@@ -64,6 +68,8 @@ const sDependenciesPackage = S.fromJsonString(S.Struct({ dependencies: S.Record(
 const sDevDependenciesPackage = S.fromJsonString(S.Struct({ devDependencies: S.Record(S.String, S.String) }));
 const sManifest = S.fromJsonString(S.Record(S.String, S.Unknown));
 const sProject = S.fromJsonString(S.Struct({ targets: S.Record(S.String, S.Unknown) }));
+const sInlangSettings = S.fromJsonString(S.Struct({ baseLocale: S.String, locales: S.Array(S.String) }));
+const sMessages = S.fromJsonString(S.Record(S.String, S.String));
 
 const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   source: PackageSource,
@@ -194,7 +200,8 @@ const product = E.gen(function* () {
     "--interactive=false",
     "--trustThirdPartyPreset",
   ];
-  yield* command(temporary, bootstrapEnv, bootstrapExecutable, createArguments);
+  const createOutput = yield* command(temporary, bootstrapEnv, bootstrapExecutable, createArguments);
+  yield* assert(!createOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Creation emitted a module-typeless package warning");
 
   const workspace = path.join(temporary, identity);
   for (const [file, name] of [
@@ -239,6 +246,78 @@ const product = E.gen(function* () {
     yield* fs.readFileString(path.join(workspace, "apps/web/package.json"))
   );
   yield* assert(webPackage.devDependencies["@types/node"] === "24.13.3", "Generated web does not use Node 24 types");
+  const rootManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "package.json")));
+  yield* assert(rootManifest.type === "module", "Generated root package is not explicitly an ES module");
+  const vscodeSettings = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, ".vscode/settings.json")));
+  for (const [key, expected] of Object.entries(canonicalVscodeSettings))
+    yield* assert(
+      isDeepStrictEqual(vscodeSettings[key], expected),
+      `Generated VS Code setting ${key} does not match the canonical baseline`
+    );
+  const vscodeExtensions = yield* S.decodeEffect(S.fromJsonString(S.Struct({ recommendations: S.Array(S.String) })))(
+    yield* fs.readFileString(path.join(workspace, ".vscode/extensions.json"))
+  );
+  yield* assert(vscodeExtensions.recommendations.includes(OXC_EXTENSION), "Generated VS Code extensions do not recommend Oxc");
+
+  const components = path.join(workspace, "apps/web/src/components");
+  const integrations = path.join(workspace, "apps/web/src/integrations");
+  const router = path.join(workspace, "apps/web/src/router.tsx");
+  const rootRoute = path.join(workspace, "apps/web/src/routes/__root.tsx");
+
+  const homeRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
+  const inlangSettings = path.join(workspace, "apps/web/project.inlang/settings.json");
+  const frenchMessages = path.join(workspace, "apps/web/messages/fr.json");
+  const englishMessages = path.join(workspace, "apps/web/messages/en.json");
+  const germanMessages = path.join(workspace, "apps/web/messages/de.json");
+
+  yield* assert(!(yield* fs.exists(components)), "Fresh creation retained TanStack's generated components directory");
+  yield* assert(!(yield* fs.exists(integrations)), "Fresh creation retained TanStack's generated integrations directory");
+  yield* assert(
+    (yield* fs.readFileString(router)).includes("new ConvexQueryClient(convexClient)"),
+    "Fresh creation did not install the Keenko router baseline"
+  );
+  yield* assert(!(yield* fs.readFileString(rootRoute)).includes("MyRouterContext"), "Fresh creation retained tutorial context naming");
+
+  const settings = yield* S.decodeEffect(sInlangSettings)(yield* fs.readFileString(inlangSettings));
+
+  yield* assert(settings.baseLocale === "fr", "Fresh web base locale is not fr");
+  yield* assert(isDeepStrictEqual(settings.locales, ["fr", "en"]), "Fresh web locales are not exactly fr/en");
+
+  yield* assert(yield* fs.exists(frenchMessages), "Fresh web is missing messages/fr.json");
+  yield* assert(yield* fs.exists(englishMessages), "Fresh web is missing messages/en.json");
+  yield* assert(!(yield* fs.exists(germanMessages)), "Fresh web retained TanStack's messages/de.json");
+
+  const french = yield* S.decodeEffect(sMessages)(yield* fs.readFileString(frenchMessages));
+  const english = yield* S.decodeEffect(sMessages)(yield* fs.readFileString(englishMessages));
+
+  const starterMessages = {
+    calm_green_otter: {
+      en: "Welcome to Keenko",
+      fr: "Bienvenue chez Keenko",
+    },
+  };
+
+  for (const [id, messages] of Object.entries(starterMessages)) {
+    yield* assert(french[id] === messages.fr, `French starter message ${id} is incorrect`);
+    yield* assert(english[id] === messages.en, `English starter message ${id} is incorrect`);
+  }
+
+  const home = yield* fs.readFileString(homeRoute);
+
+  yield* assert(home.includes("#/paraglide/messages"), "Fresh home route does not use generated Paraglide messages");
+
+  for (const id of Object.keys(starterMessages))
+    yield* assert(home.includes(`m.${id}(`), `Fresh home route does not use Paraglide message ${id}`);
+
+  yield* assert(!home.includes("Welcome to TanStack Start"), "Fresh home route retained TanStack's hard-coded welcome copy");
+
+  const webRuntime = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
+  for (const dependency of ["@convex-dev/react-query", "convex", "effect", `@${identity}/shared`, `@${identity}/ui`])
+    yield* assert(Object.hasOwn(webRuntime.dependencies, dependency), `Generated web is missing ${dependency}`);
+  const sharedRuntime = yield* S.decodeEffect(sDependenciesPackage)(
+    yield* fs.readFileString(path.join(workspace, "packages/shared/package.json"))
+  );
+  yield* assert(Object.hasOwn(sharedRuntime.dependencies, "effect"), "Generated shared package is missing effect");
   const packedLicense = yield* fs.readFileString(
     path.join(workspace, "node_modules/keenko/dist/generators/sync/files/skills/grilling/LICENSE")
   );
@@ -265,7 +344,8 @@ const product = E.gen(function* () {
     "Canonical creation did not leave Git on main"
   );
   yield* command(workspace, env, "git", ["rev-parse", "--verify", "HEAD"], "failure");
-  yield* command(workspace, env, "env", ["-u", "CI", "bun", "run", "check"]);
+  const initialCheckOutput = yield* command(workspace, env, "env", ["-u", "CI", "bun", "run", "check"]);
+  yield* assert(!initialCheckOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Fresh check emitted a module-typeless package warning");
   yield* command(workspace, env, "git", ["check-ignore", "apps/web/src/paraglide/messages.js"]);
 
   yield* assert(

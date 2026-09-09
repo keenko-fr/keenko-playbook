@@ -115,6 +115,7 @@ const configureRootPackageJson = (tree: Tree, workspace: string) => {
     packageManager: `bun@${runtimeVersions.bun}`,
     private: true,
     scripts: { ...packageJson.scripts, ...scripts },
+    type: "module",
     workspaces: ["apps/*", "packages/*"],
   }));
 };

@@ -1,0 +1,48 @@
+import { ConvexQueryClient } from "@convex-dev/react-query";
+import { notifyManager, QueryClient } from "@tanstack/react-query";
+import { createRouter } from "@tanstack/react-router";
+import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
+import { ConvexReactClient } from "convex/react";
+
+import { publicEnv } from "./config/env.ts";
+import { routeTree } from "./routeTree.gen";
+
+// ROUTER ----------------------------------------------------------------------------------------------------------------------------------
+export function getRouter() {
+  if (typeof document !== "undefined") notifyManager.setScheduler(scheduleNotification);
+
+  const convexUrl = publicEnv.VITE_CONVEX_URL;
+
+  const convexClient = new ConvexReactClient(convexUrl);
+  const convexQueryClient = new ConvexQueryClient(convexClient);
+
+  const queryClient: QueryClient = new QueryClient({
+    defaultOptions: { queries: { queryFn: convexQueryClient.queryFn(), queryKeyHashFn: convexQueryClient.hashFn() } },
+  });
+  convexQueryClient.connect(queryClient);
+
+  const router = createRouter({
+    context: { convexClient, convexQueryClient, queryClient, token: undefined },
+    defaultPreload: "intent",
+    defaultPreloadStaleTime: 0,
+    routeTree,
+    scrollRestoration: true,
+  });
+
+  setupRouterSsrQueryIntegration({ queryClient, router });
+
+  return router;
+}
+
+// INTERNALS -------------------------------------------------------------------------------------------------------------------------------
+// oxlint-disable-next-line promise/prefer-await-to-callbacks -- TanStack Query's scheduler contract is callback-based.
+function scheduleNotification(callback: () => void) {
+  window.requestAnimationFrame(callback);
+}
+
+// TYPES -----------------------------------------------------------------------------------------------------------------------------------
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: ReturnType<typeof getRouter>;
+  }
+}

@@ -388,6 +388,7 @@ describe("keenko preset", () => {
         expect(tree.exists("oxfmt.config.ts")).toBe(true);
         expect(tree.exists("oxlint.config.ts")).toBe(true);
         expect(tree.read("bunfig.toml", "utf-8")).toBe('[install]\nlinker = "hoisted"\n');
+        expect(readJson<PackageJson>(tree, "package.json").type).toBe("module");
 
         expect(readJson(tree, "tsconfig.base.json")).toMatchObject({
           compilerOptions: {
@@ -396,6 +397,71 @@ describe("keenko preset", () => {
             strict: true,
           },
         });
+      })
+    ));
+
+  test("replaces TanStack editable source with the Keenko web baseline", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+        const router = tree.read("apps/web/src/router.tsx", "utf-8");
+        const rootRoute = tree.read("apps/web/src/routes/__root.tsx", "utf-8");
+        const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
+
+        expect(tree.exists("apps/web/src/components/LocaleSwitcher.tsx")).toBe(false);
+        expect(tree.exists("apps/web/src/integrations/tanstack-query/devtools.tsx")).toBe(false);
+        expect(tree.exists("apps/web/src/integrations/tanstack-query/root-provider.tsx")).toBe(false);
+
+        expect(tree.exists("apps/web/src/config/env.ts")).toBe(true);
+        expect(router).toContain("new ConvexReactClient(convexUrl)");
+        expect(router).toContain("new ConvexQueryClient(convexClient)");
+        expect(router).toContain('declare module "@tanstack/react-router"');
+
+        expect(rootRoute).not.toContain("MyRouterContext");
+        expect(rootRoute).toContain("title: m.calm_green_otter()");
+        expect(rootRoute).toContain("<ConvexProvider client={convexClient}>");
+
+        expect(oxlintConfig).toContain('files: ["apps/web/**/*.{ts,tsx}"]');
+        expect(oxlintConfig).toContain('"eslint/sort-keys": "off"');
+      })
+    ));
+
+  test("seeds the canonical Paraglide starter baseline", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+
+        const settings = readJson<{
+          baseLocale: string;
+          locales: string[];
+        }>(tree, "apps/web/project.inlang/settings.json");
+
+        const french = readJson<Record<string, string>>(tree, "apps/web/messages/fr.json");
+        const english = readJson<Record<string, string>>(tree, "apps/web/messages/en.json");
+
+        const homeRoute = tree.read("apps/web/src/routes/index.tsx", "utf-8");
+
+        expect(settings).toMatchObject({
+          baseLocale: "fr",
+          locales: ["fr", "en"],
+        });
+
+        expect(tree.exists("apps/web/messages/fr.json")).toBe(true);
+        expect(tree.exists("apps/web/messages/en.json")).toBe(true);
+        expect(tree.exists("apps/web/messages/de.json")).toBe(false);
+
+        // Replace these with the actual stable Sherlock IDs you chose.
+        expect(french).toMatchObject({
+          calm_green_otter: "Bienvenue chez Keenko",
+        });
+
+        expect(english).toMatchObject({
+          calm_green_otter: "Welcome to Keenko",
+        });
+
+        expect(homeRoute).toContain("#/paraglide/messages");
+
+        expect(homeRoute).toContain("m.calm_green_otter()");
       })
     ));
 
@@ -429,7 +495,7 @@ describe("keenko preset", () => {
       })
     ));
 
-  test("keeps shared domain-neutral and private until a real contract exists", () =>
+  test("configures the shared package contract", () =>
     E.runPromise(
       E.gen(function* () {
         const tree = yield* generatePreset("acme");
@@ -437,11 +503,12 @@ describe("keenko preset", () => {
         const packageJson = readJson<PackageJson>(tree, "packages/shared/package.json");
         const tsconfig = readJson<{ include: string[] }>(tree, "packages/shared/tsconfig.json");
 
-        expect(packageJson.exports).toEqual({});
-        expect(packageJson.dependencies).toBeUndefined();
+        expect(packageJson.exports).toEqual({ "./*": "./src/*.ts" });
+        expect(packageJson.dependencies).toEqual(Struct.pick(packageVersions, ["effect"]));
         expect(tsconfig.include).toEqual(["src/**/*.ts"]);
 
         expect(tree.read("packages/shared/src/index.ts", "utf-8")).toBe("");
+        expect(tree.exists("packages/shared/src/schemas/string.ts")).toBe(true);
       })
     ));
 
@@ -473,6 +540,8 @@ describe("keenko preset", () => {
         const packageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
         expect(packageJson.dependencies).toMatchObject({
+          ...Struct.pick(packageVersions, ["@convex-dev/react-query", "convex", "effect"]),
+          "@acme/shared": "workspace:*",
           "@acme/ui": "workspace:*",
         });
       })
