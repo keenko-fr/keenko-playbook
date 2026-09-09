@@ -4,7 +4,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-3-1.js";
+import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-4-0.js";
 
 class MigrationFailure extends S.TaggedError<MigrationFailure>()("MigrationFailure", { message: S.String }) {}
 
@@ -96,8 +96,8 @@ const migrationProduct = E.gen(function* () {
   yield* command(temporary, publicEnv, "tar", ["-xzf", sourceTarball, "-C", repack]);
   const candidateManifestPath = path.join(repack, "package/package.json");
   const candidateManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(candidateManifestPath));
-  yield* fs.writeFileString(candidateManifestPath, yield* S.encodeEffect(sManifest)({ ...candidateManifest, version: "0.3.1" }));
-  const candidateTarball = path.join(packed, "keenko-0.3.1.tgz");
+  yield* fs.writeFileString(candidateManifestPath, yield* S.encodeEffect(sManifest)({ ...candidateManifest, version: "0.4.0" }));
+  const candidateTarball = path.join(packed, "keenko-0.4.0.tgz");
   yield* command(temporary, publicEnv, "tar", ["-czf", candidateTarball, "-C", repack, "package"]);
   yield* command(temporary, candidateEnv, "npm", [
     "publish",
@@ -146,8 +146,8 @@ const migrationProduct = E.gen(function* () {
     yield* S.encodeEffect(sManifest)({ recommendations: ["project.extension"], unwantedRecommendations: ["project.unwanted"] })
   );
 
-  yield* Console.log("bun x nx migrate keenko@0.3.1");
-  yield* command(workspace, candidateEnv, "bun", ["x", "nx", "migrate", "keenko@0.3.1"]);
+  yield* Console.log("bun x nx migrate keenko@0.4.0");
+  yield* command(workspace, candidateEnv, "bun", ["x", "nx", "migrate", "keenko@0.4.0"]);
   yield* Console.log("bun install");
   yield* command(workspace, candidateEnv, "bun", ["install"]);
   yield* Console.log("bun x nx migrate --run-migrations");
@@ -160,7 +160,7 @@ const migrationProduct = E.gen(function* () {
   const installedCandidate = yield* S.decodeEffect(sVersionPackage)(
     yield* fs.readFileString(path.join(workspace, "node_modules/keenko/package.json"))
   );
-  yield* assert(installedCandidate.version === "0.3.1", "The upgraded consumer did not install keenko@0.3.1");
+  yield* assert(installedCandidate.version === "0.4.0", "The upgraded consumer did not install keenko@0.4.0");
   const migratedPackage = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(packagePath));
   yield* assert(migratedPackage.type === "module", "The migrated root package is not explicitly an ES module");
   yield* assert(isDeepStrictEqual(migratedPackage.migrationProof, { retained: true }), "Migration dropped unrelated package state");
@@ -193,7 +193,7 @@ const migrationProduct = E.gen(function* () {
 
   const checkOutput = yield* command(workspace, candidateEnv, "env", ["-u", "CI", "bun", "run", "check"]);
   yield* assert(!checkOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Migrated check emitted a module-typeless package warning");
-  yield* Console.log("Published 0.3.0 consumer upgraded to the local packed 0.3.1 candidate and passed bun run check.");
+  yield* Console.log("Published 0.3.0 consumer upgraded to the local packed 0.4.0 candidate and passed bun run check.");
 });
 
 NodeRuntime.runMain(migrationProduct.pipe(E.scoped, E.provide(NodeServices.layer)));

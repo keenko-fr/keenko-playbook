@@ -23,7 +23,7 @@ const [TSDK_LOCATION] = canonicalVscodeSettings["js/ts.tsdk.additionalLocations"
 
 type JsonObject = Record<string, unknown>;
 
-export default function baseline031(tree: Tree) {
+export default function baseline040(tree: Tree) {
   const packageJson = readJson<JsonObject>(tree, "package.json");
   const settings = readOptionalJson(tree, SETTINGS_PATH);
   const extensions = readOptionalJson(tree, EXTENSIONS_PATH);
@@ -133,6 +133,6 @@ function isJsonObject(value: unknown): value is JsonObject {
 
 function throwConflict(path: string, key: string): never {
   throw new Error(
-    `Keenko-owned value ${key} in ${path} conflicts with the 0.3.1 baseline. Reconcile that project-owned value manually, then rerun the Keenko migration.`
+    `Keenko-owned value ${key} in ${path} conflicts with the 0.4.0 baseline. Reconcile that project-owned value manually, then rerun the Keenko migration.`
   );
 }

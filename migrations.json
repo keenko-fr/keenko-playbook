@@ -1,9 +1,9 @@
 {
   "generators": {
-    "0.3.1-baseline": {
-      "version": "0.3.1",
-      "description": "Apply the Keenko 0.3.1 module and VS Code baseline without replacing project-owned editor state.",
-      "factory": "./dist/migrations/baseline-0-3-1"
+    "0.4.0-baseline": {
+      "version": "0.4.0",
+      "description": "Apply the Keenko 0.4.0 module and VS Code baseline without replacing project-owned editor state.",
+      "factory": "./dist/migrations/baseline-0-4-0"
     }
   },
   "packageJsonUpdates": {}

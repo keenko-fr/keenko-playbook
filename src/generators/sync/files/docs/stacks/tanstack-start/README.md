@@ -1,5 +1,11 @@
 # TanStack Start
 
+## Creation ownership
+
+TanStack Create owns framework creation and its framework contracts. Keenko uses that supported creation API, then composes the fixed stack into the initial application baseline: it intentionally discards TanStack's generated `src/components/**` and `src/integrations/**` topology and installs the initial router, root route, and environment handling.
+
+After creation, generated application source is project-owned. Keenko synchronization does not continuously manage it; a future migration may touch project source only for a real semantic transition under the normal preservation and conflict rules.
+
 Server functions are real server trust boundaries. Validate/normalize input there even when the browser already validated it.
 
 Keep values crossing SSR/server-function serialization transport-safe and explicit; do not leak Effect runtime values or `Date` hydration for internal symmetry.

@@ -4,7 +4,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-3-1.js";
+import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-4-0.js";
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 

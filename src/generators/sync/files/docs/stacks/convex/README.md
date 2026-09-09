@@ -15,6 +15,8 @@ Use native Convex APIs where components, workflows, HTTP/provider integration, g
 
 ## React / TanStack Query
 
+During creation, Keenko composes Convex and TanStack Query into the initial router/root baseline and establishes the shared helpers and schemas used by that fixed stack. Those application files become project-owned after creation rather than remaining Keenko-synchronized surfaces.
+
 For reactive Convex reads that fit the TanStack Query adapter, prefer `ConvexQueryClient` + TanStack Query where it supports the required capability. Native Convex React hooks may coexist when the adapter does not expose a required Convex feature.
 
 Reactive Convex queries normally do not need manual TanStack Query invalidation after Convex mutations; Convex pushes fresh results. Invalidate only resources that are genuinely non-reactive/external/ordinary Query-backed data.

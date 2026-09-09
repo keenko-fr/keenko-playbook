@@ -5,7 +5,7 @@ import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { Effect as E } from "effect";
 
 import migrations from "../../migrations.json" with { type: "json" };
-import baseline031, { canonicalVscodeSettings, OXC_EXTENSION } from "./baseline-0-3-1.js";
+import baseline040, { canonicalVscodeSettings, OXC_EXTENSION } from "./baseline-0-4-0.js";
 
 interface RootPackage {
   readonly custom?: { readonly retained: boolean };
@@ -28,7 +28,7 @@ interface VscodeSettings {
 
 const settingsPath = ".vscode/settings.json";
 const extensionsPath = ".vscode/extensions.json";
-const runMigration = (tree: ReturnType<typeof createTreeWithEmptyWorkspace>) => E.promise(() => baseline031(tree));
+const runMigration = (tree: ReturnType<typeof createTreeWithEmptyWorkspace>) => E.promise(() => baseline040(tree));
 
 const createTree = () => {
   const tree = createTreeWithEmptyWorkspace();
@@ -36,7 +36,7 @@ const createTree = () => {
   return tree;
 };
 
-describe("0.3.1 baseline migration", () => {
+describe("0.4.0 baseline migration", () => {
   test("adds module metadata and creates the complete VS Code baseline", () =>
     E.runPromise(
       E.gen(function* () {
@@ -119,8 +119,8 @@ describe("0.3.1 baseline migration", () => {
       const expectedSettings = tree.read(settingsPath, "utf-8");
 
       expect(() => {
-        void baseline031(tree);
-      }).toThrow("conflicts with the 0.3.1 baseline");
+        void baseline040(tree);
+      }).toThrow("conflicts with the 0.4.0 baseline");
       expect(tree.read("package.json", "utf-8")).toBe(expectedPackage);
       expect(tree.read(settingsPath, "utf-8")).toBe(expectedSettings);
       expect(tree.exists(extensionsPath)).toBe(false);
@@ -131,19 +131,19 @@ describe("0.3.1 baseline migration", () => {
     writeJson(tree, "package.json", { name: "consumer", type: "commonjs" });
 
     expect(() => {
-      void baseline031(tree);
+      void baseline040(tree);
     }).toThrow("Keenko-owned value type in package.json conflicts");
     expect(tree.exists(settingsPath)).toBe(false);
     expect(tree.exists(extensionsPath)).toBe(false);
   });
 
-  test("is registered at the 0.3.1 boundary", () => {
+  test("is registered at the 0.4.0 boundary", () => {
     expect(migrations).toEqual({
       generators: {
-        "0.3.1-baseline": {
-          description: "Apply the Keenko 0.3.1 module and VS Code baseline without replacing project-owned editor state.",
-          factory: "./dist/migrations/baseline-0-3-1",
-          version: "0.3.1",
+        "0.4.0-baseline": {
+          description: "Apply the Keenko 0.4.0 module and VS Code baseline without replacing project-owned editor state.",
+          factory: "./dist/migrations/baseline-0-4-0",
+          version: "0.4.0",
         },
       },
       packageJsonUpdates: {},

@@ -44,8 +44,7 @@
     "release:wait-for-published": "bun run tests/wait-for-published.ts",
     "release:version:check": "bun run tests/release-version.ts",
     "test": "bun test",
-    "test:migration": "bun run tests/packed-migration.ts",
-    "test:product": "bun run tests/packed-product.ts",
+    "test:product": "bun run tests/packed-product.ts && bun run tests/packed-migration.ts",
     "test:published": "bun run tests/packed-product.ts --published",
     "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.json"
   },
