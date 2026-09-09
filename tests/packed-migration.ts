@@ -58,7 +58,7 @@ const migrationProduct = E.gen(function* () {
   const registryStorage = path.join(temporary, "registry-storage");
   yield* fs.writeFileString(
     registryConfig,
-    `storage: ${registryStorage}\nuplinks:\n  npmjs:\n    url: https://registry.npmjs.org/\n    timeout: 1m\npackages:\n  "**":\n    access: $all\n    publish: $all\n    unpublish: $all\n    proxy: npmjs\nlog:\n  type: stdout\n  format: pretty\n  level: warn\npublish:\n  allow_offline: true\n`
+    `storage: ${registryStorage}\nuplinks:\n  npmjs:\n    url: https://registry.npmjs.org/\n    timeout: 1m\npackages:\n  "keenko":\n    access: $all\n    publish: $all\n    unpublish: $all\n  "**":\n    access: $all\n    publish: $all\n    unpublish: $all\n    proxy: npmjs\nlog:\n  type: stdout\n  format: pretty\n  level: warn\npublish:\n  allow_offline: true\n`
   );
   yield* spawner.spawn(
     ChildProcess.make("bun", ["x", "verdaccio", "--config", registryConfig, "--listen", "127.0.0.1:4874"], {
