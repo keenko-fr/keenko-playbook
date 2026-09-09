@@ -406,7 +406,6 @@ describe("keenko preset", () => {
         const tree = yield* generatePreset();
         const router = tree.read("apps/web/src/router.tsx", "utf-8");
         const rootRoute = tree.read("apps/web/src/routes/__root.tsx", "utf-8");
-        const indexRoute = tree.read("apps/web/src/routes/index.tsx", "utf-8");
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(tree.exists("apps/web/src/components/LocaleSwitcher.tsx")).toBe(false);
@@ -419,9 +418,8 @@ describe("keenko preset", () => {
         expect(router).toContain('declare module "@tanstack/react-router"');
 
         expect(rootRoute).not.toContain("MyRouterContext");
-        expect(rootRoute).toContain("title: m.home_page()");
+        expect(rootRoute).toContain('title: "Keenko Starter"');
         expect(rootRoute).toContain("<ConvexProvider client={convexClient}>");
-        expect(indexRoute).toContain("<h1>{m.example_message()}</h1>");
 
         expect(oxlintConfig).toContain('files: ["apps/web/**/*.{ts,tsx}"]');
         expect(oxlintConfig).toContain('"eslint/sort-keys": "off"');

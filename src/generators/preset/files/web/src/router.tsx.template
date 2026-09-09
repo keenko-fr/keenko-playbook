@@ -7,8 +7,9 @@ import { ConvexReactClient } from "convex/react";
 import { publicEnv } from "./config/env.ts";
 import { routeTree } from "./routeTree.gen";
 
+// ROUTER ----------------------------------------------------------------------------------------------------------------------------------
 export function getRouter() {
-  if (typeof document !== "undefined") notifyManager.setScheduler(window.requestAnimationFrame);
+  if (typeof document !== "undefined") notifyManager.setScheduler(scheduleNotification);
 
   const convexUrl = publicEnv.VITE_CONVEX_URL;
 
@@ -33,6 +34,13 @@ export function getRouter() {
   return router;
 }
 
+// INTERNALS -------------------------------------------------------------------------------------------------------------------------------
+// oxlint-disable-next-line promise/prefer-await-to-callbacks -- TanStack Query's scheduler contract is callback-based.
+function scheduleNotification(callback: () => void) {
+  window.requestAnimationFrame(callback);
+}
+
+// TYPES -----------------------------------------------------------------------------------------------------------------------------------
 declare module "@tanstack/react-router" {
   interface Register {
     router: ReturnType<typeof getRouter>;

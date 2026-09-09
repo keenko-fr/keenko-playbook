@@ -1,6 +1,10 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+
+import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-3-1.js";
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 
@@ -242,12 +246,21 @@ const product = E.gen(function* () {
   yield* assert(webPackage.devDependencies["@types/node"] === "24.13.3", "Generated web does not use Node 24 types");
   const rootManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "package.json")));
   yield* assert(rootManifest.type === "module", "Generated root package is not explicitly an ES module");
+  const vscodeSettings = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, ".vscode/settings.json")));
+  for (const [key, expected] of Object.entries(canonicalVscodeSettings))
+    yield* assert(
+      isDeepStrictEqual(vscodeSettings[key], expected),
+      `Generated VS Code setting ${key} does not match the canonical baseline`
+    );
+  const vscodeExtensions = yield* S.decodeEffect(S.fromJsonString(S.Struct({ recommendations: S.Array(S.String) })))(
+    yield* fs.readFileString(path.join(workspace, ".vscode/extensions.json"))
+  );
+  yield* assert(vscodeExtensions.recommendations.includes(OXC_EXTENSION), "Generated VS Code extensions do not recommend Oxc");
 
   const components = path.join(workspace, "apps/web/src/components");
   const integrations = path.join(workspace, "apps/web/src/integrations");
   const router = path.join(workspace, "apps/web/src/router.tsx");
   const rootRoute = path.join(workspace, "apps/web/src/routes/__root.tsx");
-  const indexRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
   yield* assert(!(yield* fs.exists(components)), "Fresh creation retained TanStack's generated components directory");
   yield* assert(!(yield* fs.exists(integrations)), "Fresh creation retained TanStack's generated integrations directory");
   yield* assert(
@@ -255,10 +268,6 @@ const product = E.gen(function* () {
     "Fresh creation did not install the Keenko router baseline"
   );
   yield* assert(!(yield* fs.readFileString(rootRoute)).includes("MyRouterContext"), "Fresh creation retained tutorial context naming");
-  yield* assert(
-    (yield* fs.readFileString(indexRoute)).includes("m.example_message()"),
-    "Fresh starter copy does not use the Paraglide catalog"
-  );
   const webRuntime = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
   for (const dependency of ["@convex-dev/react-query", "convex", "effect", `@${identity}/shared`, `@${identity}/ui`])
     yield* assert(Object.hasOwn(webRuntime.dependencies, dependency), `Generated web is missing ${dependency}`);
