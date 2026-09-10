@@ -8,7 +8,7 @@ import { Effect as E, FileSystem, Layer as L, Option as O, Path, Struct } from "
 
 import type { PackageJson } from "../helpers.js";
 import { packageVersions, runtimeVersions } from "../versions.js";
-import { START_ROUTE_TREE_FOOTER } from "./helpers/apps-web.js";
+import { START_ROUTE_TREE_FOOTER, webDependencies, webDevDependencies } from "./helpers/apps-web.js";
 import { generatedDriftCheck, makeInitialCodegenCommand, presetProgram } from "./preset.js";
 
 // TYPES -----------------------------------------------------------------------------------------------------------------------------------
@@ -20,6 +20,8 @@ const packageScopes: readonly ExpectedPackageScope[] = ["backend", "shared", "ui
 const managedRoots = ["apps/web", "packages/backend", "packages/shared", "packages/ui"];
 
 const expectedWorkspaces = ["apps/*", "packages/*"];
+
+const exactPackageVersion = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 
 const expectedScripts = {
   build: "nx run-many -t build",
@@ -166,16 +168,10 @@ describe("keenko preset", () => {
           "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy url baseLocale --no-emit-readme && tsr generate"
         );
         expect(viteConfig).toContain("emitReadme: false");
-        expect(web.devDependencies).toMatchObject(
-          Struct.pick(packageVersions, [
-            "@inlang/paraglide-js",
-            "@tanstack/router-cli",
-            "@testing-library/dom",
-            "@testing-library/react",
-            "@types/node",
-            "jsdom",
-          ])
-        );
+        expect(web.dependencies).toEqual({ ...webDependencies, "@test/shared": "workspace:*", "@test/ui": "workspace:*" });
+        expect(web.devDependencies).toEqual(webDevDependencies);
+        for (const specification of [...Object.values(webDependencies), ...Object.values(webDevDependencies)])
+          expect(exactPackageVersion.test(specification)).toBe(true);
         expect(web.devDependencies?.["@types/node"]).toBe("24.13.3");
         expect(web.nx?.targets?.codegen).toBeUndefined();
         expect(tree.exists("apps/web/project.inlang/settings.json")).toBe(true);
@@ -389,10 +385,11 @@ describe("keenko preset", () => {
         const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
         expect(rootPackageJson.scripts?.dev).toBe('convex dev --start "nx run-many -t dev"');
-        expect(rootPackageJson.devDependencies).toMatchObject({
-          "@tanstack/react-start": webPackageJson.dependencies?.["@tanstack/react-start"],
-          convex: packageVersions.convex,
-        });
+        expect(rootPackageJson.devDependencies?.convex).toBe(packageVersions.convex);
+        expect(rootPackageJson.devDependencies?.["@tanstack/react-start"]).toBe(packageVersions["@tanstack/react-start"]);
+        expect(webPackageJson.dependencies?.["@tanstack/react-start"]).toBe(packageVersions["@tanstack/react-start"]);
+        for (const rootCode of tree.children("").filter((entry) => /\.(?:c|m)?(?:j|t)sx?$/u.test(entry)))
+          expect(tree.read(rootCode, "utf-8")).not.toContain("@tanstack/react-start");
 
         expect(backendPackageJson.scripts).toEqual({
           codegen: "confect codegen",
@@ -428,6 +425,18 @@ describe("keenko preset", () => {
             strict: true,
           },
         });
+      })
+    ));
+
+  test("removes the EditorConfig created by the base Nx workspace", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        tree.write(".editorconfig", "root = true\n");
+
+        yield* runPreset(tree);
+
+        expect(tree.exists(".editorconfig")).toBe(false);
       })
     ));
 
@@ -604,7 +613,7 @@ describe("keenko preset", () => {
       })
     ));
 
-  test("keeps ui on the React versions selected by TanStack", () =>
+  test("keeps ui on the canonical React compatibility versions", () =>
     E.runPromise(
       E.gen(function* () {
         const tree = yield* generatePreset("acme");
@@ -612,8 +621,10 @@ describe("keenko preset", () => {
         const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
         const uiPackageJson = readJson<PackageJson>(tree, "packages/ui/package.json");
 
-        expect(uiPackageJson.dependencies?.react).toBe(webPackageJson.dependencies?.react);
-        expect(uiPackageJson.dependencies?.["react-dom"]).toBe(webPackageJson.dependencies?.["react-dom"]);
+        expect(uiPackageJson.dependencies?.react).toBe(packageVersions.react);
+        expect(uiPackageJson.dependencies?.["react-dom"]).toBe(packageVersions["react-dom"]);
+        expect(webPackageJson.dependencies?.react).toBe(packageVersions.react);
+        expect(webPackageJson.dependencies?.["react-dom"]).toBe(packageVersions["react-dom"]);
       })
     ));
 

@@ -3,7 +3,6 @@ import {
   addDependenciesToPackageJson,
   generateFiles,
   installPackagesTask,
-  readJson,
   readNxJson,
   updateJson,
   updateNxJson,
@@ -29,6 +28,7 @@ export const devDependencies = Struct.pick(packageVersions, [
   "@nx/oxlint",
   "@nx/vitest",
   "@typescript/native",
+  "convex",
   "nx",
   "oxfmt",
   "oxlint",
@@ -76,6 +76,7 @@ export const presetProgram = E.fn("keenko.preset.generate")(function* (tree: Tre
   configureRootPackageJson(tree, workspace);
   configureNx(tree);
   generateFiles(tree, rootFiles, ".", { runtimeVersions });
+  tree.delete(".editorconfig");
   ensureRootConvexEnvIgnored(tree);
   yield* syncManagedState(tree);
 });
@@ -111,14 +112,7 @@ const materializeInitialGeneratedState = E.fn("keenko.preset.materializeInitialG
 
 // INTERNALS -------------------------------------------------------------------------------------------------------------------------------
 const configureRootPackageJson = (tree: Tree, workspace: string) => {
-  const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
-  const tanstackStartVersion = S.decodeUnknownSync(S.String)(webPackageJson.dependencies?.["@tanstack/react-start"]);
-
-  addDependenciesToPackageJson(
-    tree,
-    {},
-    { ...devDependencies, "@tanstack/react-start": tanstackStartVersion, convex: packageVersions.convex }
-  );
+  addDependenciesToPackageJson(tree, {}, { ...devDependencies, "@tanstack/react-start": packageVersions["@tanstack/react-start"] });
   updateJson<PackageJson>(tree, "package.json", (packageJson) => ({
     ...packageJson,
     engines: { ...packageJson.engines, bun: runtimeVersions.bunRange, node: runtimeVersions.nodeRange },

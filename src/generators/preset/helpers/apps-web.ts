@@ -1,4 +1,4 @@
-import { addDependenciesToPackageJson, generateFiles, joinPathFragments, updateJson, type Tree } from "@nx/devkit";
+import { generateFiles, joinPathFragments, updateJson, type Tree } from "@nx/devkit";
 import { createApp, createMemoryEnvironment, finalizeAddOns, getFrameworkById, populateAddOnOptionsDefaults } from "@tanstack/create";
 import { Effect as E, Option as O, Path, Struct } from "effect";
 
@@ -16,14 +16,37 @@ declare module '@tanstack/react-start' {
   }
 }`;
 
-const dependencies = Struct.pick(packageVersions, ["@convex-dev/react-query", "convex", "effect"]);
-const devDependencies = Struct.pick(packageVersions, [
+export const webDependencies = Struct.pick(packageVersions, [
+  "@convex-dev/react-query",
+  "@tailwindcss/vite",
+  "@tanstack/react-devtools",
+  "@tanstack/react-form",
+  "@tanstack/react-query",
+  "@tanstack/react-query-devtools",
+  "@tanstack/react-router",
+  "@tanstack/react-router-devtools",
+  "@tanstack/react-router-ssr-query",
+  "@tanstack/react-start",
+  "@tanstack/react-table",
+  "convex",
+  "effect",
+  "react",
+  "react-dom",
+  "tailwindcss",
+]);
+export const webDevDependencies = Struct.pick(packageVersions, [
   "@inlang/paraglide-js",
+  "@tanstack/devtools-vite",
   "@tanstack/router-cli",
   "@testing-library/dom",
   "@testing-library/react",
   "@types/node",
+  "@types/react",
+  "@types/react-dom",
+  "@vitejs/plugin-react",
   "jsdom",
+  "typescript",
+  "vite",
 ]);
 
 // GENERATE --------------------------------------------------------------------------------------------------------------------------------
@@ -89,13 +112,6 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
   const webFiles = yield* path.fromFileUrl(new URL("../files/web", import.meta.url)).pipe(E.orDie);
   generateFiles(tree, webFiles, "apps/web", { workspace });
 
-  addDependenciesToPackageJson(
-    tree,
-    { ...dependencies, [`@${workspace}/shared`]: "workspace:*", [`@${workspace}/ui`]: "workspace:*" },
-    devDependencies,
-    "apps/web/package.json"
-  );
-
   tree.write(
     "apps/web/vitest.config.ts",
     'import { defineConfig } from "vitest/config";\n\nexport default defineConfig({ test: { environment: "jsdom", passWithNoTests: true } });\n'
@@ -105,6 +121,8 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
 
   updateJson<PackageJson>(tree, "apps/web/package.json", (packageJson) => ({
     ...packageJson,
+    dependencies: { ...webDependencies, [`@${workspace}/shared`]: "workspace:*", [`@${workspace}/ui`]: "workspace:*" },
+    devDependencies: webDevDependencies,
     imports: {
       ...packageJson.imports,
       "#components/*": "./src/components/*.tsx",

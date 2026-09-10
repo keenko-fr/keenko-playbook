@@ -4,6 +4,10 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
+import {
+  webDependencies as canonicalWebDependencies,
+  webDevDependencies as canonicalWebDevDependencies,
+} from "../src/generators/preset/helpers/apps-web.js";
 import { packageVersions } from "../src/generators/versions.js";
 
 const OXC_EXTENSION = "oxc.oxc-vscode";
@@ -223,6 +227,7 @@ const product = E.gen(function* () {
   yield* assert(!createOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Creation emitted a module-typeless package warning");
 
   const workspace = path.join(temporary, identity);
+  yield* assert(!(yield* fs.exists(path.join(workspace, ".editorconfig"))), "Fresh creation retained Nx's .editorconfig");
   for (const [file, name] of [
     ["package.json", identity],
     ["apps/web/package.json", `@${identity}/web`],
@@ -288,6 +293,15 @@ const product = E.gen(function* () {
     lifecyclePackage.devDependencies["@tanstack/react-start"] === webDependencies["@tanstack/react-start"],
     "Generated root lifecycle does not expose the web framework marker used by Convex environment detection"
   );
+  yield* assert(
+    lifecyclePackage.devDependencies["@tanstack/react-start"] === packageVersions["@tanstack/react-start"],
+    "Root React Start detection marker does not use the canonical exact version"
+  );
+  for (const rootCode of (yield* fs.readDirectory(workspace)).filter((entry) => /\.(?:c|m)?(?:j|t)sx?$/u.test(entry)))
+    yield* assert(
+      !(yield* fs.readFileString(path.join(workspace, rootCode))).includes("@tanstack/react-start"),
+      `Root code ${rootCode} unexpectedly imports or uses React Start`
+    );
   const convexConfig = yield* S.decodeEffect(sConvexConfig)(yield* fs.readFileString(path.join(workspace, "convex.json")));
   yield* assert(
     isDeepStrictEqual(convexConfig, {
@@ -370,8 +384,20 @@ const product = E.gen(function* () {
   yield* assert(!home.includes("Welcome to TanStack Start"), "Fresh home route retained TanStack's hard-coded welcome copy");
 
   const webRuntime = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
-  for (const dependency of ["@convex-dev/react-query", "convex", "effect", `@${identity}/shared`, `@${identity}/ui`])
-    yield* assert(Object.hasOwn(webRuntime.dependencies, dependency), `Generated web is missing ${dependency}`);
+  yield* assert(
+    isDeepStrictEqual(webRuntime.dependencies, {
+      ...canonicalWebDependencies,
+      [`@${identity}/shared`]: "workspace:*",
+      [`@${identity}/ui`]: "workspace:*",
+    }),
+    "Generated web runtime dependencies do not match the canonical compatibility map"
+  );
+  yield* assert(
+    isDeepStrictEqual(webPackage.devDependencies, canonicalWebDevDependencies),
+    "Generated web development dependencies do not match the canonical compatibility map"
+  );
+  for (const specification of [...Object.values(canonicalWebDependencies), ...Object.values(canonicalWebDevDependencies)])
+    yield* assert(exactSemver.test(specification), `Generated web dependency is not exactly pinned: ${specification}`);
   const sharedRuntime = yield* S.decodeEffect(sDependenciesPackage)(
     yield* fs.readFileString(path.join(workspace, "packages/shared/package.json"))
   );
