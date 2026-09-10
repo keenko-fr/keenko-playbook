@@ -5,7 +5,21 @@ import { Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { packageVersions } from "../src/generators/versions.js";
-import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-4-0.js";
+
+const OXC_EXTENSION = "oxc.oxc-vscode";
+const canonicalVscodeSettings = {
+  "editor.codeActionsOnSave": {
+    "source.fixAll.oxc": "always",
+    "source.format.oxc": "always",
+  },
+  "editor.defaultFormatter": OXC_EXTENSION,
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": false,
+  "js/ts.experimental.useTsgo": true,
+  "js/ts.tsdk.additionalLocations": ["./node_modules/typescript/bin"],
+  "js/ts.tsdk.path": "./node_modules/typescript/bin",
+  "js/ts.tsdk.promptToUseWorkspaceVersion": true,
+};
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 
@@ -243,10 +257,16 @@ const product = E.gen(function* () {
     agents.includes("<!-- keenko:start -->") && agents.includes("<!-- keenko:end -->"),
     "AGENTS.md is missing the Keenko managed markers"
   );
-  const installedPackage = yield* S.decodeEffect(sVersionPackage)(
-    yield* fs.readFileString(path.join(workspace, "node_modules/keenko/package.json"))
-  );
+  const installedPackagePath = path.join(workspace, "node_modules/keenko/package.json");
+  const installedPackageSource = yield* fs.readFileString(installedPackagePath);
+  const installedPackage = yield* S.decodeEffect(sVersionPackage)(installedPackageSource);
   yield* assert(installedPackage.version === packageVersion, `The consumer did not install Keenko ${packageVersion}`);
+  const installedPackageManifest = yield* S.decodeEffect(sManifest)(installedPackageSource);
+  yield* assert(!Object.hasOwn(installedPackageManifest, "nx-migrations"), "Pre-1.0 package unexpectedly exposes Nx migration metadata");
+  yield* assert(
+    !(yield* fs.exists(path.join(workspace, "node_modules/keenko/migrations.json"))),
+    "Pre-1.0 package unexpectedly ships an executable migration manifest"
+  );
   const webPackage = yield* S.decodeEffect(sDevDependenciesPackage)(
     yield* fs.readFileString(path.join(workspace, "apps/web/package.json"))
   );

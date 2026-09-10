@@ -10,7 +10,7 @@
 - Validate `VITE_CONVEX_URL` when constructing the real Convex-backed application runtime, not eagerly at module import. There is no fake URL and no supported backend-less application mode.
 - Production and preview deployment configuration is separate from local `.env.local`; supply their credentials and frontend deployment URL through the hosting or CI contract.
 
-When migrating an existing generated repository, move integration configuration to the workspace root and preserve all Convex source under `packages/backend/convex`. Remove custom URL-copy/synchronization scripts. If an untracked `apps/web/.env.local` or `packages/backend/.env.local` exists, first preserve any non-Convex values according to their owning integration and move the legacy file aside; do not guess at an automatic merge. After the tracked migration, run `bun run dev` and let Convex reestablish deployment-derived values in root `.env.local`.
+Before Keenko `1.0.0`, recreate an older dogfood repository from the current release candidate to adopt this integration model; do not write a `0.x` project migration. Preserve project-owned application work deliberately while keeping all Convex source under `packages/backend/convex`. After `1.0.0`, a later Keenko release uses a native Nx migration only if supported persisted repository state actually needs transformation.
 
 ## Persistence and queries
 

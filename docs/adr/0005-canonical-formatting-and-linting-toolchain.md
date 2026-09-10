@@ -21,7 +21,7 @@ The toolchain decision remains expensive to reverse because it defines the sourc
 - Generator-, manager-, and vendor-owned output is excluded from direct formatter/linter ownership by default and verified through its owner.
 - Canonical TypeScript scripts expose formatting, linting, typecheck, tests, builds, and deterministic generated-code verification. Vitest with first-party `@nx/vitest` inference supplies test capability to every fixed workspace without placeholder tests. The merge-ready `check` regenerates code in place and fails on tracked generator-owned drift; CI consumes the same script and never commits or pushes source.
 - Tooling versions are exact-pinned and upgrades are reviewed as convention changes. Effect's TypeScript/Oxlint/`oxlint-tsgolint` compatibility is verified from current first-party sources on every upgrade.
-- The Keenko Nx preset owns the initial consumer package, root tooling, scripts, and CI contract. Later changes use reviewed Nx migrations that preserve project-owned customizations or fail explicitly on ambiguity.
+- The Keenko Nx preset owns the initial consumer package, root tooling, scripts, and CI contract. After the first supported compatibility baseline, later changes use reviewed Nx migrations only when supported project state must be transformed; those migrations preserve project-owned customizations or fail explicitly on ambiguity.
 
 ## Alternatives considered
 
