@@ -12,7 +12,6 @@
     "dist",
     "!**/*.tsbuildinfo",
     "generators.json",
-    "migrations.json",
     "README.md",
     "LICENSE"
   ],
@@ -44,15 +43,15 @@
     "release:wait-for-published": "bun run tests/wait-for-published.ts",
     "release:version:check": "bun run tests/release-version.ts",
     "test": "bun test",
-    "test:product": "bun run tests/packed-product.ts && bun run tests/packed-migration.ts",
+    "test:product": "bun run tests/packed-product.ts",
     "test:published": "bun run tests/packed-product.ts --published",
     "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.0-rc.112",
+    "@effect/platform-node": "4.0.0-rc.113",
     "@nx/devkit": "23.2.0",
     "@tanstack/create": "0.70.0",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.0.0-rc.113",
     "tslib": "2.8.1",
     "validate-npm-package-name": "8.0.0"
   },
@@ -126,8 +125,5 @@
         }
       }
     }
-  },
-  "nx-migrations": {
-    "migrations": "./migrations.json"
   }
 }

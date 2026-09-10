@@ -8,7 +8,7 @@ import { Effect as E, FileSystem, Layer as L, Option as O, Path, Struct } from "
 
 import type { PackageJson } from "../helpers.js";
 import { packageVersions, runtimeVersions } from "../versions.js";
-import { START_ROUTE_TREE_FOOTER } from "./helpers/apps-web.js";
+import { START_ROUTE_TREE_FOOTER, webDependencies, webDevDependencies } from "./helpers/apps-web.js";
 import { generatedDriftCheck, makeInitialCodegenCommand, presetProgram } from "./preset.js";
 
 // TYPES -----------------------------------------------------------------------------------------------------------------------------------
@@ -21,10 +21,13 @@ const managedRoots = ["apps/web", "packages/backend", "packages/shared", "packag
 
 const expectedWorkspaces = ["apps/*", "packages/*"];
 
+const exactPackageVersion = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+
 const expectedScripts = {
   build: "nx run-many -t build",
   check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
   codegen: "nx run-many -t codegen",
+  dev: 'convex dev --start "nx run-many -t dev"',
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
   lint: "oxlint .",
@@ -38,6 +41,7 @@ const expectedDevDependencies = Struct.pick(packageVersions, [
   "@nx/oxlint",
   "@nx/vitest",
   "@typescript/native",
+  "convex",
   "nx",
   "oxfmt",
   "oxlint",
@@ -164,16 +168,10 @@ describe("keenko preset", () => {
           "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy url baseLocale --no-emit-readme && tsr generate"
         );
         expect(viteConfig).toContain("emitReadme: false");
-        expect(web.devDependencies).toMatchObject(
-          Struct.pick(packageVersions, [
-            "@inlang/paraglide-js",
-            "@tanstack/router-cli",
-            "@testing-library/dom",
-            "@testing-library/react",
-            "@types/node",
-            "jsdom",
-          ])
-        );
+        expect(web.dependencies).toEqual({ ...webDependencies, "@test/shared": "workspace:*", "@test/ui": "workspace:*" });
+        expect(web.devDependencies).toEqual(webDevDependencies);
+        for (const specification of [...Object.values(webDependencies), ...Object.values(webDevDependencies)])
+          expect(exactPackageVersion.test(specification)).toBe(true);
         expect(web.devDependencies?.["@types/node"]).toBe("24.13.3");
         expect(web.nx?.targets?.codegen).toBeUndefined();
         expect(tree.exists("apps/web/project.inlang/settings.json")).toBe(true);
@@ -384,14 +382,29 @@ describe("keenko preset", () => {
 
         const rootPackageJson = readJson<PackageJson>(tree, "package.json");
         const backendPackageJson = readJson<PackageJson>(tree, "packages/backend/package.json");
+        const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
-        expect(rootPackageJson.scripts?.dev).toBe("nx run-many -t dev");
+        expect(rootPackageJson.scripts?.dev).toBe('convex dev --start "nx run-many -t dev"');
+        expect(rootPackageJson.devDependencies?.convex).toBe(packageVersions.convex);
+        expect(rootPackageJson.devDependencies?.["@tanstack/react-start"]).toBe(packageVersions["@tanstack/react-start"]);
+        expect(webPackageJson.dependencies?.["@tanstack/react-start"]).toBe(packageVersions["@tanstack/react-start"]);
+        for (const rootCode of tree.children("").filter((entry) => /\.(?:c|m)?(?:j|t)sx?$/u.test(entry)))
+          expect(tree.read(rootCode, "utf-8")).not.toContain("@tanstack/react-start");
 
-        expect(backendPackageJson.scripts).toMatchObject({
-          dev: 'bun run --parallel "dev:*"',
-          "dev:confect": "confect dev",
-          "dev:convex": "convex dev",
+        expect(backendPackageJson.scripts).toEqual({
+          codegen: "confect codegen",
+          dev: "confect dev",
         });
+
+        expect(readJson(tree, "convex.json")).toEqual({
+          $schema: "./node_modules/convex/schemas/convex.schema.json",
+          functions: "packages/backend/convex",
+        });
+        expect(tree.read(".gitignore", "utf-8")).toBe("/.env.local\n");
+        expect(tree.exists(".env.local")).toBe(false);
+        expect(tree.exists("apps/web/.env.local")).toBe(false);
+        expect(tree.exists("convex")).toBe(false);
+        expect(tree.exists("apps/web/convex")).toBe(false);
       })
     ));
 
@@ -415,6 +428,18 @@ describe("keenko preset", () => {
       })
     ));
 
+  test("removes the EditorConfig created by the base Nx workspace", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        tree.write(".editorconfig", "root = true\n");
+
+        yield* runPreset(tree);
+
+        expect(tree.exists(".editorconfig")).toBe(false);
+      })
+    ));
+
   test("replaces TanStack editable source with the Keenko web baseline", () =>
     E.runPromise(
       E.gen(function* () {
@@ -428,6 +453,12 @@ describe("keenko preset", () => {
         expect(tree.exists("apps/web/src/integrations/tanstack-query/root-provider.tsx")).toBe(false);
 
         expect(tree.exists("apps/web/src/config/env.ts")).toBe(true);
+        expect(tree.read("apps/web/vite.config.ts", "utf-8")).toContain("envDir: '../..'");
+        expect(tree.read("apps/web/src/config/env.ts", "utf-8")).toContain(
+          "export const getPublicEnv = () => S.decodeUnknownSync(sPublicEnv)(import.meta.env);"
+        );
+        expect(tree.read("apps/web/src/config/env.ts", "utf-8")).not.toContain("export const publicEnv =");
+        expect(router).toContain("getPublicEnv().VITE_CONVEX_URL");
         expect(router).toContain("new ConvexReactClient(convexUrl)");
         expect(router).toContain("new ConvexQueryClient(convexClient)");
         expect(router).toContain('declare module "@tanstack/react-router"');
@@ -539,8 +570,7 @@ describe("keenko preset", () => {
 
         expect(packageJson.scripts).toMatchObject({
           codegen: "confect codegen",
-          "dev:confect": "confect dev",
-          "dev:convex": "convex dev",
+          dev: "confect dev",
         });
       })
     ));
@@ -583,7 +613,7 @@ describe("keenko preset", () => {
       })
     ));
 
-  test("keeps ui on the React versions selected by TanStack", () =>
+  test("keeps ui on the canonical React compatibility versions", () =>
     E.runPromise(
       E.gen(function* () {
         const tree = yield* generatePreset("acme");
@@ -591,8 +621,10 @@ describe("keenko preset", () => {
         const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
         const uiPackageJson = readJson<PackageJson>(tree, "packages/ui/package.json");
 
-        expect(uiPackageJson.dependencies?.react).toBe(webPackageJson.dependencies?.react);
-        expect(uiPackageJson.dependencies?.["react-dom"]).toBe(webPackageJson.dependencies?.["react-dom"]);
+        expect(uiPackageJson.dependencies?.react).toBe(packageVersions.react);
+        expect(uiPackageJson.dependencies?.["react-dom"]).toBe(packageVersions["react-dom"]);
+        expect(webPackageJson.dependencies?.react).toBe(packageVersions.react);
+        expect(webPackageJson.dependencies?.["react-dom"]).toBe(packageVersions["react-dom"]);
       })
     ));
 

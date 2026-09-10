@@ -14,7 +14,7 @@ import {
   waitForPublishedVersion,
 } from "./wait-for-published.js";
 
-const version = "0.3.0";
+const version = "1.2.3";
 const testPolicy = { interval: 0, maxAttempts: 3, timeout: "1 second", timeoutLabel: "1 second" } satisfies PublishedVersionWaitPolicy;
 const run = <A, X>(effect: E.Effect<A, X, NodeServices.NodeServices>) => E.runPromise(effect.pipe(E.provide(NodeServices.layer)));
 const failLookup = (reason: string) => new RegistryLookupFailure({ reason });
@@ -144,11 +144,11 @@ describe("published version registry wait", () => {
         const lookup: RegistryLookup = () =>
           E.sync(() => {
             attempts += 1;
-            return "0.3.1";
+            return "1.2.4";
           });
         const failure = yield* waitForPublishedVersion(version, lookup, testPolicy).pipe(E.flip);
 
-        expect(failure.message).toContain("Bun installed keenko@0.3.1 instead of keenko@0.3.0");
+        expect(failure.message).toContain("Bun installed keenko@1.2.4 instead of keenko@1.2.3");
         expect(attempts).toBe(3);
       })
     ));

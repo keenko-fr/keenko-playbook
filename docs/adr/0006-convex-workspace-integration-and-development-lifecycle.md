@@ -1,0 +1,29 @@
+# ADR 0006: Convex workspace integration and development lifecycle
+
+## Status
+
+Accepted.
+
+## Context
+
+Convex serves the backend package and the web application in one Nx workspace. Its project configuration and local deployment state therefore coordinate multiple projects rather than belonging to either project alone. Starting those projects independently also creates a first-run race: the web application can try to consume a deployment URL before Convex has configured the development deployment and written that URL.
+
+A configured development deployment is machine-local operational state, not part of the reproducible repository baseline. Repository generation, code generation, validation, and build/check workflows must remain usable before a developer selects or creates a Convex deployment.
+
+## Decision
+
+- Keep workspace-level Convex integration configuration at the repository root. Root `convex.json` points Convex at `packages/backend/convex`.
+- Keep all authored and generated Convex source under `packages/backend/convex`. Do not create root `convex/` or `apps/web/convex` directories.
+- Use the untracked root `.env.local` for local deployment-derived workspace state. Convex owns creating and maintaining values such as `CONVEX_DEPLOYMENT` and `VITE_CONVEX_URL`; developers do not create that file manually or copy a deployment URL from the dashboard.
+- Make root `bun run dev` the fresh-repository development entrypoint. It starts Convex from the workspace root and uses the Convex CLI's lifecycle orchestration so Convex configures and pushes the development deployment before starting the Nx application development processes that consume `VITE_CONVEX_URL`.
+- Keep `@tanstack/react-start` in the root development dependencies solely as a Convex CLI framework-detection marker. Convex inspects the package manifest in its root working directory to select the `VITE_CONVEX_URL` convention, while React Start application code and ownership remain under `apps/web`. Root code does not import or use React Start, and both manifests derive the same exact version from Keenko's package compatibility map. Remove the marker when Convex provides an explicit monorepo-safe configuration mechanism for selecting the frontend environment-variable convention.
+- Require and validate `VITE_CONVEX_URL` when constructing the actual Convex-backed application runtime. Do not decode it eagerly at module import or make it an unconditional repository, code-generation, validation, typecheck, test, or build invariant.
+- Keep production deployment configuration outside local `.env.local` state. Production and preview automation supplies its deployment credentials and frontend URL through the deployment platform or CI contract.
+
+Keenko does not add a URL-copying or synchronization script, invent a fake/default URL, support a backend-less application mode, or require a separate manual Convex setup command before `bun run dev`.
+
+## Consequences
+
+Fresh generated repositories can install, generate, check, and build without `.env.local`. Their first `bun run dev` may interactively authenticate and select or create a Convex project; after Convex establishes root deployment state, the web and remaining development processes start normally.
+
+Because this decision landed before Keenko `1.0.0`, existing `0.x` dogfood repositories are recreated from the current release candidate instead of migrated. The canonical generated state preserves `packages/backend/convex` as the sole Convex source owner. After `1.0.0`, any future change to this integration follows ADR 0007's supported-project migration boundary.

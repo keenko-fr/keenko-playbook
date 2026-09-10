@@ -4,7 +4,26 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-4-0.js";
+import {
+  webDependencies as canonicalWebDependencies,
+  webDevDependencies as canonicalWebDevDependencies,
+} from "../src/generators/preset/helpers/apps-web.js";
+import { packageVersions } from "../src/generators/versions.js";
+
+const OXC_EXTENSION = "oxc.oxc-vscode";
+const canonicalVscodeSettings = {
+  "editor.codeActionsOnSave": {
+    "source.fixAll.oxc": "always",
+    "source.format.oxc": "always",
+  },
+  "editor.defaultFormatter": OXC_EXTENSION,
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": false,
+  "js/ts.experimental.useTsgo": true,
+  "js/ts.tsdk.additionalLocations": ["./node_modules/typescript/bin"],
+  "js/ts.tsdk.path": "./node_modules/typescript/bin",
+  "js/ts.tsdk.promptToUseWorkspaceVersion": true,
+};
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 
@@ -66,6 +85,10 @@ const sVersionPackage = S.fromJsonString(S.Struct({ version: S.String }));
 const sNamedPackage = S.fromJsonString(S.Struct({ name: S.String }));
 const sDependenciesPackage = S.fromJsonString(S.Struct({ dependencies: S.Record(S.String, S.String) }));
 const sDevDependenciesPackage = S.fromJsonString(S.Struct({ devDependencies: S.Record(S.String, S.String) }));
+const sLifecyclePackage = S.fromJsonString(
+  S.Struct({ devDependencies: S.Record(S.String, S.String), scripts: S.Record(S.String, S.String) })
+);
+const sConvexConfig = S.fromJsonString(S.Struct({ $schema: S.String, functions: S.String }));
 const sManifest = S.fromJsonString(S.Record(S.String, S.Unknown));
 const sProject = S.fromJsonString(S.Struct({ targets: S.Record(S.String, S.Unknown) }));
 const sInlangSettings = S.fromJsonString(S.Struct({ baseLocale: S.String, locales: S.Array(S.String) }));
@@ -204,6 +227,7 @@ const product = E.gen(function* () {
   yield* assert(!createOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Creation emitted a module-typeless package warning");
 
   const workspace = path.join(temporary, identity);
+  yield* assert(!(yield* fs.exists(path.join(workspace, ".editorconfig"))), "Fresh creation retained Nx's .editorconfig");
   for (const [file, name] of [
     ["package.json", identity],
     ["apps/web/package.json", `@${identity}/web`],
@@ -238,16 +262,54 @@ const product = E.gen(function* () {
     agents.includes("<!-- keenko:start -->") && agents.includes("<!-- keenko:end -->"),
     "AGENTS.md is missing the Keenko managed markers"
   );
-  const installedPackage = yield* S.decodeEffect(sVersionPackage)(
-    yield* fs.readFileString(path.join(workspace, "node_modules/keenko/package.json"))
-  );
+  const installedPackagePath = path.join(workspace, "node_modules/keenko/package.json");
+  const installedPackageSource = yield* fs.readFileString(installedPackagePath);
+  const installedPackage = yield* S.decodeEffect(sVersionPackage)(installedPackageSource);
   yield* assert(installedPackage.version === packageVersion, `The consumer did not install Keenko ${packageVersion}`);
+  const installedPackageManifest = yield* S.decodeEffect(sManifest)(installedPackageSource);
+  yield* assert(!Object.hasOwn(installedPackageManifest, "nx-migrations"), "Pre-1.0 package unexpectedly exposes Nx migration metadata");
+  yield* assert(
+    !(yield* fs.exists(path.join(workspace, "node_modules/keenko/migrations.json"))),
+    "Pre-1.0 package unexpectedly ships an executable migration manifest"
+  );
   const webPackage = yield* S.decodeEffect(sDevDependenciesPackage)(
     yield* fs.readFileString(path.join(workspace, "apps/web/package.json"))
   );
   yield* assert(webPackage.devDependencies["@types/node"] === "24.13.3", "Generated web does not use Node 24 types");
   const rootManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "package.json")));
   yield* assert(rootManifest.type === "module", "Generated root package is not explicitly an ES module");
+  const lifecyclePackage = yield* S.decodeEffect(sLifecyclePackage)(yield* fs.readFileString(path.join(workspace, "package.json")));
+  const webManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
+  const webDependencies = yield* S.decodeUnknownEffect(S.Record(S.String, S.String))(webManifest.dependencies);
+  yield* assert(
+    lifecyclePackage.scripts.dev === 'convex dev --start "nx run-many -t dev"',
+    "Generated root dev script does not let Convex establish deployment state before Nx application processes"
+  );
+  yield* assert(
+    lifecyclePackage.devDependencies.convex === packageVersions.convex,
+    "Generated root lifecycle does not declare the canonical Convex CLI"
+  );
+  yield* assert(
+    lifecyclePackage.devDependencies["@tanstack/react-start"] === webDependencies["@tanstack/react-start"],
+    "Generated root lifecycle does not expose the web framework marker used by Convex environment detection"
+  );
+  yield* assert(
+    lifecyclePackage.devDependencies["@tanstack/react-start"] === packageVersions["@tanstack/react-start"],
+    "Root React Start detection marker does not use the canonical exact version"
+  );
+  for (const rootCode of (yield* fs.readDirectory(workspace)).filter((entry) => /\.(?:c|m)?(?:j|t)sx?$/u.test(entry)))
+    yield* assert(
+      !(yield* fs.readFileString(path.join(workspace, rootCode))).includes("@tanstack/react-start"),
+      `Root code ${rootCode} unexpectedly imports or uses React Start`
+    );
+  const convexConfig = yield* S.decodeEffect(sConvexConfig)(yield* fs.readFileString(path.join(workspace, "convex.json")));
+  yield* assert(
+    isDeepStrictEqual(convexConfig, {
+      $schema: "./node_modules/convex/schemas/convex.schema.json",
+      functions: "packages/backend/convex",
+    }),
+    "Generated root Convex configuration does not preserve backend source ownership"
+  );
   const vscodeSettings = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, ".vscode/settings.json")));
   for (const [key, expected] of Object.entries(canonicalVscodeSettings))
     yield* assert(
@@ -262,6 +324,8 @@ const product = E.gen(function* () {
   const components = path.join(workspace, "apps/web/src/components");
   const integrations = path.join(workspace, "apps/web/src/integrations");
   const router = path.join(workspace, "apps/web/src/router.tsx");
+  const envModule = path.join(workspace, "apps/web/src/config/env.ts");
+  const viteConfig = path.join(workspace, "apps/web/vite.config.ts");
   const rootRoute = path.join(workspace, "apps/web/src/routes/__root.tsx");
 
   const homeRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
@@ -275,6 +339,14 @@ const product = E.gen(function* () {
   yield* assert(
     (yield* fs.readFileString(router)).includes("new ConvexQueryClient(convexClient)"),
     "Fresh creation did not install the Keenko router baseline"
+  );
+  yield* assert(
+    /envDir:\s*["']\.\.\/\.\.["']/u.test(yield* fs.readFileString(viteConfig)),
+    "Web development does not load root environment state"
+  );
+  yield* assert(
+    (yield* fs.readFileString(envModule)).includes("export const getPublicEnv = () =>"),
+    "Fresh creation eagerly validates the Convex URL before application runtime initialization"
   );
   yield* assert(!(yield* fs.readFileString(rootRoute)).includes("MyRouterContext"), "Fresh creation retained tutorial context naming");
 
@@ -312,8 +384,20 @@ const product = E.gen(function* () {
   yield* assert(!home.includes("Welcome to TanStack Start"), "Fresh home route retained TanStack's hard-coded welcome copy");
 
   const webRuntime = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
-  for (const dependency of ["@convex-dev/react-query", "convex", "effect", `@${identity}/shared`, `@${identity}/ui`])
-    yield* assert(Object.hasOwn(webRuntime.dependencies, dependency), `Generated web is missing ${dependency}`);
+  yield* assert(
+    isDeepStrictEqual(webRuntime.dependencies, {
+      ...canonicalWebDependencies,
+      [`@${identity}/shared`]: "workspace:*",
+      [`@${identity}/ui`]: "workspace:*",
+    }),
+    "Generated web runtime dependencies do not match the canonical compatibility map"
+  );
+  yield* assert(
+    isDeepStrictEqual(webPackage.devDependencies, canonicalWebDevDependencies),
+    "Generated web development dependencies do not match the canonical compatibility map"
+  );
+  for (const specification of [...Object.values(canonicalWebDependencies), ...Object.values(canonicalWebDevDependencies)])
+    yield* assert(exactSemver.test(specification), `Generated web dependency is not exactly pinned: ${specification}`);
   const sharedRuntime = yield* S.decodeEffect(sDependenciesPackage)(
     yield* fs.readFileString(path.join(workspace, "packages/shared/package.json"))
   );
@@ -343,6 +427,11 @@ const product = E.gen(function* () {
     (yield* command(workspace, env, "git", ["symbolic-ref", "--short", "HEAD"])).trim() === "main",
     "Canonical creation did not leave Git on main"
   );
+  for (const localEnv of [".env.local", "apps/web/.env.local", "packages/backend/.env.local"])
+    yield* assert(!(yield* fs.exists(path.join(workspace, localEnv))), `Fresh creation unexpectedly created ${localEnv}`);
+  yield* command(workspace, env, "git", ["check-ignore", ".env.local"]);
+  yield* assert(!(yield* fs.exists(path.join(workspace, "convex"))), "Fresh creation added a root Convex source directory");
+  yield* assert(!(yield* fs.exists(path.join(workspace, "apps/web/convex"))), "Fresh creation added web-owned Convex source");
   yield* command(workspace, env, "git", ["rev-parse", "--verify", "HEAD"], "failure");
   const initialCheckOutput = yield* command(workspace, env, "env", ["-u", "CI", "bun", "run", "check"]);
   yield* assert(!initialCheckOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Fresh check emitted a module-typeless package warning");

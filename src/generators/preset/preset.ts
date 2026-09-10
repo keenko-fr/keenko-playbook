@@ -27,7 +27,9 @@ export const devDependencies = Struct.pick(packageVersions, [
   "@effect/tsgo",
   "@nx/oxlint",
   "@nx/vitest",
+  "@tanstack/react-start",
   "@typescript/native",
+  "convex",
   "nx",
   "oxfmt",
   "oxlint",
@@ -44,7 +46,7 @@ export const scripts = {
   build: "nx run-many -t build",
   check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
   codegen: "nx run-many -t codegen",
-  dev: "nx run-many -t dev",
+  dev: 'convex dev --start "nx run-many -t dev"',
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
   lint: "oxlint .",
@@ -75,6 +77,8 @@ export const presetProgram = E.fn("keenko.preset.generate")(function* (tree: Tre
   configureRootPackageJson(tree, workspace);
   configureNx(tree);
   generateFiles(tree, rootFiles, ".", { runtimeVersions });
+  tree.delete(".editorconfig");
+  ensureRootConvexEnvIgnored(tree);
   yield* syncManagedState(tree);
 });
 
@@ -121,6 +125,15 @@ const configureRootPackageJson = (tree: Tree, workspace: string) => {
     type: "module",
     workspaces: ["apps/*", "packages/*"],
   }));
+};
+
+const ensureRootConvexEnvIgnored = (tree: Tree) => {
+  const path = ".gitignore";
+  const current = tree.read(path, "utf-8") ?? "";
+  if (/^\/?\.env\.local$/mu.test(current)) return;
+
+  const separator = current.length === 0 || current.endsWith("\n") ? "" : "\n";
+  tree.write(path, `${current}${separator}/.env.local\n`);
 };
 
 const configureNx = (tree: Tree) => {

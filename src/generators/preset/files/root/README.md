@@ -7,7 +7,9 @@ A Bun and Nx application workspace created with Keenko.
 - `packages/ui`: shared UI components and styles.
 - `packages/shared`: shared application contracts when needed.
 
-From the workspace root, install dependencies with `bun install` and run `bun run dev` to start web and backend development.
+From the workspace root, install dependencies with `bun install` and run `bun run dev` to configure or resume the local Convex deployment, then start web and backend development. Convex creates and maintains the untracked root `.env.local`; do not create it manually or copy a deployment URL from the dashboard.
+
+A Convex deployment is not required for repository setup or verification. Fresh workspaces can run code generation and `bun run check` without `.env.local`.
 
 Run `bun run codegen` to regenerate Paraglide, the TanStack Router route tree, and Confect contracts. Fresh creation materializes their required initial state. Run `bun run check` before review: it regenerates in place, fails when tracked generator-owned artifacts drift, and leaves those changes available to review and commit.
 
