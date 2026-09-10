@@ -3,6 +3,7 @@ import {
   addDependenciesToPackageJson,
   generateFiles,
   installPackagesTask,
+  readJson,
   readNxJson,
   updateJson,
   updateNxJson,
@@ -44,7 +45,7 @@ export const scripts = {
   build: "nx run-many -t build",
   check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
   codegen: "nx run-many -t codegen",
-  dev: "nx run-many -t dev",
+  dev: 'convex dev --start "nx run-many -t dev"',
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
   lint: "oxlint .",
@@ -75,6 +76,7 @@ export const presetProgram = E.fn("keenko.preset.generate")(function* (tree: Tre
   configureRootPackageJson(tree, workspace);
   configureNx(tree);
   generateFiles(tree, rootFiles, ".", { runtimeVersions });
+  ensureRootConvexEnvIgnored(tree);
   yield* syncManagedState(tree);
 });
 
@@ -109,7 +111,14 @@ const materializeInitialGeneratedState = E.fn("keenko.preset.materializeInitialG
 
 // INTERNALS -------------------------------------------------------------------------------------------------------------------------------
 const configureRootPackageJson = (tree: Tree, workspace: string) => {
-  addDependenciesToPackageJson(tree, {}, devDependencies);
+  const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
+  const tanstackStartVersion = S.decodeUnknownSync(S.String)(webPackageJson.dependencies?.["@tanstack/react-start"]);
+
+  addDependenciesToPackageJson(
+    tree,
+    {},
+    { ...devDependencies, "@tanstack/react-start": tanstackStartVersion, convex: packageVersions.convex }
+  );
   updateJson<PackageJson>(tree, "package.json", (packageJson) => ({
     ...packageJson,
     engines: { ...packageJson.engines, bun: runtimeVersions.bunRange, node: runtimeVersions.nodeRange },
@@ -121,6 +130,15 @@ const configureRootPackageJson = (tree: Tree, workspace: string) => {
     type: "module",
     workspaces: ["apps/*", "packages/*"],
   }));
+};
+
+const ensureRootConvexEnvIgnored = (tree: Tree) => {
+  const path = ".gitignore";
+  const current = tree.read(path, "utf-8") ?? "";
+  if (/^\/?\.env\.local$/mu.test(current)) return;
+
+  const separator = current.length === 0 || current.endsWith("\n") ? "" : "\n";
+  tree.write(path, `${current}${separator}/.env.local\n`);
 };
 
 const configureNx = (tree: Tree) => {

@@ -25,6 +25,7 @@ const expectedScripts = {
   build: "nx run-many -t build",
   check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
   codegen: "nx run-many -t codegen",
+  dev: 'convex dev --start "nx run-many -t dev"',
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
   lint: "oxlint .",
@@ -38,6 +39,7 @@ const expectedDevDependencies = Struct.pick(packageVersions, [
   "@nx/oxlint",
   "@nx/vitest",
   "@typescript/native",
+  "convex",
   "nx",
   "oxfmt",
   "oxlint",
@@ -384,14 +386,28 @@ describe("keenko preset", () => {
 
         const rootPackageJson = readJson<PackageJson>(tree, "package.json");
         const backendPackageJson = readJson<PackageJson>(tree, "packages/backend/package.json");
+        const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
-        expect(rootPackageJson.scripts?.dev).toBe("nx run-many -t dev");
-
-        expect(backendPackageJson.scripts).toMatchObject({
-          dev: 'bun run --parallel "dev:*"',
-          "dev:confect": "confect dev",
-          "dev:convex": "convex dev",
+        expect(rootPackageJson.scripts?.dev).toBe('convex dev --start "nx run-many -t dev"');
+        expect(rootPackageJson.devDependencies).toMatchObject({
+          "@tanstack/react-start": webPackageJson.dependencies?.["@tanstack/react-start"],
+          convex: packageVersions.convex,
         });
+
+        expect(backendPackageJson.scripts).toEqual({
+          codegen: "confect codegen",
+          dev: "confect dev",
+        });
+
+        expect(readJson(tree, "convex.json")).toEqual({
+          $schema: "./node_modules/convex/schemas/convex.schema.json",
+          functions: "packages/backend/convex",
+        });
+        expect(tree.read(".gitignore", "utf-8")).toBe("/.env.local\n");
+        expect(tree.exists(".env.local")).toBe(false);
+        expect(tree.exists("apps/web/.env.local")).toBe(false);
+        expect(tree.exists("convex")).toBe(false);
+        expect(tree.exists("apps/web/convex")).toBe(false);
       })
     ));
 
@@ -428,6 +444,12 @@ describe("keenko preset", () => {
         expect(tree.exists("apps/web/src/integrations/tanstack-query/root-provider.tsx")).toBe(false);
 
         expect(tree.exists("apps/web/src/config/env.ts")).toBe(true);
+        expect(tree.read("apps/web/vite.config.ts", "utf-8")).toContain("envDir: '../..'");
+        expect(tree.read("apps/web/src/config/env.ts", "utf-8")).toContain(
+          "export const getPublicEnv = () => S.decodeUnknownSync(sPublicEnv)(import.meta.env);"
+        );
+        expect(tree.read("apps/web/src/config/env.ts", "utf-8")).not.toContain("export const publicEnv =");
+        expect(router).toContain("getPublicEnv().VITE_CONVEX_URL");
         expect(router).toContain("new ConvexReactClient(convexUrl)");
         expect(router).toContain("new ConvexQueryClient(convexClient)");
         expect(router).toContain('declare module "@tanstack/react-router"');
@@ -539,8 +561,7 @@ describe("keenko preset", () => {
 
         expect(packageJson.scripts).toMatchObject({
           codegen: "confect codegen",
-          "dev:confect": "confect dev",
-          "dev:convex": "convex dev",
+          dev: "confect dev",
         });
       })
     ));

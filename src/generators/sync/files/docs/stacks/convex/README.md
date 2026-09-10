@@ -1,5 +1,17 @@
 # Convex
 
+## Workspace integration and development lifecycle
+
+- Convex integration configuration belongs at the repository root because it coordinates the backend and web Nx projects. Root `convex.json` points to `packages/backend/convex`.
+- `packages/backend/convex` is the only Convex source location. Do not create root `convex/` or `apps/web/convex` directories.
+- Root `.env.local` is untracked local deployment state shared by the workspace. Let Convex create and maintain deployment-derived values such as `CONVEX_DEPLOYMENT` and `VITE_CONVEX_URL`; do not create the file manually or copy a URL from the dashboard.
+- Run `bun run dev` from the workspace root on both fresh and configured repositories. It lets Convex establish and push the development deployment before starting the Nx application processes that consume `VITE_CONVEX_URL`; no separate setup command is part of the supported workflow.
+- Missing `.env.local` is valid repository state. Generation, code generation, canonical validation, typecheck, tests, and builds must not require a configured Convex deployment.
+- Validate `VITE_CONVEX_URL` when constructing the real Convex-backed application runtime, not eagerly at module import. There is no fake URL and no supported backend-less application mode.
+- Production and preview deployment configuration is separate from local `.env.local`; supply their credentials and frontend deployment URL through the hosting or CI contract.
+
+When migrating an existing generated repository, move integration configuration to the workspace root and preserve all Convex source under `packages/backend/convex`. Remove custom URL-copy/synchronization scripts. If an untracked `apps/web/.env.local` or `packages/backend/.env.local` exists, first preserve any non-Convex values according to their owning integration and move the legacy file aside; do not guess at an automatic merge. After the tracked migration, run `bun run dev` and let Convex reestablish deployment-derived values in root `.env.local`.
+
 ## Persistence and queries
 
 - Convex query determinism/caching rules still apply when queries are expressed through Confect/Effect.

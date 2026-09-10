@@ -4,6 +4,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
+import { packageVersions } from "../src/generators/versions.js";
 import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-4-0.js";
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
@@ -66,6 +67,10 @@ const sVersionPackage = S.fromJsonString(S.Struct({ version: S.String }));
 const sNamedPackage = S.fromJsonString(S.Struct({ name: S.String }));
 const sDependenciesPackage = S.fromJsonString(S.Struct({ dependencies: S.Record(S.String, S.String) }));
 const sDevDependenciesPackage = S.fromJsonString(S.Struct({ devDependencies: S.Record(S.String, S.String) }));
+const sLifecyclePackage = S.fromJsonString(
+  S.Struct({ devDependencies: S.Record(S.String, S.String), scripts: S.Record(S.String, S.String) })
+);
+const sConvexConfig = S.fromJsonString(S.Struct({ $schema: S.String, functions: S.String }));
 const sManifest = S.fromJsonString(S.Record(S.String, S.Unknown));
 const sProject = S.fromJsonString(S.Struct({ targets: S.Record(S.String, S.Unknown) }));
 const sInlangSettings = S.fromJsonString(S.Struct({ baseLocale: S.String, locales: S.Array(S.String) }));
@@ -248,6 +253,29 @@ const product = E.gen(function* () {
   yield* assert(webPackage.devDependencies["@types/node"] === "24.13.3", "Generated web does not use Node 24 types");
   const rootManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "package.json")));
   yield* assert(rootManifest.type === "module", "Generated root package is not explicitly an ES module");
+  const lifecyclePackage = yield* S.decodeEffect(sLifecyclePackage)(yield* fs.readFileString(path.join(workspace, "package.json")));
+  const webManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
+  const webDependencies = yield* S.decodeUnknownEffect(S.Record(S.String, S.String))(webManifest.dependencies);
+  yield* assert(
+    lifecyclePackage.scripts.dev === 'convex dev --start "nx run-many -t dev"',
+    "Generated root dev script does not let Convex establish deployment state before Nx application processes"
+  );
+  yield* assert(
+    lifecyclePackage.devDependencies.convex === packageVersions.convex,
+    "Generated root lifecycle does not declare the canonical Convex CLI"
+  );
+  yield* assert(
+    lifecyclePackage.devDependencies["@tanstack/react-start"] === webDependencies["@tanstack/react-start"],
+    "Generated root lifecycle does not expose the web framework marker used by Convex environment detection"
+  );
+  const convexConfig = yield* S.decodeEffect(sConvexConfig)(yield* fs.readFileString(path.join(workspace, "convex.json")));
+  yield* assert(
+    isDeepStrictEqual(convexConfig, {
+      $schema: "./node_modules/convex/schemas/convex.schema.json",
+      functions: "packages/backend/convex",
+    }),
+    "Generated root Convex configuration does not preserve backend source ownership"
+  );
   const vscodeSettings = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, ".vscode/settings.json")));
   for (const [key, expected] of Object.entries(canonicalVscodeSettings))
     yield* assert(
@@ -262,6 +290,8 @@ const product = E.gen(function* () {
   const components = path.join(workspace, "apps/web/src/components");
   const integrations = path.join(workspace, "apps/web/src/integrations");
   const router = path.join(workspace, "apps/web/src/router.tsx");
+  const envModule = path.join(workspace, "apps/web/src/config/env.ts");
+  const viteConfig = path.join(workspace, "apps/web/vite.config.ts");
   const rootRoute = path.join(workspace, "apps/web/src/routes/__root.tsx");
 
   const homeRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
@@ -275,6 +305,14 @@ const product = E.gen(function* () {
   yield* assert(
     (yield* fs.readFileString(router)).includes("new ConvexQueryClient(convexClient)"),
     "Fresh creation did not install the Keenko router baseline"
+  );
+  yield* assert(
+    /envDir:\s*["']\.\.\/\.\.["']/u.test(yield* fs.readFileString(viteConfig)),
+    "Web development does not load root environment state"
+  );
+  yield* assert(
+    (yield* fs.readFileString(envModule)).includes("export const getPublicEnv = () =>"),
+    "Fresh creation eagerly validates the Convex URL before application runtime initialization"
   );
   yield* assert(!(yield* fs.readFileString(rootRoute)).includes("MyRouterContext"), "Fresh creation retained tutorial context naming");
 
@@ -343,6 +381,11 @@ const product = E.gen(function* () {
     (yield* command(workspace, env, "git", ["symbolic-ref", "--short", "HEAD"])).trim() === "main",
     "Canonical creation did not leave Git on main"
   );
+  for (const localEnv of [".env.local", "apps/web/.env.local", "packages/backend/.env.local"])
+    yield* assert(!(yield* fs.exists(path.join(workspace, localEnv))), `Fresh creation unexpectedly created ${localEnv}`);
+  yield* command(workspace, env, "git", ["check-ignore", ".env.local"]);
+  yield* assert(!(yield* fs.exists(path.join(workspace, "convex"))), "Fresh creation added a root Convex source directory");
+  yield* assert(!(yield* fs.exists(path.join(workspace, "apps/web/convex"))), "Fresh creation added web-owned Convex source");
   yield* command(workspace, env, "git", ["rev-parse", "--verify", "HEAD"], "failure");
   const initialCheckOutput = yield* command(workspace, env, "env", ["-u", "CI", "bun", "run", "check"]);
   yield* assert(!initialCheckOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Fresh check emitted a module-typeless package warning");

@@ -70,8 +70,14 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
   if (!("vite.config.ts" in output.files)) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
   const viteConfig = output.files["vite.config.ts"];
 
-  const configuredVite = viteConfig.replace("    outdir: './src/paraglide',", "    outdir: './src/paraglide',\n    emitReadme: false,");
-  if (configuredVite === viteConfig) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
+  const viteWithRootEnv = viteConfig.replace("const config = defineConfig({", "const config = defineConfig({\n  envDir: '../..',");
+  if (viteWithRootEnv === viteConfig) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
+
+  const configuredVite = viteWithRootEnv.replace(
+    "    outdir: './src/paraglide',",
+    "    outdir: './src/paraglide',\n    emitReadme: false,"
+  );
+  if (configuredVite === viteWithRootEnv) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
   output.files["vite.config.ts"] = configuredVite;
 
   for (const [relativePath, contents] of Object.entries(output.files)) {

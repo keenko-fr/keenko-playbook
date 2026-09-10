@@ -3,9 +3,7 @@
   "exports": {},
   "scripts": {
     "codegen": "confect codegen",
-    "dev": "bun run --parallel \"dev:*\"",
-    "dev:confect": "confect dev",
-    "dev:convex": "convex dev"
+    "dev": "confect dev"
   },
   "nx": {
     "tags": ["type:package", "scope:backend"],

@@ -4,6 +4,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
+import { packageVersions } from "../src/generators/versions.js";
 import { canonicalVscodeSettings, OXC_EXTENSION } from "../src/migrations/baseline-0-4-0.js";
 
 class MigrationFailure extends S.TaggedError<MigrationFailure>()("MigrationFailure", { message: S.String }) {}
@@ -35,6 +36,10 @@ const command = E.fn("migration.command")(
 
 const sManifest = S.fromJsonString(S.Record(S.String, S.Unknown));
 const sVersionPackage = S.fromJsonString(S.Struct({ version: S.String }));
+const sLifecyclePackage = S.fromJsonString(
+  S.Struct({ devDependencies: S.Record(S.String, S.String), scripts: S.Record(S.String, S.String) })
+);
+const sConvexConfig = S.fromJsonString(S.Struct({ functions: S.String }));
 
 const migrationProduct = E.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -96,8 +101,8 @@ const migrationProduct = E.gen(function* () {
   yield* command(temporary, publicEnv, "tar", ["-xzf", sourceTarball, "-C", repack]);
   const candidateManifestPath = path.join(repack, "package/package.json");
   const candidateManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(candidateManifestPath));
-  yield* fs.writeFileString(candidateManifestPath, yield* S.encodeEffect(sManifest)({ ...candidateManifest, version: "0.4.0" }));
-  const candidateTarball = path.join(packed, "keenko-0.4.0.tgz");
+  yield* fs.writeFileString(candidateManifestPath, yield* S.encodeEffect(sManifest)({ ...candidateManifest, version: "0.5.0" }));
+  const candidateTarball = path.join(packed, "keenko-0.5.0.tgz");
   yield* command(temporary, publicEnv, "tar", ["-czf", candidateTarball, "-C", repack, "package"]);
   yield* command(temporary, candidateEnv, "npm", [
     "publish",
@@ -116,7 +121,7 @@ const migrationProduct = E.gen(function* () {
   yield* command(temporary, publicEnv, "bunx", [
     "create-nx-workspace@23.2.0",
     identity,
-    "--preset=keenko@0.3.0",
+    "--preset=keenko@0.4.1",
     "--packageManager=bun",
     "--nxCloud=skip",
     "--interactive=false",
@@ -126,7 +131,7 @@ const migrationProduct = E.gen(function* () {
   const installedBaseline = yield* S.decodeEffect(sVersionPackage)(
     yield* fs.readFileString(path.join(workspace, "node_modules/keenko/package.json"))
   );
-  yield* assert(installedBaseline.version === "0.3.0", "The migration fixture did not use published keenko@0.3.0");
+  yield* assert(installedBaseline.version === "0.4.1", "The migration fixture did not use published keenko@0.4.1");
 
   const packagePath = path.join(workspace, "package.json");
   const packageJson = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(packagePath));
@@ -136,18 +141,26 @@ const migrationProduct = E.gen(function* () {
   yield* fs.writeFileString(
     path.join(vscode, "settings.json"),
     yield* S.encodeEffect(sManifest)({
-      "editor.codeActionsOnSave": { "source.fixAll.eslint": "explicit" },
-      "js/ts.tsdk.additionalLocations": ["./vendor/typescript/bin"],
+      ...canonicalVscodeSettings,
+      "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit",
+        ...canonicalVscodeSettings["editor.codeActionsOnSave"],
+      },
+      "js/ts.tsdk.additionalLocations": ["./vendor/typescript/bin", ...canonicalVscodeSettings["js/ts.tsdk.additionalLocations"]],
       "project.setting": "retained",
     })
   );
   yield* fs.writeFileString(
     path.join(vscode, "extensions.json"),
-    yield* S.encodeEffect(sManifest)({ recommendations: ["project.extension"], unwantedRecommendations: ["project.unwanted"] })
+    yield* S.encodeEffect(sManifest)({
+      recommendations: ["project.extension", OXC_EXTENSION],
+      unwantedRecommendations: ["project.unwanted"],
+    })
   );
+  yield* command(workspace, candidateEnv, "bun", ["run", "format"]);
 
-  yield* Console.log("bun x nx migrate keenko@0.4.0");
-  yield* command(workspace, candidateEnv, "bun", ["x", "nx", "migrate", "keenko@0.4.0"]);
+  yield* Console.log("bun x nx migrate keenko@0.5.0");
+  yield* command(workspace, candidateEnv, "bun", ["x", "nx", "migrate", "keenko@0.5.0"]);
   yield* Console.log("bun install");
   yield* command(workspace, candidateEnv, "bun", ["install"]);
   yield* Console.log("bun x nx migrate --run-migrations");
@@ -160,10 +173,28 @@ const migrationProduct = E.gen(function* () {
   const installedCandidate = yield* S.decodeEffect(sVersionPackage)(
     yield* fs.readFileString(path.join(workspace, "node_modules/keenko/package.json"))
   );
-  yield* assert(installedCandidate.version === "0.4.0", "The upgraded consumer did not install keenko@0.4.0");
+  yield* assert(installedCandidate.version === "0.5.0", "The upgraded consumer did not install keenko@0.5.0");
   const migratedPackage = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(packagePath));
   yield* assert(migratedPackage.type === "module", "The migrated root package is not explicitly an ES module");
   yield* assert(isDeepStrictEqual(migratedPackage.migrationProof, { retained: true }), "Migration dropped unrelated package state");
+  const lifecyclePackage = yield* S.decodeEffect(sLifecyclePackage)(yield* fs.readFileString(packagePath));
+  yield* assert(
+    lifecyclePackage.scripts.dev === 'convex dev --start "nx run-many -t dev"',
+    "Migration did not establish root Convex-first development orchestration"
+  );
+  yield* assert(lifecyclePackage.devDependencies.convex === packageVersions.convex, "Migration did not add the root Convex CLI dependency");
+  const convexConfig = yield* S.decodeEffect(sConvexConfig)(yield* fs.readFileString(path.join(workspace, "convex.json")));
+  yield* assert(
+    convexConfig.functions === "packages/backend/convex",
+    "Migration did not point root Convex configuration at backend source"
+  );
+  yield* assert(
+    yield* fs.exists(path.join(workspace, "packages/backend/convex/convex.config.ts")),
+    "Migration did not preserve backend Convex source ownership"
+  );
+  yield* assert(!(yield* fs.exists(path.join(workspace, "convex"))), "Migration created a root Convex source directory");
+  yield* assert(!(yield* fs.exists(path.join(workspace, "apps/web/convex"))), "Migration created web-owned Convex source");
+  yield* assert(!(yield* fs.exists(path.join(workspace, ".env.local"))), "Migration manufactured local Convex deployment state");
   const settings = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(vscode, "settings.json")));
   for (const [key, expected] of Object.entries(canonicalVscodeSettings)) {
     if (key === "editor.codeActionsOnSave" || key === "js/ts.tsdk.additionalLocations") continue;
@@ -193,7 +224,7 @@ const migrationProduct = E.gen(function* () {
 
   const checkOutput = yield* command(workspace, candidateEnv, "env", ["-u", "CI", "bun", "run", "check"]);
   yield* assert(!checkOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Migrated check emitted a module-typeless package warning");
-  yield* Console.log("Published 0.3.0 consumer upgraded to the local packed 0.4.0 candidate and passed bun run check.");
+  yield* Console.log("Published 0.4.1 consumer upgraded to the local packed 0.5.0 candidate and passed bun run check without .env.local.");
 });
 
 NodeRuntime.runMain(migrationProduct.pipe(E.scoped, E.provide(NodeServices.layer)));

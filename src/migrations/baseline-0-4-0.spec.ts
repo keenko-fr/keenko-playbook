@@ -138,15 +138,10 @@ describe("0.4.0 baseline migration", () => {
   });
 
   test("is registered at the 0.4.0 boundary", () => {
-    expect(migrations).toEqual({
-      generators: {
-        "0.4.0-baseline": {
-          description: "Apply the Keenko 0.4.0 module and VS Code baseline without replacing project-owned editor state.",
-          factory: "./dist/migrations/baseline-0-4-0",
-          version: "0.4.0",
-        },
-      },
-      packageJsonUpdates: {},
+    expect(migrations.generators["0.4.0-baseline"]).toEqual({
+      description: "Apply the Keenko 0.4.0 module and VS Code baseline without replacing project-owned editor state.",
+      factory: "./dist/migrations/baseline-0-4-0",
+      version: "0.4.0",
     });
   });
 });
