@@ -317,6 +317,27 @@ describe("0.5.0 Convex workspace lifecycle migration", () => {
   );
 
   test(
+    "rejects a dynamic publicEnv import before mutation",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          tree.write(
+            "apps/web/src/project-owned.ts",
+            'export const readDeploymentUrl = async () => {\n  const { publicEnv } = await import("./config/env.ts");\n  return publicEnv.VITE_CONVEX_URL;\n};\n'
+          );
+          const expected = snapshotChanges(tree);
+
+          expect(() => {
+            convexWorkspaceLifecycle050(tree);
+          }).toThrow("apps/web/src/project-owned.ts");
+          expect(snapshotChanges(tree)).toEqual(expected);
+        })
+      ),
+    15_000
+  );
+
+  test(
     "adds top-level Vite envDir when comments and nested objects mention envDir",
     () =>
       E.runPromise(
@@ -333,6 +354,54 @@ describe("0.5.0 Convex workspace lifecycle migration", () => {
           expect(readText(tree, "apps/web/vite.config.ts")).toContain(
             'const config = defineConfig({\n  envDir: "../..",\n  nested: { envDir: "../.." },'
           );
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "preserves a quoted top-level Vite envDir property",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          tree.write(
+            "apps/web/vite.config.ts",
+            readText(tree, "apps/web/vite.config.ts").replace(
+              "const config = defineConfig({",
+              'const config = defineConfig({\n  "envDir": "../..",'
+            )
+          );
+
+          yield* runMigration(tree);
+
+          const migrated = readText(tree, "apps/web/vite.config.ts");
+          expect(migrated).toContain('const config = defineConfig({\n  "envDir": "../..",');
+          expect(migrated).not.toContain('const config = defineConfig({\n  envDir: "../..",');
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "preserves a computed top-level Vite envDir property",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          tree.write(
+            "apps/web/vite.config.ts",
+            readText(tree, "apps/web/vite.config.ts").replace(
+              "const config = defineConfig({",
+              'const config = defineConfig({\n  ["envDir"]: "../..",'
+            )
+          );
+
+          yield* runMigration(tree);
+
+          const migrated = readText(tree, "apps/web/vite.config.ts");
+          expect(migrated).toContain('const config = defineConfig({\n  ["envDir"]: "../..",');
+          expect(migrated).not.toContain('const config = defineConfig({\n  envDir: "../..",');
         })
       ),
     15_000

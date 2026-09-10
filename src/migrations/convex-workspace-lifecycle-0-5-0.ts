@@ -164,13 +164,11 @@ function rejectLegacyConvexConfig(tree: Tree) {
 }
 
 function rejectAdditionalPublicEnvConsumers(tree: Tree) {
-  const consumers = listFiles(tree, WEB_SOURCE_PATH).filter(
-    (path) => path !== ENV_MODULE_PATH && path !== ROUTER_PATH && isPublicEnvConsumer(tree, path)
-  );
+  const consumers = listFiles(tree, WEB_SOURCE_PATH).filter((path) => path !== ENV_MODULE_PATH && isPublicEnvConsumer(tree, path));
   if (consumers.length === 0) return;
 
   throw new Error(
-    `Project-owned publicEnv consumers or re-exports exist outside ${ROUTER_PATH}: ${consumers.join(", ")}. Update direct consumers to call getPublicEnv at runtime and remove or reconcile re-exports, then rerun the Keenko migration.`
+    `Project-owned publicEnv consumers or re-exports cannot be safely renamed in: ${consumers.join(", ")}. Update direct consumers to call getPublicEnv at runtime and remove or reconcile re-exports, then rerun the Keenko migration.`
   );
 }
 
@@ -183,20 +181,41 @@ function listFiles(tree: Tree, path: string): string[] {
 
 function isPublicEnvConsumer(tree: Tree, path: string) {
   if (!/\.[cm]?[jt]sx?$/u.test(path)) return false;
-  const source = tree.read(path, "utf-8");
-  if (source === null) return false;
+  const fileSource = tree.read(path, "utf-8");
+  if (fileSource === null) return false;
+  const source = path === ROUTER_PATH ? fileSource.replace('import { publicEnv } from "./config/env.ts";', "") : fileSource;
 
+  return (
+    hasNamedPublicEnvImport(source, path) ||
+    hasNamespacePublicEnvImport(source, path) ||
+    hasEnvModuleReExport(source, path) ||
+    hasEnvModuleDynamicImport(source, path)
+  );
+}
+
+function hasNamedPublicEnvImport(source: string, path: string) {
   const namedImports = source.matchAll(/(?:import|export)\s*\{(?<bindings>[^}]*)\}\s*from\s*["'](?<specifier>[^"']+)["']/gu);
   for (const match of namedImports)
     if (/\bpublicEnv\b/u.test(match.groups?.bindings ?? "") && isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
+  return false;
+}
 
+function hasNamespacePublicEnvImport(source: string, path: string) {
   const namespaceImports = source.matchAll(/\bimport\s*\*\s*as\s+\w+\s+from\s*["'](?<specifier>[^"']+)["']/gu);
   for (const match of namespaceImports)
     if (isEnvModuleSpecifier(path, match.groups?.specifier ?? "") && /\.publicEnv\b/u.test(source)) return true;
+  return false;
+}
 
+function hasEnvModuleReExport(source: string, path: string) {
   const starExports = source.matchAll(/\bexport\s*\*(?:\s+as\s+\w+)?\s*from\s*["'](?<specifier>[^"']+)["']/gu);
   for (const match of starExports) if (isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
+  return false;
+}
 
+function hasEnvModuleDynamicImport(source: string, path: string) {
+  const dynamicImports = source.matchAll(/\bimport\s*\(\s*["'](?<specifier>[^"']+)["']/gu);
+  for (const match of dynamicImports) if (isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
   return false;
 }
 
@@ -237,20 +256,43 @@ function findDefineConfigObject(source: string) {
 function findTopLevelObjectProperty(source: string, open: number, close: number, property: string) {
   let depth = 1;
   for (let index = open + 1; index < close; index += 1) {
+    const propertyColon = findStaticPropertyColonAt(source, index, depth, property);
+    if (propertyColon !== null) return propertyColon;
+
     const next = source[index + 1];
-    if (source[index] === '"' || source[index] === "'" || source[index] === "`") index = skipQuoted(source, index);
+    if (isQuote(source[index])) index = skipQuoted(source, index);
     else if (source[index] === "/" && next === "/") index = skipLineComment(source, index);
     else if (source[index] === "/" && next === "*") index = skipBlockComment(source, index);
     else if (source[index] === "{") depth += 1;
     else if (source[index] === "}") depth -= 1;
-    else if (depth === 1 && source.startsWith(property, index) && !/[\w$]/u.test(source[index - 1] ?? "")) {
-      const afterProperty = index + property.length;
-      const propertySuffix = /^\s*:/u.exec(source.slice(afterProperty));
-      if (!/[\w$]/u.test(source[afterProperty] ?? "") && propertySuffix !== null) return afterProperty + propertySuffix[0].length - 1;
-    }
   }
 
   return null;
+}
+
+function findStaticPropertyColonAt(source: string, index: number, depth: number, property: string) {
+  if (depth !== 1) return null;
+
+  if (source[index] === '"' || source[index] === "'") {
+    const quotedEnd = skipQuoted(source, index);
+    if (source.slice(index + 1, quotedEnd) !== property) return null;
+    const propertySuffix = /^\s*:/u.exec(source.slice(quotedEnd + 1));
+    return propertySuffix === null ? null : quotedEnd + propertySuffix[0].length;
+  }
+
+  if (source[index] === "[") {
+    const computedProperty = /^\[\s*(?<quote>["'])(?<property>[^"']+)\k<quote>\s*\]\s*:/u.exec(source.slice(index));
+    return computedProperty?.groups?.property === property ? index + computedProperty[0].length - 1 : null;
+  }
+
+  if (!source.startsWith(property, index) || /[\w$]/u.test(source[index - 1] ?? "")) return null;
+  const afterProperty = index + property.length;
+  const propertySuffix = /^\s*:/u.exec(source.slice(afterProperty));
+  return !/[\w$]/u.test(source[afterProperty] ?? "") && propertySuffix !== null ? afterProperty + propertySuffix[0].length - 1 : null;
+}
+
+function isQuote(value: string | undefined) {
+  return value === '"' || value === "'" || value === "`";
 }
 
 function skipQuoted(source: string, start: number) {
