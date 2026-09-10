@@ -22,11 +22,20 @@ const createPriorBaseline = () =>
     yield* presetProgram(tree, { name: "migration-test" }).pipe(E.provide(platformLayer));
 
     const rootPackage = readJson<JsonObject>(tree, "package.json");
-    const rootScripts = { ...(rootPackage.scripts as JsonObject), dev: "nx run-many -t dev" };
-    const rootDevDependencies = { ...(rootPackage.devDependencies as JsonObject) };
+    const rootScripts = {
+      ...(rootPackage.scripts as JsonObject),
+      dev: "nx run-many -t dev",
+    };
+    const rootDevDependencies = {
+      ...(rootPackage.devDependencies as JsonObject),
+    };
     delete rootDevDependencies.convex;
     delete rootDevDependencies["@tanstack/react-start"];
-    writeJson(tree, "package.json", { ...rootPackage, devDependencies: rootDevDependencies, scripts: rootScripts });
+    writeJson(tree, "package.json", {
+      ...rootPackage,
+      devDependencies: rootDevDependencies,
+      scripts: rootScripts,
+    });
 
     const backendPackage = readJson<JsonObject>(tree, "packages/backend/package.json");
     writeJson(tree, "packages/backend/package.json", {
@@ -158,7 +167,10 @@ describe("0.5.0 Convex workspace lifecycle migration", () => {
           const rootPackage = readJson<JsonObject>(tree, "package.json");
           writeJson(tree, "package.json", {
             ...rootPackage,
-            scripts: { ...(rootPackage.scripts as JsonObject), dev: "custom-dev" },
+            scripts: {
+              ...(rootPackage.scripts as JsonObject),
+              dev: "custom-dev",
+            },
           });
           const expectedPackage = tree.read("package.json", "utf-8");
 
@@ -167,6 +179,95 @@ describe("0.5.0 Convex workspace lifecycle migration", () => {
           }).toThrow("conflicts with the 0.5.0 Convex workspace lifecycle");
           expect(tree.read("package.json", "utf-8")).toBe(expectedPackage);
           expect(tree.exists("convex.json")).toBe(false);
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "rejects project-owned backend dev participants before partial writes",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          const backendPackage = readJson<JsonObject>(tree, "packages/backend/package.json");
+          writeJson(tree, "packages/backend/package.json", {
+            ...backendPackage,
+            scripts: {
+              ...(backendPackage.scripts as JsonObject),
+              "dev:worker": "bun run worker",
+            },
+          });
+          const expectedPackage = tree.read("package.json", "utf-8");
+
+          expect(() => {
+            convexWorkspaceLifecycle050(tree);
+          }).toThrow("dev:worker");
+          expect(tree.read("package.json", "utf-8")).toBe(expectedPackage);
+          expect(tree.exists("convex.json")).toBe(false);
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "rejects package-local Convex configuration before partial writes",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          const expectedPackage = tree.read("package.json", "utf-8");
+          tree.write("packages/backend/convex.json", '{"node":{"nodeVersion":"24"}}\n');
+
+          expect(() => {
+            convexWorkspaceLifecycle050(tree);
+          }).toThrow("cannot safely infer how its project-relative settings should merge");
+          expect(tree.read("package.json", "utf-8")).toBe(expectedPackage);
+          expect(tree.exists("convex.json")).toBe(false);
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "rejects project-owned publicEnv consumers before partial writes",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          const expectedPackage = tree.read("package.json", "utf-8");
+          tree.write(
+            "apps/web/src/project-owned.ts",
+            'import { publicEnv } from "./config/env.ts";\n\nexport const deploymentUrl = publicEnv.VITE_CONVEX_URL;\n'
+          );
+
+          expect(() => {
+            convexWorkspaceLifecycle050(tree);
+          }).toThrow("apps/web/src/project-owned.ts");
+          expect(tree.read("package.json", "utf-8")).toBe(expectedPackage);
+          expect(tree.exists("convex.json")).toBe(false);
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "adds top-level Vite envDir when comments and nested objects mention envDir",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          const viteConfig = readText(tree, "apps/web/vite.config.ts").replace(
+            "const config = defineConfig({",
+            'const unrelated = { envDir: "../.." };\n// envDir: "../.." is intentionally unrelated.\nconst config = defineConfig({\n  nested: { envDir: "../.." },'
+          );
+          tree.write("apps/web/vite.config.ts", viteConfig);
+
+          yield* runMigration(tree);
+
+          expect(readText(tree, "apps/web/vite.config.ts")).toContain(
+            'const config = defineConfig({\n  envDir: "../..",\n  nested: { envDir: "../.." },'
+          );
         })
       ),
     15_000

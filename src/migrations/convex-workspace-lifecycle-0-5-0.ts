@@ -7,9 +7,11 @@ const ROOT_PACKAGE_PATH = "package.json";
 const BACKEND_PACKAGE_PATH = "packages/backend/package.json";
 const WEB_PACKAGE_PATH = "apps/web/package.json";
 const CONVEX_CONFIG_PATH = "convex.json";
+const LEGACY_CONVEX_CONFIG_PATH = "packages/backend/convex.json";
 const VITE_CONFIG_PATH = "apps/web/vite.config.ts";
 const ENV_MODULE_PATH = "apps/web/src/config/env.ts";
 const ROUTER_PATH = "apps/web/src/router.tsx";
+const WEB_SOURCE_PATH = "apps/web/src";
 const ROOT_ENV_PATH = ".env.local";
 const LEGACY_ENV_PATHS: readonly string[] = ["apps/web/.env.local", "packages/backend/.env.local"];
 
@@ -21,6 +23,8 @@ type JsonObject = Record<string, unknown>;
 
 export default function convexWorkspaceLifecycle050(tree: Tree) {
   rejectLegacyLocalState(tree);
+  rejectLegacyConvexConfig(tree);
+  rejectAdditionalPublicEnvConsumers(tree);
 
   const rootPackage = readJson<JsonObject>(tree, ROOT_PACKAGE_PATH);
   const backendPackage = readJson<JsonObject>(tree, BACKEND_PACKAGE_PATH);
@@ -76,10 +80,21 @@ function migrateBackendPackage(backendPackage: JsonObject) {
   if (scripts["dev:convex"] !== undefined && scripts["dev:convex"] !== "convex dev")
     throwConflict(BACKEND_PACKAGE_PATH, "scripts.dev:convex");
 
+  const projectOwnedDevScripts = Object.keys(scripts).filter(
+    (name) => name.startsWith("dev:") && name !== "dev:confect" && name !== "dev:convex"
+  );
+  if (projectOwnedDevScripts.length > 0)
+    throw new Error(
+      `Project-owned backend development participants ${projectOwnedDevScripts.join(", ")} in ${BACKEND_PACKAGE_PATH} would stop running when scripts.dev moves away from the 0.4.1 dev:* lifecycle. Reconcile those scripts with the 0.5.0 workspace lifecycle manually, then rerun the Keenko migration.`
+    );
+
   const remainingScripts = { ...scripts };
   Reflect.deleteProperty(remainingScripts, "dev:confect");
   Reflect.deleteProperty(remainingScripts, "dev:convex");
-  return { ...backendPackage, scripts: { ...remainingScripts, dev: "confect dev" } };
+  return {
+    ...backendPackage,
+    scripts: { ...remainingScripts, dev: "confect dev" },
+  };
 }
 
 function mergeConvexConfig(config: JsonObject) {
@@ -93,12 +108,14 @@ function mergeConvexConfig(config: JsonObject) {
 }
 
 function migrateViteConfig(source: string) {
-  if (/\benvDir\s*:/u.test(source)) {
-    if (!/\benvDir\s*:\s*["']\.\.\/\.\.["']/u.test(source)) throwConflict(VITE_CONFIG_PATH, "envDir");
+  const configObject = findDefineConfigObject(source);
+  const envDir = findTopLevelObjectProperty(source, configObject.open, configObject.close, "envDir");
+  if (envDir !== null) {
+    if (!/^\s*["']\.\.\/\.\.["']/u.test(source.slice(envDir + 1, configObject.close))) throwConflict(VITE_CONFIG_PATH, "envDir");
     return source;
   }
 
-  return replaceRequired(source, "const config = defineConfig({", 'const config = defineConfig({\n  envDir: "../..",', VITE_CONFIG_PATH);
+  return `${source.slice(0, configObject.open + 1)}\n  envDir: "../..",${source.slice(configObject.open + 1)}`;
 }
 
 function migrateEnvModule(source: string) {
@@ -131,6 +148,110 @@ function rejectLegacyLocalState(tree: Tree) {
   throw new Error(
     `Legacy package-local state exists at ${legacy.join(", ")}. Preserve any non-Convex values according to their owning integration, move the legacy file aside, and rerun the Keenko migration. Then run bun run dev so Convex creates or maintains deployment-derived values in ${ROOT_ENV_PATH}; do not create that file or copy a Convex URL from the dashboard.`
   );
+}
+
+function rejectLegacyConvexConfig(tree: Tree) {
+  if (!tree.exists(LEGACY_CONVEX_CONFIG_PATH)) return;
+
+  throw new Error(
+    `Package-local Convex configuration exists at ${LEGACY_CONVEX_CONFIG_PATH}. The 0.5.0 lifecycle cannot safely infer how its project-relative settings should merge into ${CONVEX_CONFIG_PATH}. Move or reconcile those settings at the workspace root while keeping functions at packages/backend/convex, remove the package-local file, and rerun the Keenko migration.`
+  );
+}
+
+function rejectAdditionalPublicEnvConsumers(tree: Tree) {
+  const consumers = listFiles(tree, WEB_SOURCE_PATH).filter(
+    (path) => path !== ENV_MODULE_PATH && path !== ROUTER_PATH && isPublicEnvConsumer(tree, path)
+  );
+  if (consumers.length === 0) return;
+
+  throw new Error(
+    `Project-owned publicEnv consumers exist outside ${ROUTER_PATH}: ${consumers.join(", ")}. Update those consumers to call getPublicEnv at runtime, then rerun the Keenko migration.`
+  );
+}
+
+function listFiles(tree: Tree, path: string): string[] {
+  return tree.children(path).flatMap((child) => {
+    const childPath = `${path}/${child}`;
+    return tree.isFile(childPath) ? [childPath] : listFiles(tree, childPath);
+  });
+}
+
+function isPublicEnvConsumer(tree: Tree, path: string) {
+  if (!/\.[cm]?[jt]sx?$/u.test(path)) return false;
+  const source = tree.read(path, "utf-8");
+  if (source === null) return false;
+
+  const namedImports = source.matchAll(/(?:import|export)\s*\{(?<bindings>[^}]*)\}\s*from\s*["'](?<specifier>[^"']+)["']/gu);
+  for (const match of namedImports)
+    if (/\bpublicEnv\b/u.test(match.groups?.bindings ?? "") && isEnvModuleSpecifier(match.groups?.specifier ?? "")) return true;
+
+  const namespaceImports = source.matchAll(/\bimport\s*\*\s*as\s+\w+\s+from\s*["'](?<specifier>[^"']+)["']/gu);
+  for (const match of namespaceImports)
+    if (isEnvModuleSpecifier(match.groups?.specifier ?? "") && /\.publicEnv\b/u.test(source)) return true;
+
+  return false;
+}
+
+function isEnvModuleSpecifier(specifier: string) {
+  return /(?:^|\/)config\/env(?:\.ts)?$/u.test(specifier);
+}
+
+function findDefineConfigObject(source: string) {
+  const marker = "const config = defineConfig(";
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex === -1) throwConflict(VITE_CONFIG_PATH, "top-level defineConfig object");
+  const open = source.indexOf("{", markerIndex + marker.length);
+  if (open === -1 || !/^\s*$/u.test(source.slice(markerIndex + marker.length, open)))
+    throwConflict(VITE_CONFIG_PATH, "top-level defineConfig object");
+
+  let depth = 1;
+  for (let index = open + 1; index < source.length; index += 1) {
+    const next = source[index + 1];
+    if (source[index] === '"' || source[index] === "'" || source[index] === "`") index = skipQuoted(source, index);
+    else if (source[index] === "/" && next === "/") index = skipLineComment(source, index);
+    else if (source[index] === "/" && next === "*") index = skipBlockComment(source, index);
+    else if (source[index] === "{") depth += 1;
+    else if (source[index] === "}" && --depth === 0) return { close: index, open };
+  }
+
+  throwConflict(VITE_CONFIG_PATH, "top-level defineConfig object");
+}
+
+function findTopLevelObjectProperty(source: string, open: number, close: number, property: string) {
+  let depth = 1;
+  for (let index = open + 1; index < close; index += 1) {
+    const next = source[index + 1];
+    if (source[index] === '"' || source[index] === "'" || source[index] === "`") index = skipQuoted(source, index);
+    else if (source[index] === "/" && next === "/") index = skipLineComment(source, index);
+    else if (source[index] === "/" && next === "*") index = skipBlockComment(source, index);
+    else if (source[index] === "{") depth += 1;
+    else if (source[index] === "}") depth -= 1;
+    else if (depth === 1 && source.startsWith(property, index) && !/[\w$]/u.test(source[index - 1] ?? "")) {
+      const afterProperty = index + property.length;
+      const propertySuffix = /^\s*:/u.exec(source.slice(afterProperty));
+      if (!/[\w$]/u.test(source[afterProperty] ?? "") && propertySuffix !== null) return afterProperty + propertySuffix[0].length - 1;
+    }
+  }
+
+  return null;
+}
+
+function skipQuoted(source: string, start: number) {
+  const quote = source[start];
+  for (let index = start + 1; index < source.length; index += 1)
+    if (source[index] === "\\") index += 1;
+    else if (source[index] === quote) return index;
+  return source.length - 1;
+}
+
+function skipLineComment(source: string, start: number) {
+  const end = source.indexOf("\n", start + 2);
+  return end === -1 ? source.length - 1 : end;
+}
+
+function skipBlockComment(source: string, start: number) {
+  const end = source.indexOf("*/", start + 2);
+  return end === -1 ? source.length - 1 : end + 1;
 }
 
 function addRootEnvIgnore(source: string) {
