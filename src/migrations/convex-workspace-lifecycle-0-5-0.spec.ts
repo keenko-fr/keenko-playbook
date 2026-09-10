@@ -338,6 +338,67 @@ describe("0.5.0 Convex workspace lifecycle migration", () => {
   );
 
   test(
+    "rejects a type-only publicEnv import before mutation",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          tree.write(
+            "apps/web/src/project-owned.ts",
+            'import type { publicEnv } from "./config/env.ts";\n\nexport type PublicEnv = typeof publicEnv;\n'
+          );
+          const expected = snapshotChanges(tree);
+
+          expect(() => {
+            convexWorkspaceLifecycle050(tree);
+          }).toThrow("apps/web/src/project-owned.ts");
+          expect(snapshotChanges(tree)).toEqual(expected);
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "rejects bracket access through an env module namespace before mutation",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          tree.write(
+            "apps/web/src/project-owned.ts",
+            'import * as env from "./config/env.ts";\n\nexport const deploymentUrl = env["publicEnv"].VITE_CONVEX_URL;\n'
+          );
+          const expected = snapshotChanges(tree);
+
+          expect(() => {
+            convexWorkspaceLifecycle050(tree);
+          }).toThrow("apps/web/src/project-owned.ts");
+          expect(snapshotChanges(tree)).toEqual(expected);
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "does not classify import syntax in comments or string literals as consumers",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          const projectSource =
+            'const example = \'import("./config/env.ts")\';\n// import type { publicEnv } from "./config/env.ts";\nexport { example };\n';
+          tree.write("apps/web/src/project-owned.ts", projectSource);
+
+          yield* runMigration(tree);
+
+          expect(readText(tree, "apps/web/src/project-owned.ts")).toBe(projectSource);
+          expect(tree.exists("convex.json")).toBe(true);
+        })
+      ),
+    15_000
+  );
+
+  test(
     "adds top-level Vite envDir when comments and nested objects mention envDir",
     () =>
       E.runPromise(
@@ -402,6 +463,54 @@ describe("0.5.0 Convex workspace lifecycle migration", () => {
           const migrated = readText(tree, "apps/web/vite.config.ts");
           expect(migrated).toContain('const config = defineConfig({\n  ["envDir"]: "../..",');
           expect(migrated).not.toContain('const config = defineConfig({\n  envDir: "../..",');
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "preserves top-level Vite envDir after a regex containing a closing brace",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          tree.write(
+            "apps/web/vite.config.ts",
+            readText(tree, "apps/web/vite.config.ts").replace(
+              "const config = defineConfig({",
+              'const config = defineConfig({\n  assetsInclude: /}/,\n  envDir: "../..",'
+            )
+          );
+
+          yield* runMigration(tree);
+
+          const migrated = readText(tree, "apps/web/vite.config.ts");
+          expect(migrated).toContain('assetsInclude: /}/,\n  envDir: "../..",');
+          expect(migrated.match(/\benvDir\s*:/gu)).toHaveLength(1);
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "preserves top-level Vite envDir after a regex containing an opening brace",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          tree.write(
+            "apps/web/vite.config.ts",
+            readText(tree, "apps/web/vite.config.ts").replace(
+              "const config = defineConfig({",
+              'const config = defineConfig({\n  assetsInclude: /\\{/,\n  envDir: "../..",'
+            )
+          );
+
+          yield* runMigration(tree);
+
+          const migrated = readText(tree, "apps/web/vite.config.ts");
+          expect(migrated).toContain('assetsInclude: /\\{/,\n  envDir: "../..",');
+          expect(migrated.match(/\benvDir\s*:/gu)).toHaveLength(1);
         })
       ),
     15_000

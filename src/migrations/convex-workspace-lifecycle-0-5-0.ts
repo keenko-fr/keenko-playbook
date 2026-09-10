@@ -184,39 +184,51 @@ function isPublicEnvConsumer(tree: Tree, path: string) {
   const fileSource = tree.read(path, "utf-8");
   if (fileSource === null) return false;
   const source = path === ROUTER_PATH ? fileSource.replace('import { publicEnv } from "./config/env.ts";', "") : fileSource;
+  const codeMask = maskCommentsAndLiterals(source);
 
   return (
-    hasNamedPublicEnvImport(source, path) ||
-    hasNamespacePublicEnvImport(source, path) ||
-    hasEnvModuleReExport(source, path) ||
-    hasEnvModuleDynamicImport(source, path)
+    hasNamedPublicEnvImport(source, codeMask, path) ||
+    hasNamespacePublicEnvImport(source, codeMask, path) ||
+    hasEnvModuleReExport(source, codeMask, path) ||
+    hasEnvModuleDynamicImport(source, codeMask, path)
   );
 }
 
-function hasNamedPublicEnvImport(source: string, path: string) {
-  const namedImports = source.matchAll(/(?:import|export)\s*\{(?<bindings>[^}]*)\}\s*from\s*["'](?<specifier>[^"']+)["']/gu);
+function hasNamedPublicEnvImport(source: string, codeMask: string, path: string) {
+  const namedImports = source.matchAll(/(?:import\s+(?:type\s+)?|export\s*)\{(?<bindings>[^}]*)\}\s*from\s*["'](?<specifier>[^"']+)["']/gu);
   for (const match of namedImports)
-    if (/\bpublicEnv\b/u.test(match.groups?.bindings ?? "") && isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
+    if (
+      isCodeMatch(codeMask, match) &&
+      /\bpublicEnv\b/u.test(match.groups?.bindings ?? "") &&
+      isEnvModuleSpecifier(path, match.groups?.specifier ?? "")
+    )
+      return true;
   return false;
 }
 
-function hasNamespacePublicEnvImport(source: string, path: string) {
+function hasNamespacePublicEnvImport(source: string, codeMask: string, path: string) {
   const namespaceImports = source.matchAll(/\bimport\s*\*\s*as\s+\w+\s+from\s*["'](?<specifier>[^"']+)["']/gu);
   for (const match of namespaceImports)
-    if (isEnvModuleSpecifier(path, match.groups?.specifier ?? "") && /\.publicEnv\b/u.test(source)) return true;
+    if (isCodeMatch(codeMask, match) && isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
   return false;
 }
 
-function hasEnvModuleReExport(source: string, path: string) {
+function hasEnvModuleReExport(source: string, codeMask: string, path: string) {
   const starExports = source.matchAll(/\bexport\s*\*(?:\s+as\s+\w+)?\s*from\s*["'](?<specifier>[^"']+)["']/gu);
-  for (const match of starExports) if (isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
+  for (const match of starExports)
+    if (isCodeMatch(codeMask, match) && isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
   return false;
 }
 
-function hasEnvModuleDynamicImport(source: string, path: string) {
+function hasEnvModuleDynamicImport(source: string, codeMask: string, path: string) {
   const dynamicImports = source.matchAll(/\bimport\s*\(\s*["'](?<specifier>[^"']+)["']/gu);
-  for (const match of dynamicImports) if (isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
+  for (const match of dynamicImports)
+    if (isCodeMatch(codeMask, match) && isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
   return false;
+}
+
+function isCodeMatch(codeMask: string, match: RegExpExecArray) {
+  return match.index !== undefined && codeMask[match.index] !== " ";
 }
 
 function isEnvModuleSpecifier(importerPath: string, specifier: string) {
@@ -246,7 +258,11 @@ function findDefineConfigObject(source: string) {
     if (source[index] === '"' || source[index] === "'" || source[index] === "`") index = skipQuoted(source, index);
     else if (source[index] === "/" && next === "/") index = skipLineComment(source, index);
     else if (source[index] === "/" && next === "*") index = skipBlockComment(source, index);
-    else if (source[index] === "{") depth += 1;
+    else if (source[index] === "/") {
+      const regexEnd = findRegexLiteralEnd(source, index);
+      if (regexEnd !== null) index = regexEnd;
+      else if (isRegexLiteralStart(source, index)) throwConflict(VITE_CONFIG_PATH, "regular-expression literal");
+    } else if (source[index] === "{") depth += 1;
     else if (source[index] === "}" && --depth === 0) return { close: index, open };
   }
 
@@ -263,7 +279,11 @@ function findTopLevelObjectProperty(source: string, open: number, close: number,
     if (isQuote(source[index])) index = skipQuoted(source, index);
     else if (source[index] === "/" && next === "/") index = skipLineComment(source, index);
     else if (source[index] === "/" && next === "*") index = skipBlockComment(source, index);
-    else if (source[index] === "{") depth += 1;
+    else if (source[index] === "/") {
+      const regexEnd = findRegexLiteralEnd(source, index);
+      if (regexEnd !== null) index = regexEnd;
+      else if (isRegexLiteralStart(source, index)) throwConflict(VITE_CONFIG_PATH, "regular-expression literal");
+    } else if (source[index] === "{") depth += 1;
     else if (source[index] === "}") depth -= 1;
   }
 
@@ -293,6 +313,46 @@ function findStaticPropertyColonAt(source: string, index: number, depth: number,
 
 function isQuote(value: string | undefined) {
   return value === '"' || value === "'" || value === "`";
+}
+
+function maskCommentsAndLiterals(source: string) {
+  const masked = Array.from({ length: source.length }, (_, index) => source[index] ?? "");
+  for (let index = 0; index < source.length; index += 1) {
+    const next = source[index + 1];
+    let end: number | null = null;
+    if (isQuote(source[index])) end = skipQuoted(source, index);
+    else if (source[index] === "/" && next === "/") end = skipLineComment(source, index);
+    else if (source[index] === "/" && next === "*") end = skipBlockComment(source, index);
+    else if (source[index] === "/") end = findRegexLiteralEnd(source, index);
+
+    if (end === null) continue;
+    for (let maskedIndex = index; maskedIndex <= end; maskedIndex += 1)
+      if (source[maskedIndex] !== "\n" && source[maskedIndex] !== "\r") masked[maskedIndex] = " ";
+    index = end;
+  }
+  return masked.join("");
+}
+
+function isRegexLiteralStart(source: string, start: number) {
+  if (source[start + 1] === "/" || source[start + 1] === "*") return false;
+  let previous = start - 1;
+  while (/\s/u.test(source[previous] ?? "")) previous -= 1;
+  return previous < 0 || /[([{,:;=!?&|+*%^~<>-]/u.test(source[previous] ?? "");
+}
+
+function findRegexLiteralEnd(source: string, start: number) {
+  if (!isRegexLiteralStart(source, start)) return null;
+  let inCharacterClass = false;
+  for (let index = start + 1; index < source.length; index += 1)
+    if (source[index] === "\\") index += 1;
+    else if (source[index] === "\n" || source[index] === "\r") return null;
+    else if (source[index] === "[") inCharacterClass = true;
+    else if (source[index] === "]") inCharacterClass = false;
+    else if (source[index] === "/" && !inCharacterClass) {
+      while (/[a-z]/iu.test(source[index + 1] ?? "")) index += 1;
+      return index;
+    }
+  return null;
 }
 
 function skipQuoted(source: string, start: number) {
