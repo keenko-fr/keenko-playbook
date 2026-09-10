@@ -27,6 +27,7 @@ export const devDependencies = Struct.pick(packageVersions, [
   "@effect/tsgo",
   "@nx/oxlint",
   "@nx/vitest",
+  "@tanstack/react-start",
   "@typescript/native",
   "convex",
   "nx",
@@ -112,7 +113,7 @@ const materializeInitialGeneratedState = E.fn("keenko.preset.materializeInitialG
 
 // INTERNALS -------------------------------------------------------------------------------------------------------------------------------
 const configureRootPackageJson = (tree: Tree, workspace: string) => {
-  addDependenciesToPackageJson(tree, {}, { ...devDependencies, "@tanstack/react-start": packageVersions["@tanstack/react-start"] });
+  addDependenciesToPackageJson(tree, {}, devDependencies);
   updateJson<PackageJson>(tree, "package.json", (packageJson) => ({
     ...packageJson,
     engines: { ...packageJson.engines, bun: runtimeVersions.bunRange, node: runtimeVersions.nodeRange },
