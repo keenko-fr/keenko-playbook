@@ -15,6 +15,7 @@ type JsonObject = Record<string, unknown>;
 
 const platformLayer = L.merge(NodeFileSystem.layer, NodePath.layer);
 const readText = (tree: Tree, path: string) => O.getOrThrow(O.fromNullishOr(tree.read(path, "utf-8")));
+const snapshotChanges = (tree: Tree) => tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
 
 const createPriorBaseline = () =>
   E.gen(function* () {
@@ -211,6 +212,48 @@ describe("0.5.0 Convex workspace lifecycle migration", () => {
   );
 
   test(
+    "rejects a removed canonical Confect development participant before mutation",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          const backendPackage = readJson<JsonObject>(tree, "packages/backend/package.json");
+          const scripts = { ...(backendPackage.scripts as JsonObject) };
+          delete scripts["dev:confect"];
+          writeJson(tree, "packages/backend/package.json", { ...backendPackage, scripts });
+          const expected = snapshotChanges(tree);
+
+          expect(() => {
+            convexWorkspaceLifecycle050(tree);
+          }).toThrow("scripts.dev:confect");
+          expect(snapshotChanges(tree)).toEqual(expected);
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "rejects a removed canonical Convex development participant before mutation",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          const backendPackage = readJson<JsonObject>(tree, "packages/backend/package.json");
+          const scripts = { ...(backendPackage.scripts as JsonObject) };
+          delete scripts["dev:convex"];
+          writeJson(tree, "packages/backend/package.json", { ...backendPackage, scripts });
+          const expected = snapshotChanges(tree);
+
+          expect(() => {
+            convexWorkspaceLifecycle050(tree);
+          }).toThrow("scripts.dev:convex");
+          expect(snapshotChanges(tree)).toEqual(expected);
+        })
+      ),
+    15_000
+  );
+
+  test(
     "rejects package-local Convex configuration before partial writes",
     () =>
       E.runPromise(
@@ -246,6 +289,28 @@ describe("0.5.0 Convex workspace lifecycle migration", () => {
           }).toThrow("apps/web/src/project-owned.ts");
           expect(tree.read("package.json", "utf-8")).toBe(expectedPackage);
           expect(tree.exists("convex.json")).toBe(false);
+        })
+      ),
+    15_000
+  );
+
+  test(
+    "rejects a publicEnv barrel re-export before mutation",
+    () =>
+      E.runPromise(
+        E.gen(function* () {
+          const tree = yield* createPriorBaseline();
+          tree.write("apps/web/src/config/index.ts", 'export * from "./env.ts";\n');
+          tree.write(
+            "apps/web/src/project-owned.ts",
+            'import { publicEnv } from "./config";\n\nexport const deploymentUrl = publicEnv.VITE_CONVEX_URL;\n'
+          );
+          const expected = snapshotChanges(tree);
+
+          expect(() => {
+            convexWorkspaceLifecycle050(tree);
+          }).toThrow("apps/web/src/config/index.ts");
+          expect(snapshotChanges(tree)).toEqual(expected);
         })
       ),
     15_000

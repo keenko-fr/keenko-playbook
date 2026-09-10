@@ -75,10 +75,15 @@ function migrateRootPackage(rootPackage: JsonObject, webPackage: JsonObject) {
 function migrateBackendPackage(backendPackage: JsonObject) {
   const scripts = readObject(backendPackage, "scripts", BACKEND_PACKAGE_PATH);
   if (scripts.dev !== OLD_BACKEND_DEV && scripts.dev !== "confect dev") throwConflict(BACKEND_PACKAGE_PATH, "scripts.dev");
-  if (scripts["dev:confect"] !== undefined && scripts["dev:confect"] !== "confect dev")
-    throwConflict(BACKEND_PACKAGE_PATH, "scripts.dev:confect");
-  if (scripts["dev:convex"] !== undefined && scripts["dev:convex"] !== "convex dev")
-    throwConflict(BACKEND_PACKAGE_PATH, "scripts.dev:convex");
+  if (scripts.dev === OLD_BACKEND_DEV) {
+    if (scripts["dev:confect"] !== "confect dev") throwConflict(BACKEND_PACKAGE_PATH, "scripts.dev:confect");
+    if (scripts["dev:convex"] !== "convex dev") throwConflict(BACKEND_PACKAGE_PATH, "scripts.dev:convex");
+  } else {
+    if (scripts["dev:confect"] !== undefined && scripts["dev:confect"] !== "confect dev")
+      throwConflict(BACKEND_PACKAGE_PATH, "scripts.dev:confect");
+    if (scripts["dev:convex"] !== undefined && scripts["dev:convex"] !== "convex dev")
+      throwConflict(BACKEND_PACKAGE_PATH, "scripts.dev:convex");
+  }
 
   const projectOwnedDevScripts = Object.keys(scripts).filter(
     (name) => name.startsWith("dev:") && name !== "dev:confect" && name !== "dev:convex"
@@ -165,7 +170,7 @@ function rejectAdditionalPublicEnvConsumers(tree: Tree) {
   if (consumers.length === 0) return;
 
   throw new Error(
-    `Project-owned publicEnv consumers exist outside ${ROUTER_PATH}: ${consumers.join(", ")}. Update those consumers to call getPublicEnv at runtime, then rerun the Keenko migration.`
+    `Project-owned publicEnv consumers or re-exports exist outside ${ROUTER_PATH}: ${consumers.join(", ")}. Update direct consumers to call getPublicEnv at runtime and remove or reconcile re-exports, then rerun the Keenko migration.`
   );
 }
 
@@ -183,17 +188,29 @@ function isPublicEnvConsumer(tree: Tree, path: string) {
 
   const namedImports = source.matchAll(/(?:import|export)\s*\{(?<bindings>[^}]*)\}\s*from\s*["'](?<specifier>[^"']+)["']/gu);
   for (const match of namedImports)
-    if (/\bpublicEnv\b/u.test(match.groups?.bindings ?? "") && isEnvModuleSpecifier(match.groups?.specifier ?? "")) return true;
+    if (/\bpublicEnv\b/u.test(match.groups?.bindings ?? "") && isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
 
   const namespaceImports = source.matchAll(/\bimport\s*\*\s*as\s+\w+\s+from\s*["'](?<specifier>[^"']+)["']/gu);
   for (const match of namespaceImports)
-    if (isEnvModuleSpecifier(match.groups?.specifier ?? "") && /\.publicEnv\b/u.test(source)) return true;
+    if (isEnvModuleSpecifier(path, match.groups?.specifier ?? "") && /\.publicEnv\b/u.test(source)) return true;
+
+  const starExports = source.matchAll(/\bexport\s*\*(?:\s+as\s+\w+)?\s*from\s*["'](?<specifier>[^"']+)["']/gu);
+  for (const match of starExports) if (isEnvModuleSpecifier(path, match.groups?.specifier ?? "")) return true;
 
   return false;
 }
 
-function isEnvModuleSpecifier(specifier: string) {
-  return /(?:^|\/)config\/env(?:\.ts)?$/u.test(specifier);
+function isEnvModuleSpecifier(importerPath: string, specifier: string) {
+  if (!specifier.startsWith(".")) return /(?:^|\/)config\/env(?:\.[cm]?[jt]s)?$/u.test(specifier);
+
+  const segments = importerPath.split("/").slice(0, -1);
+  for (const segment of specifier.split("/")) {
+    if (segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  const resolved = segments.join("/").replace(/\.[cm]?[jt]s$/u, "");
+  return resolved === ENV_MODULE_PATH.replace(/\.ts$/u, "");
 }
 
 function findDefineConfigObject(source: string) {
