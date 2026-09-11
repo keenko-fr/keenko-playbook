@@ -45,7 +45,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/backend/confect/**/*.impl.ts", "packages/backend/confect/**/*.spec.ts"],
+      files: ["packages/backend/**/*.ts"],
       rules: {
         ...effectRules,
         ...effectTsgoRecommended.rules,

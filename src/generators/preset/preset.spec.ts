@@ -655,11 +655,18 @@ describe("keenko preset", () => {
         const authenticationImpl = tree.read("packages/backend/confect/authentication.impl.ts", "utf-8");
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
-        expect(authenticationSource).toContain("handler: async (ctx)");
+        expect(authenticationSource).toContain("export const findCurrent = queryGeneric");
+        expect(authenticationSource).toContain("handler: (ctx)");
+        expect(authenticationSource).not.toContain("handler: async (ctx)");
         expect(authenticationSource).toContain("E.runPromise");
-        expect(authenticationSource).toContain("ctx.auth.getUserIdentity()");
+        expect(authenticationSource).toContain("yield* Auth.Auth");
+        expect(authenticationSource).toContain("E.option(auth.getUserIdentity)");
+        expect(authenticationSource).toContain("E.promise(() => authKit.getAuthUser(ctx))");
+        expect(authenticationSource).toContain("E.map(O.getOrNull)");
+        expect(authenticationSource).toContain("O.none<CurrentAuthentication>()");
         expect(authenticationSource).not.toContain("RegisteredQuery");
         expect(authenticationSource).not.toContain("throw new Error");
+        expect(authenticationSource).not.toContain("async () => await");
         expect(authenticationSpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
         );
@@ -669,19 +676,23 @@ describe("keenko preset", () => {
         expect(authenticationSpec).toContain(
           "// QUERIES -------------------------------------------------------------------------------------------------------------------------------"
         );
+        expect(authenticationSpec).toContain('FunctionSpec.convexPublicQuery<typeof findCurrent>()("findCurrent")');
         expect(authenticationSpec).toContain("FunctionSpec.publicQuery");
+        expect(authenticationSpec).toContain('name: "getCurrent"');
+        expect(authenticationSpec).toContain("AuthenticationRequired");
+        expect(authenticationSpec).not.toContain("getCurrentAuthentication");
+        expect(authenticationSpec).not.toContain("getProtectedAuthentication");
         expect(authenticationImpl).toContain("yield* Auth.Auth");
         expect(authenticationImpl).toContain("AuthenticationRequired");
+        expect(authenticationImpl).toContain('FunctionImpl.make(databaseSchema, spec, "getCurrent"');
         expect(authenticationImpl).toContain(
           "// GROUP -----------------------------------------------------------------------------------------------------------------------------------"
         );
-        expect(oxlintConfig).toContain('files: ["packages/backend/confect/**/*.impl.ts", "packages/backend/confect/**/*.spec.ts"]');
-        expect(oxlintConfig).not.toContain('files: ["packages/backend/**/*.ts"]');
+        expect(oxlintConfig).toContain('files: ["packages/backend/**/*.ts"]');
+        expect(oxlintConfig).not.toContain('files: ["packages/backend/confect/**/*.impl.ts", "packages/backend/confect/**/*.spec.ts"]');
         expect(oxlintConfig).not.toContain('"effect/noAsyncFunction": "off"');
         expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain("requestMiddleware: [csrfMiddleware, authkitMiddleware()]");
-        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).toContain(
-          "useQuery(convexQuery(api.authentication.getCurrentAuthentication, {}))"
-        );
+        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).toContain("useQuery(convexQuery(api.authentication.findCurrent, {}))");
         expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("@confect/react");
         expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("confect/_generated/refs");
         expect(tree.read("apps/web/src/routes/protected.tsx", "utf-8")).toContain("const { user } = await getAuth()");

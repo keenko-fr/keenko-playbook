@@ -437,13 +437,29 @@ const product = E.gen(function* () {
   const authenticationSpec = yield* fs.readFileString(backendAuthenticationSpec);
   const authenticationImpl = yield* fs.readFileString(backendAuthenticationImpl);
   const oxlintConfig = yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"));
-  yield* assert(authenticationSource.includes("handler: async (ctx)"), "Generated authentication does not use the native context boundary");
+  yield* assert(
+    authenticationSource.includes("export const findCurrent = queryGeneric"),
+    "Generated authentication is missing findCurrent"
+  );
+  yield* assert(authenticationSource.includes("handler: (ctx)"), "Generated findCurrent is missing its native context boundary");
+  yield* assert(!authenticationSource.includes("handler: async (ctx)"), "Generated findCurrent retains native async ownership");
   yield* assert(authenticationSource.includes("E.runPromise"), "Generated authentication does not run its native-boundary Effect");
+  yield* assert(authenticationSource.includes("yield* Auth.Auth"), "Generated findCurrent does not use Confect Auth");
+  yield* assert(
+    authenticationSource.includes("E.option(auth.getUserIdentity)"),
+    "Generated findCurrent does not represent optional identity with Option"
+  );
+  yield* assert(
+    authenticationSource.includes("E.promise(() => authKit.getAuthUser(ctx))"),
+    "Generated findCurrent does not adapt the native WorkOS Promise"
+  );
+  yield* assert(authenticationSource.includes("E.map(O.getOrNull)"), "Generated findCurrent does not encode Option at the public boundary");
   yield* assert(
     !authenticationSource.includes("RegisteredQuery"),
     "Generated authentication retains an unnecessary RegisteredQuery annotation"
   );
   yield* assert(!authenticationSource.includes("throw new Error"), "Generated authentication retains an application throw");
+  yield* assert(!authenticationSource.includes("async () => await"), "Generated authentication retains redundant Promise wrapping");
   yield* assert(
     authenticationSpec.includes(
       "// SPEC ------------------------------------------------------------------------------------------------------------------------------------"
@@ -457,9 +473,14 @@ const product = E.gen(function* () {
     "Generated auth spec is missing its query separator"
   );
   yield* assert(
-    authenticationSpec.includes("FunctionSpec.publicQuery"),
-    "Generated protected authentication is not a Confect Effect function"
+    authenticationSpec.includes('FunctionSpec.convexPublicQuery<typeof findCurrent>()("findCurrent")'),
+    "Generated authentication spec is missing native findCurrent"
   );
+  yield* assert(authenticationSpec.includes('name: "getCurrent"'), "Generated authentication spec is missing getCurrent");
+  yield* assert(authenticationSpec.includes("FunctionSpec.publicQuery"), "Generated getCurrent is not a Confect Effect query");
+  yield* assert(authenticationSpec.includes("AuthenticationRequired"), "Generated getCurrent is missing its typed auth failure");
+  yield* assert(!authenticationSpec.includes("getCurrentAuthentication"), "Generated auth spec retains getCurrentAuthentication");
+  yield* assert(!authenticationSpec.includes("getProtectedAuthentication"), "Generated auth spec retains getProtectedAuthentication");
   yield* assert(authenticationImpl.includes("yield* Auth.Auth"), "Generated protected authentication does not use Confect Auth");
   yield* assert(
     authenticationImpl.includes(
@@ -467,10 +488,7 @@ const product = E.gen(function* () {
     ),
     "Generated auth impl is missing its final GROUP section"
   );
-  yield* assert(
-    oxlintConfig.includes('files: ["packages/backend/confect/**/*.impl.ts", "packages/backend/confect/**/*.spec.ts"]'),
-    "Generated Effect lint scope is not limited to authored Confect source"
-  );
+  yield* assert(oxlintConfig.includes('files: ["packages/backend/**/*.ts"]'), "Generated Effect lint scope is not backend-wide");
   yield* assert(!oxlintConfig.includes('"effect/noAsyncFunction": "off"'), "Generated auth lint carve-out remains");
   yield* assert(
     yield* fs.exists(path.join(workspace, ".keenko/docs/stacks/workos-authkit/README.md")),
@@ -540,7 +558,7 @@ const product = E.gen(function* () {
 
   yield* assert(home.includes("#/paraglide/messages"), "Fresh home route does not use generated Paraglide messages");
   yield* assert(
-    home.includes("useQuery(convexQuery(api.authentication.getCurrentAuthentication, {}))"),
+    home.includes("useQuery(convexQuery(api.authentication.findCurrent, {}))"),
     "Fresh home route does not use generated Convex api through TanStack Query"
   );
   yield* assert(!home.includes("@confect/react"), "Fresh home route decodes Confect representations in ordinary React code");

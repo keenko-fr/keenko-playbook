@@ -1,22 +1,49 @@
+import { Auth } from "@confect/server";
 import { queryGeneric } from "convex/server";
 import { Effect as E, Option as O } from "effect";
 
 import { authKit } from "./workos";
 
 // QUERIES ---------------------------------------------------------------------------------------------------------------------------------
-export const getCurrentAuthentication = queryGeneric({
+export const findCurrent = queryGeneric({
   args: {},
-  handler: async (ctx) =>
-    await E.gen(function* currentAuthenticationWorkflow() {
-      const identity = yield* E.promise(async () => await ctx.auth.getUserIdentity());
-      if (identity === null) return null;
+  handler: (ctx) =>
+    E.gen(function* () {
+      const auth = yield* Auth.Auth;
+      const identity = yield* E.option(auth.getUserIdentity);
 
-      const workOSUser = yield* E.promise(async () => await authKit.getAuthUser(ctx));
+      return yield* O.match(identity, {
+        onNone: () => E.succeed(O.none<CurrentAuthentication>()),
+        onSome: (currentIdentity) =>
+          E.promise(() => authKit.getAuthUser(ctx)).pipe(
+            E.map((workOSUser) => {
+              const synchronizedUser = O.fromNullishOr(workOSUser);
 
-      return {
-        identityEmail: O.getOrNull(O.fromNullishOr(identity.email)),
-        workOSUserEmail: O.getOrNull(O.fromNullishOr(workOSUser?.email)),
-        workOSUserSynchronized: workOSUser !== null,
-      };
-    }).pipe(E.runPromise),
+              return O.some({
+                identityEmail: O.fromNullishOr(currentIdentity.email),
+                workOSUserEmail: O.flatMap(synchronizedUser, (user) => O.fromNullishOr(user.email)),
+                workOSUserSynchronized: O.isSome(synchronizedUser),
+              });
+            })
+          ),
+      });
+    }).pipe(
+      E.provide(Auth.layer(ctx.auth)),
+      E.map(
+        O.map((authentication) => ({
+          ...authentication,
+          identityEmail: O.getOrNull(authentication.identityEmail),
+          workOSUserEmail: O.getOrNull(authentication.workOSUserEmail),
+        }))
+      ),
+      E.map(O.getOrNull),
+      E.runPromise
+    ),
 });
+
+// TYPES -----------------------------------------------------------------------------------------------------------------------------------
+interface CurrentAuthentication {
+  readonly identityEmail: O.Option<string>;
+  readonly workOSUserEmail: O.Option<string>;
+  readonly workOSUserSynchronized: boolean;
+}

@@ -42,7 +42,7 @@ function IndexPage() {
 }
 
 function AuthenticationStatus() {
-  const { data: authentication } = useQuery(convexQuery(api.authentication.getCurrentAuthentication, {}));
+  const { data: authentication } = useQuery(convexQuery(api.authentication.findCurrent, {}));
 
   if (authentication === undefined || authentication === null) return null;
 

@@ -12,7 +12,7 @@ Every Keenko project starts with a production-shaped WorkOS AuthKit foundation t
 - `apps/web/src/routes/protected.tsx` and `apps/web/src/server/auth.ts` demonstrate opt-in protected route and server-function boundaries with the official `getAuth` API.
 - `apps/web/src/router.tsx` bridges AuthKit access tokens to Convex through `ConvexProviderWithAuth`.
 - `packages/backend/confect/auth.ts` configures the documented WorkOS JWT providers through Confect's official Convex auth-config extension point. It deliberately does not import the component client's `getAuthConfigProviders()` helper: the current component package causes Convex auth-config analysis to require the optional `WORKOS_ACTION_SECRET` even when WorkOS Actions are not configured.
-- `packages/backend/confect/workos.ts` owns the official component client. `packages/backend/confect/authentication.ts` owns the native component-driven current-authentication query, while `packages/backend/confect/authentication.impl.ts` owns the protected Confect/Effect application query.
+- `packages/backend/confect/workos.ts` owns the official component client. `packages/backend/confect/authentication.ts` owns the thin native boundary for `authentication.findCurrent`, while `packages/backend/confect/authentication.impl.ts` owns the ordinary Confect/Effect `authentication.getCurrent` query.
 - `packages/backend/confect/http.ts` owns the component webhook endpoint through Confect's official HTTP extension point.
 - Confect materializes those extension points into `packages/backend/convex/auth.config.ts`, `packages/backend/convex/authentication.ts`, and `packages/backend/convex/http.ts`; do not edit the generated files.
 - WorkOS owns authentication and synchronized identity metadata. Convex/application code owns authorization, resource ownership, permissions, and business policy.
@@ -62,8 +62,8 @@ WorkOS Actions are not part of the Keenko baseline. `WORKOS_ACTION_SECRET` becom
 - Public is the default. A route with no auth loader remains public.
 - A protected TanStack route calls `getAuth()` in its loader and redirects to `/api/auth/sign-in` when no user exists.
 - A protected TanStack server function calls `getAuth()` inside its handler and rejects an absent user.
-- A public Convex function may call `ctx.auth.getUserIdentity()` and return `null` for anonymous callers.
-- A protected Confect function derives identity through Confect's `Auth` service (which wraps the native Convex auth context) and rejects an absent identity with its typed Effect error. Never accept a caller-supplied user identifier for authorization.
+- `authentication.findCurrent` is public and nullable at the Convex/JavaScript boundary. Its Effect-owned workflow uses Confect's `Auth` service for identity, represents absence with `Option`, and adapts the official component's native-context Promise before encoding absence as `null` for transport.
+- `authentication.getCurrent` is an ordinary Confect/Effect query. It derives identity through Confect's `Auth` service and maps absent identity to the typed `AuthenticationRequired` failure. Never accept a caller-supplied user identifier for authorization.
 - Use `identity.tokenIdentifier` as the stable authenticated identity key when application data needs an ownership reference. Keep authorization decisions in Convex/application code; do not treat WorkOS roles, permissions, organizations, or entitlements as Keenko's general policy model.
 
 ## Deterministic verification
