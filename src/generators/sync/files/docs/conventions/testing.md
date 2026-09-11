@@ -16,6 +16,8 @@ The same invariant has one primary test owner. Do not repeat an assertion across
 
 Prefer structured decoding for JSON manifests and configuration. Source-string assertions are appropriate only when the literal source representation is itself a canonical product contract and no more direct verification mechanism exists.
 
+Requirements for exact generated source contracts refer to stable generated source, public API, and architecture contracts. They do not make private implementation expression structure part of the contract.
+
 Do not assert private function or variable names, import aliases, exact Effect combinator spelling, declaration order, helper placement, or equivalent implementation detail. Do not replace source-string coupling with AST parsing. A refactor that preserves the owned public contract belongs below the test boundary.
 
 When a broader acceptance test already runs a narrower layer's canonical verification command, rely on that command instead of recreating its internal assertions.

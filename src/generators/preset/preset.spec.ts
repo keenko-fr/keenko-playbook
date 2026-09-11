@@ -641,6 +641,7 @@ describe("keenko preset", () => {
         const generatedApi = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/convex/_generated/api.d.ts", "utf-8")));
         const identitySpec = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.spec.ts", "utf-8")));
         const identityImpl = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.impl.ts", "utf-8")));
+        const homeRoute = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/src/routes/index.tsx", "utf-8")));
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(convexConfig).toContain('"@convex-dev/workos-authkit/convex.config"');
@@ -661,6 +662,14 @@ describe("keenko preset", () => {
         for (const functionName of ["findCurrent", "getCurrent", "findSynchronized"])
           expect(identitySpec).toContain(`name: "${functionName}"`);
         expect(identitySpec.split("FunctionSpec.publicQuery")).toHaveLength(4);
+        expect(identitySpec).toContain("returns: () => Schema.OptionFromNullOr(sCurrentIdentity)");
+        expect(identitySpec).toContain("returns: () => sCurrentIdentity");
+        expect(identitySpec).toContain("error: () => AuthenticationRequired");
+        expect(identitySpec).toContain("returns: () => Schema.OptionFromNullOr(sSynchronizedIdentity)");
+
+        expect(homeRoute).toContain("api.identity.findCurrent");
+        expect(homeRoute).toContain("api.identity.findSynchronized");
+        expect(homeRoute).not.toContain("workOSUserSynchronized");
 
         expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
@@ -675,6 +684,10 @@ describe("keenko preset", () => {
           "// GROUP -----------------------------------------------------------------------------------------------------------------------------------"
         );
         expect(oxlintConfig).toContain('files: ["packages/backend/**/*.ts"]');
+        expect(oxlintConfig).not.toContain("packages/backend/confect/identity.impl.ts");
+        expect(oxlintConfig).not.toContain("packages/backend/confect/authentication.ts");
+        for (const rule of ["effect/noAsyncFunction", "effect/noNewError", "effect/noNullish", "effect/noThrowStatement"])
+          expect(oxlintConfig).not.toContain(`"${rule}": "off"`);
         expect(tree.read(".env.example", "utf-8")).not.toContain("WORKOS_WEBHOOK_SECRET=");
         expect(tree.read(".env.example", "utf-8")).toContain("AUTH_E2E_EMAIL_DOMAIN=");
         expect(tree.read(".env.example", "utf-8")).not.toMatch(/(?:client_|sk_|whsec_)[A-Za-z0-9]/u);
