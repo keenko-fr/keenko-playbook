@@ -11,22 +11,22 @@ const program = E.gen(function* () {
   const path = yield* Path.Path;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const repository = yield* path.fromFileUrl(new URL("../", import.meta.url));
-  const planPath = path.join(repository, ".nx/version-plans/version-plan-1789016400000.md");
+  const planPath = path.join(repository, ".nx/version-plans/version-plan-1789018800000.md");
   if (!(yield* fs.exists(planPath))) return;
 
   const manifestPath = path.join(repository, "package.json");
   const before = yield* fs.readFileString(manifestPath);
   const current = yield* S.decodeEffect(sManifest)(before);
 
-  if (current.version !== "0.4.1")
-    return yield* new ReleaseVersionFailure({ message: `Expected the current Keenko version to be 0.4.1, got ${current.version}` });
+  if (current.version !== "0.5.0")
+    return yield* new ReleaseVersionFailure({ message: `Expected the current Keenko version to be 0.5.0, got ${current.version}` });
 
   const output = yield* spawner.string(ChildProcess.make("bun", ["x", "nx", "release", "version", "--dry-run"], { cwd: repository }), {
     includeStderr: true,
   });
 
-  if (!output.includes('Applied semver relative bump "minor"') || !output.includes("new version 0.5.0"))
-    return yield* new ReleaseVersionFailure({ message: `Nx did not resolve the current minor plan from 0.4.1 to 0.5.0:\n${output}` });
+  if (!output.includes('Applied semver relative bump "minor"') || !output.includes("new version 0.6.0"))
+    return yield* new ReleaseVersionFailure({ message: `Nx did not resolve the current minor plan from 0.5.0 to 0.6.0:\n${output}` });
 
   if ((yield* fs.readFileString(manifestPath)) !== before)
     return yield* new ReleaseVersionFailure({ message: "Nx release dry-run changed package.json" });
