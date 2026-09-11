@@ -41,7 +41,7 @@ Name backend retrieval operations by what absence means:
 - `find` / `findByX`: absence is a valid result, normally represented with `Option` inside Effect-owned workflows;
 - `get` / `getByX`: absence is exceptional and is represented as a typed failure.
 
-Use contextual names. Do not repeat the owning module or domain noun when the module already supplies it. For example, an `authentication` group exposes `findCurrent` and `getCurrent`, not `getCurrentAuthentication` or policy-oriented names such as `getProtectedAuthentication`.
+Use contextual names. Do not repeat the owning module or domain noun when the module already supplies it. For example, an `identity` group exposes `findCurrent` and `getCurrent`, not `getCurrentIdentity` or policy-oriented names such as `getProtectedIdentity`.
 
 ## Confect
 

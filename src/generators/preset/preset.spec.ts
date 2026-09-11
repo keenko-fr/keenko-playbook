@@ -634,9 +634,8 @@ describe("keenko preset", () => {
           "apps/web/e2e/auth.e2e.ts",
           "apps/web/playwright.config.ts",
           "packages/backend/confect/auth.ts",
-          "packages/backend/confect/authentication.ts",
-          "packages/backend/confect/authentication.spec.ts",
-          "packages/backend/confect/authentication.impl.ts",
+          "packages/backend/confect/identity.spec.ts",
+          "packages/backend/confect/identity.impl.ts",
           "packages/backend/confect/http.ts",
           "packages/backend/confect/workos.ts",
           "packages/backend/convex/_generated/api.d.ts",
@@ -645,54 +644,58 @@ describe("keenko preset", () => {
           expect(tree.exists(file)).toBe(true);
 
         expect(tree.read("packages/backend/convex/convex.config.ts", "utf-8")).toContain("app.use(workOSAuthKit)");
+        expect(tree.read("packages/backend/convex/_generated/api.d.ts", "utf-8")).toContain(
+          'import type * as identity from "../identity.js"'
+        );
+        expect(tree.read("packages/backend/convex/_generated/api.d.ts", "utf-8")).not.toContain(
+          'import type * as authentication from "../authentication.js"'
+        );
         expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).toContain("process.env.WORKOS_CLIENT_ID");
         expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).not.toContain("getAuthConfigProviders");
         expect(tree.read("packages/backend/confect/workos.ts", "utf-8")).toContain(
           "new AuthKit<GenericDataModel>(components.workOSAuthKit)"
         );
-        const authenticationSource = tree.read("packages/backend/confect/authentication.ts", "utf-8");
-        const authenticationSpec = tree.read("packages/backend/confect/authentication.spec.ts", "utf-8");
-        const authenticationImpl = tree.read("packages/backend/confect/authentication.impl.ts", "utf-8");
+        expect(tree.exists("packages/backend/confect/authentication.ts")).toBe(false);
+        expect(tree.exists("packages/backend/confect/authentication.spec.ts")).toBe(false);
+        expect(tree.exists("packages/backend/confect/authentication.impl.ts")).toBe(false);
+        expect(tree.exists("packages/backend/confect/identity.ts")).toBe(false);
+        const identitySpec = tree.read("packages/backend/confect/identity.spec.ts", "utf-8");
+        const identityImpl = tree.read("packages/backend/confect/identity.impl.ts", "utf-8");
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
-        expect(authenticationSource).toContain("export const findCurrent = queryGeneric");
-        expect(authenticationSource).toContain("handler: (ctx)");
-        expect(authenticationSource).not.toContain("handler: async (ctx)");
-        expect(authenticationSource).toContain("E.runPromise");
-        expect(authenticationSource).toContain("yield* Auth.Auth");
-        expect(authenticationSource).toContain("E.option(auth.getUserIdentity)");
-        expect(authenticationSource).toContain("E.promise(() => authKit.getAuthUser(ctx))");
-        expect(authenticationSource).toContain("E.map(O.getOrNull)");
-        expect(authenticationSource).toContain("O.none<CurrentAuthentication>()");
-        expect(authenticationSource).not.toContain("RegisteredQuery");
-        expect(authenticationSource).not.toContain("throw new Error");
-        expect(authenticationSource).not.toContain("async () => await");
-        expect(authenticationSpec).toContain(
+        expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
         );
-        expect(authenticationSpec).toContain(
+        expect(identitySpec).toContain(
           "// SPEC ------------------------------------------------------------------------------------------------------------------------------------"
         );
-        expect(authenticationSpec).toContain(
+        expect(identitySpec).toContain(
           "// QUERIES -------------------------------------------------------------------------------------------------------------------------------"
         );
-        expect(authenticationSpec).toContain('FunctionSpec.convexPublicQuery<typeof findCurrent>()("findCurrent")');
-        expect(authenticationSpec).toContain("FunctionSpec.publicQuery");
-        expect(authenticationSpec).toContain('name: "getCurrent"');
-        expect(authenticationSpec).toContain("AuthenticationRequired");
-        expect(authenticationSpec).not.toContain("getCurrentAuthentication");
-        expect(authenticationSpec).not.toContain("getProtectedAuthentication");
-        expect(authenticationImpl).toContain("yield* Auth.Auth");
-        expect(authenticationImpl).toContain("AuthenticationRequired");
-        expect(authenticationImpl).toContain('FunctionImpl.make(databaseSchema, spec, "getCurrent"');
-        expect(authenticationImpl).toContain(
+        expect(identitySpec?.match(/FunctionSpec\.publicQuery/gu) ?? []).toHaveLength(2);
+        expect(identitySpec).not.toContain("FunctionSpec.convexPublicQuery");
+        expect(identitySpec).toContain('name: "findCurrent"');
+        expect(identitySpec).toContain('name: "getCurrent"');
+        expect(identitySpec).toContain("Schema.OptionFromNullOr(sCurrentIdentity)");
+        expect(identitySpec).toContain("AuthenticationRequired");
+        expect(identityImpl).toContain("const auth = yield* Auth");
+        expect(identityImpl).toContain("const ctx = yield* QueryCtx");
+        expect(identityImpl).toContain("E.option(auth.getUserIdentity)");
+        expect(identityImpl).toContain("E.promise(() => authKit.getAuthUser(ctx))");
+        expect(identityImpl).toContain("AuthenticationRequired");
+        expect(identityImpl).toContain('FunctionImpl.make(databaseSchema, identity, "getCurrent"');
+        expect(identityImpl).not.toContain("queryGeneric");
+        expect(identityImpl).not.toContain("Auth.layer");
+        expect(identityImpl).not.toContain("E.runPromise");
+        expect(identityImpl).not.toContain("throw new Error");
+        expect(identityImpl).toContain(
           "// GROUP -----------------------------------------------------------------------------------------------------------------------------------"
         );
         expect(oxlintConfig).toContain('files: ["packages/backend/**/*.ts"]');
         expect(oxlintConfig).not.toContain('files: ["packages/backend/confect/**/*.impl.ts", "packages/backend/confect/**/*.spec.ts"]');
         expect(oxlintConfig).not.toContain('"effect/noAsyncFunction": "off"');
         expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain("requestMiddleware: [csrfMiddleware, authkitMiddleware()]");
-        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).toContain("useQuery(convexQuery(api.authentication.findCurrent, {}))");
+        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).toContain("useQuery(convexQuery(api.identity.findCurrent, {}))");
         expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("@confect/react");
         expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("confect/_generated/refs");
         expect(tree.read("apps/web/src/routes/protected.tsx", "utf-8")).toContain("const { user } = await getAuth()");

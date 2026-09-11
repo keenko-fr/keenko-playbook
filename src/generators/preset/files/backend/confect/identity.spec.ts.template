@@ -1,15 +1,25 @@
 import { FunctionSpec, GroupSpec } from "@confect/core";
 import * as Schema from "effect/Schema";
 
-import type { findCurrent } from "./authentication";
-
 // SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------
+const sCurrentIdentity = Schema.Struct({
+  identityEmail: Schema.OptionFromNullOr(Schema.String),
+  workOSUserEmail: Schema.OptionFromNullOr(Schema.String),
+  workOSUserSynchronized: Schema.Boolean,
+});
+export type CurrentIdentity = typeof sCurrentIdentity.Type;
+
 export class AuthenticationRequired extends Schema.TaggedError<AuthenticationRequired>()("AuthenticationRequired", {}) {}
 
 // SPEC ------------------------------------------------------------------------------------------------------------------------------------
 export default GroupSpec.make()
   // QUERIES -------------------------------------------------------------------------------------------------------------------------------
-  .addFunction(FunctionSpec.convexPublicQuery<typeof findCurrent>()("findCurrent"))
+  .addFunction(
+    FunctionSpec.publicQuery({
+      name: "findCurrent",
+      returns: () => Schema.OptionFromNullOr(sCurrentIdentity),
+    })
+  )
   .addFunction(
     FunctionSpec.publicQuery({
       error: () => AuthenticationRequired,

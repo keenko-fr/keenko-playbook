@@ -26,7 +26,7 @@ function IndexPage() {
         </a>
       </Unauthenticated>
       <Authenticated>
-        <AuthenticationStatus />
+        <IdentityStatus />
         <button data-testid="auth-sign-out" onClick={handleSignOut} type="button">
           {m.gentle_indigo_fox()}
         </button>
@@ -41,12 +41,12 @@ function IndexPage() {
   }
 }
 
-function AuthenticationStatus() {
-  const { data: authentication } = useQuery(convexQuery(api.authentication.findCurrent, {}));
+function IdentityStatus() {
+  const { data: currentIdentity } = useQuery(convexQuery(api.identity.findCurrent, {}));
 
-  if (authentication === undefined || authentication === null) return null;
+  if (currentIdentity === undefined || currentIdentity === null) return null;
 
-  const { identityEmail, workOSUserEmail, workOSUserSynchronized } = authentication;
+  const { identityEmail, workOSUserEmail, workOSUserSynchronized } = currentIdentity;
 
   return (
     <section>

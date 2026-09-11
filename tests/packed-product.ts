@@ -395,13 +395,12 @@ const product = E.gen(function* () {
   const authCallback = path.join(workspace, "apps/web/src/routes/api/auth/callback.tsx");
   const authSignIn = path.join(workspace, "apps/web/src/routes/api/auth/sign-in.tsx");
   const protectedRoute = path.join(workspace, "apps/web/src/routes/protected.tsx");
-  const backendAuthenticationSource = path.join(workspace, "packages/backend/confect/authentication.ts");
-  const backendAuthenticationSpec = path.join(workspace, "packages/backend/confect/authentication.spec.ts");
-  const backendAuthenticationImpl = path.join(workspace, "packages/backend/confect/authentication.impl.ts");
+  const backendIdentitySpec = path.join(workspace, "packages/backend/confect/identity.spec.ts");
+  const backendIdentityImpl = path.join(workspace, "packages/backend/confect/identity.impl.ts");
   const backendWorkOS = path.join(workspace, "packages/backend/confect/workos.ts");
   const backendAuthConfig = path.join(workspace, "packages/backend/convex/auth.config.ts");
   const backendHttp = path.join(workspace, "packages/backend/convex/http.ts");
-  const backendAuthentication = path.join(workspace, "packages/backend/convex/authentication.ts");
+  const backendIdentity = path.join(workspace, "packages/backend/convex/identity.ts");
 
   const homeRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
   const inlangSettings = path.join(workspace, "apps/web/project.inlang/settings.json");
@@ -416,13 +415,12 @@ const product = E.gen(function* () {
     authCallback,
     authSignIn,
     protectedRoute,
-    backendAuthenticationSource,
-    backendAuthenticationSpec,
-    backendAuthenticationImpl,
+    backendIdentitySpec,
+    backendIdentityImpl,
     backendWorkOS,
     backendAuthConfig,
     backendHttp,
-    backendAuthentication,
+    backendIdentity,
   ])
     yield* assert(yield* fs.exists(authFile), `Fresh creation is missing AuthKit scaffold: ${path.relative(workspace, authFile)}`);
   yield* assert(
@@ -433,60 +431,74 @@ const product = E.gen(function* () {
     (yield* fs.readFileString(backendWorkOS)).includes("new AuthKit<GenericDataModel>(components.workOSAuthKit)"),
     "Generated backend does not install the official WorkOS AuthKit component client"
   );
-  const authenticationSource = yield* fs.readFileString(backendAuthenticationSource);
-  const authenticationSpec = yield* fs.readFileString(backendAuthenticationSpec);
-  const authenticationImpl = yield* fs.readFileString(backendAuthenticationImpl);
+  const generatedConvexApi = yield* fs.readFileString(path.join(workspace, "packages/backend/convex/_generated/api.d.ts"));
+  yield* assert(
+    generatedConvexApi.includes('import type * as identity from "../identity.js"'),
+    "Generated Convex API is missing the identity group"
+  );
+  yield* assert(
+    !generatedConvexApi.includes('import type * as authentication from "../authentication.js"'),
+    "Generated Convex API retains the authentication group"
+  );
+  yield* assert(
+    !(yield* fs.exists(path.join(workspace, "packages/backend/confect/authentication.ts"))),
+    "Fresh creation retained the native authentication group file"
+  );
+  yield* assert(
+    !(yield* fs.exists(path.join(workspace, "packages/backend/confect/authentication.spec.ts"))),
+    "Fresh creation retained the authentication group spec"
+  );
+  yield* assert(
+    !(yield* fs.exists(path.join(workspace, "packages/backend/confect/authentication.impl.ts"))),
+    "Fresh creation retained the authentication group implementation"
+  );
+  yield* assert(
+    !(yield* fs.exists(path.join(workspace, "packages/backend/confect/identity.ts"))),
+    "Fresh creation created an unnecessary native identity group file"
+  );
+  const identitySpec = yield* fs.readFileString(backendIdentitySpec);
+  const identityImpl = yield* fs.readFileString(backendIdentityImpl);
   const oxlintConfig = yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"));
   yield* assert(
-    authenticationSource.includes("export const findCurrent = queryGeneric"),
-    "Generated authentication is missing findCurrent"
+    identitySpec.match(/FunctionSpec\.publicQuery/gu)?.length === 2,
+    "Generated identity spec does not contain two Confect queries"
   );
-  yield* assert(authenticationSource.includes("handler: (ctx)"), "Generated findCurrent is missing its native context boundary");
-  yield* assert(!authenticationSource.includes("handler: async (ctx)"), "Generated findCurrent retains native async ownership");
-  yield* assert(authenticationSource.includes("E.runPromise"), "Generated authentication does not run its native-boundary Effect");
-  yield* assert(authenticationSource.includes("yield* Auth.Auth"), "Generated findCurrent does not use Confect Auth");
+  yield* assert(!identitySpec.includes("FunctionSpec.convexPublicQuery"), "Generated findCurrent retains native provenance");
+  yield* assert(identitySpec.includes('name: "findCurrent"'), "Generated identity spec is missing findCurrent");
+  yield* assert(identitySpec.includes('name: "getCurrent"'), "Generated identity spec is missing getCurrent");
+  yield* assert(identitySpec.includes("Schema.OptionFromNullOr(sCurrentIdentity)"), "Generated findCurrent is not nullable on transport");
+  yield* assert(identitySpec.includes("AuthenticationRequired"), "Generated getCurrent is missing its typed auth failure");
+  yield* assert(identityImpl.includes("const auth = yield* Auth"), "Generated findCurrent does not use Confect Auth");
+  yield* assert(identityImpl.includes("const ctx = yield* QueryCtx"), "Generated findCurrent does not use generated Confect QueryCtx");
   yield* assert(
-    authenticationSource.includes("E.option(auth.getUserIdentity)"),
+    identityImpl.includes("E.option(auth.getUserIdentity)"),
     "Generated findCurrent does not represent optional identity with Option"
   );
   yield* assert(
-    authenticationSource.includes("E.promise(() => authKit.getAuthUser(ctx))"),
+    identityImpl.includes("E.promise(() => authKit.getAuthUser(ctx))"),
     "Generated findCurrent does not adapt the native WorkOS Promise"
   );
-  yield* assert(authenticationSource.includes("E.map(O.getOrNull)"), "Generated findCurrent does not encode Option at the public boundary");
+  yield* assert(!identityImpl.includes("queryGeneric"), "Generated identity implementation retains a native query boundary");
+  yield* assert(!identityImpl.includes("Auth.layer"), "Generated identity implementation manually provides Confect Auth");
+  yield* assert(!identityImpl.includes("E.runPromise"), "Generated identity implementation manually runs Effect");
+  yield* assert(!identityImpl.includes("throw new Error"), "Generated identity implementation retains an application throw");
   yield* assert(
-    !authenticationSource.includes("RegisteredQuery"),
-    "Generated authentication retains an unnecessary RegisteredQuery annotation"
-  );
-  yield* assert(!authenticationSource.includes("throw new Error"), "Generated authentication retains an application throw");
-  yield* assert(!authenticationSource.includes("async () => await"), "Generated authentication retains redundant Promise wrapping");
-  yield* assert(
-    authenticationSpec.includes(
+    identitySpec.includes(
       "// SPEC ------------------------------------------------------------------------------------------------------------------------------------"
     ),
-    "Generated auth spec is missing its level-1 SPEC section"
+    "Generated identity spec is missing its level-1 SPEC section"
   );
   yield* assert(
-    authenticationSpec.includes(
+    identitySpec.includes(
       "// QUERIES -------------------------------------------------------------------------------------------------------------------------------"
     ),
-    "Generated auth spec is missing its query separator"
+    "Generated identity spec is missing its query separator"
   );
   yield* assert(
-    authenticationSpec.includes('FunctionSpec.convexPublicQuery<typeof findCurrent>()("findCurrent")'),
-    "Generated authentication spec is missing native findCurrent"
-  );
-  yield* assert(authenticationSpec.includes('name: "getCurrent"'), "Generated authentication spec is missing getCurrent");
-  yield* assert(authenticationSpec.includes("FunctionSpec.publicQuery"), "Generated getCurrent is not a Confect Effect query");
-  yield* assert(authenticationSpec.includes("AuthenticationRequired"), "Generated getCurrent is missing its typed auth failure");
-  yield* assert(!authenticationSpec.includes("getCurrentAuthentication"), "Generated auth spec retains getCurrentAuthentication");
-  yield* assert(!authenticationSpec.includes("getProtectedAuthentication"), "Generated auth spec retains getProtectedAuthentication");
-  yield* assert(authenticationImpl.includes("yield* Auth.Auth"), "Generated protected authentication does not use Confect Auth");
-  yield* assert(
-    authenticationImpl.includes(
+    identityImpl.includes(
       "// GROUP -----------------------------------------------------------------------------------------------------------------------------------"
     ),
-    "Generated auth impl is missing its final GROUP section"
+    "Generated identity impl is missing its final GROUP section"
   );
   yield* assert(oxlintConfig.includes('files: ["packages/backend/**/*.ts"]'), "Generated Effect lint scope is not backend-wide");
   yield* assert(!oxlintConfig.includes('"effect/noAsyncFunction": "off"'), "Generated auth lint carve-out remains");
@@ -558,7 +570,7 @@ const product = E.gen(function* () {
 
   yield* assert(home.includes("#/paraglide/messages"), "Fresh home route does not use generated Paraglide messages");
   yield* assert(
-    home.includes("useQuery(convexQuery(api.authentication.findCurrent, {}))"),
+    home.includes("useQuery(convexQuery(api.identity.findCurrent, {}))"),
     "Fresh home route does not use generated Convex api through TanStack Query"
   );
   yield* assert(!home.includes("@confect/react"), "Fresh home route decodes Confect representations in ordinary React code");
