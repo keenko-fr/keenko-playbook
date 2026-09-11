@@ -95,6 +95,10 @@ describe("keenko sync", () => {
           yield* readSource(new URL("files/docs/conventions/frontend.md", import.meta.url))
         );
 
+        expect(tree.read(".keenko/docs/conventions/testing.md", "utf-8")).toBe(
+          yield* readSource(new URL("files/docs/conventions/testing.md", import.meta.url))
+        );
+
         expect(tree.read(".keenko/docs/stacks/effect/README.md", "utf-8")).toBe(
           yield* readSource(new URL("files/docs/stacks/effect/README.md", import.meta.url))
         );

@@ -10,5 +10,6 @@ Canonical reusable conventions that cut across stack modules:
 - `frontend-file-topology.md`: canonical React file section order;
 - `i18n.md`: Paraglide/Sherlock message ownership and identity;
 - `migrations.md`: expand → migrate → contract and safe backfills.
+- `testing.md`: stable test contracts, single-owner invariants, and verification-layer responsibilities.
 
 Stack-specific guidance adds library-specific rules. Project-local architecture/overrides outrank these shared defaults according to the standard authority hierarchy.

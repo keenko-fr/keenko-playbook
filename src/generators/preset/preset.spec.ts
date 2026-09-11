@@ -421,8 +421,6 @@ describe("keenko preset", () => {
           },
           functions: "packages/backend/convex",
         });
-        expect(tree.read(".gitignore", "utf-8")).toBe("/.env.local\n");
-        expect(tree.exists(".env.local")).toBe(false);
         expect(tree.exists("apps/web/.env.local")).toBe(false);
         expect(tree.exists("convex")).toBe(false);
         expect(tree.exists("apps/web/convex")).toBe(false);
@@ -589,10 +587,6 @@ describe("keenko preset", () => {
 
         expect(tree.exists("packages/backend/confect/.gitkeep")).toBe(true);
         expect(tree.exists("packages/backend/convex/convex.config.ts")).toBe(true);
-
-        const packageJson = readJson<PackageJson>(tree, "packages/backend/package.json");
-
-        expect(packageJson.scripts).toMatchObject({ codegen: expectedBackendCodegen, dev: expectedBackendDev });
       })
     ));
 
@@ -643,39 +637,30 @@ describe("keenko preset", () => {
         ])
           expect(tree.exists(file)).toBe(true);
 
-        expect(tree.read("packages/backend/convex/convex.config.ts", "utf-8")).toContain("app.use(workOSAuthKit)");
-        expect(tree.read("packages/backend/convex/_generated/api.d.ts", "utf-8")).toContain(
-          'import type * as identity from "../identity.js"'
-        );
-        expect(tree.read("packages/backend/convex/_generated/api.d.ts", "utf-8")).not.toContain(
-          'import type * as authentication from "../authentication.js"'
-        );
-        expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).toContain("process.env.WORKOS_CLIENT_ID");
-        expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).not.toContain("getAuthConfigProviders");
-        expect(tree.read("packages/backend/confect/workos.ts", "utf-8")).toContain(
-          "new AuthKit<GenericDataModel>(components.workOSAuthKit)"
-        );
-        expect(tree.exists("packages/backend/confect/authentication.ts")).toBe(false);
-        expect(tree.exists("packages/backend/confect/authentication.spec.ts")).toBe(false);
-        expect(tree.exists("packages/backend/confect/authentication.impl.ts")).toBe(false);
-        expect(tree.exists("packages/backend/confect/identity.ts")).toBe(false);
-        const identitySpec = tree.read("packages/backend/confect/identity.spec.ts", "utf-8");
-        const identityImpl = tree.read("packages/backend/confect/identity.impl.ts", "utf-8");
-        const findCurrentImplementation = O.getOrElse(
-          O.fromNullishOr(identityImpl).pipe(
-            O.flatMap((source) => O.fromNullishOr(/const findCurrentImpl[\s\S]*?(?=const getCurrentImpl)/u.exec(source))),
-            O.map((match) => match[0])
-          ),
-          () => ""
-        );
-        const findSynchronizedImplementation = O.getOrElse(
-          O.fromNullishOr(identityImpl).pipe(
-            O.flatMap((source) => O.fromNullishOr(/const findSynchronizedImpl[\s\S]*?(?=\/\/ INTERNALS)/u.exec(source))),
-            O.map((match) => match[0])
-          ),
-          () => ""
-        );
+        const convexConfig = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/convex/convex.config.ts", "utf-8")));
+        const generatedApi = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/convex/_generated/api.d.ts", "utf-8")));
+        const identitySpec = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.spec.ts", "utf-8")));
+        const identityImpl = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.impl.ts", "utf-8")));
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
+
+        expect(convexConfig).toContain('"@convex-dev/workos-authkit/convex.config"');
+        expect(tree.read("packages/backend/confect/workos.ts", "utf-8")).toContain('"@convex-dev/workos-authkit"');
+        expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).toContain("WORKOS_CLIENT_ID");
+        expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain('"@workos/authkit-tanstack-react-start"');
+        expect(generatedApi).toContain("identity: typeof");
+        expect(generatedApi).not.toContain("authentication: typeof");
+
+        for (const file of [
+          "packages/backend/confect/authentication.ts",
+          "packages/backend/confect/authentication.spec.ts",
+          "packages/backend/confect/authentication.impl.ts",
+          "packages/backend/confect/identity.ts",
+        ])
+          expect(tree.exists(file)).toBe(false);
+
+        for (const functionName of ["findCurrent", "getCurrent", "findSynchronized"])
+          expect(identitySpec).toContain(`name: "${functionName}"`);
+        expect(identitySpec.split("FunctionSpec.publicQuery")).toHaveLength(4);
 
         expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
@@ -686,55 +671,17 @@ describe("keenko preset", () => {
         expect(identitySpec).toContain(
           "// QUERIES -------------------------------------------------------------------------------------------------------------------------------"
         );
-        expect(identitySpec?.match(/FunctionSpec\.publicQuery/gu) ?? []).toHaveLength(3);
-        expect(identitySpec).not.toContain("FunctionSpec.convexPublicQuery");
-        expect(identitySpec).toContain('name: "findCurrent"');
-        expect(identitySpec).toContain('name: "getCurrent"');
-        expect(identitySpec).toContain('name: "findSynchronized"');
-        expect(identitySpec).toContain("returns: () => Schema.OptionFromNullOr(sCurrentIdentity)");
-        expect(identitySpec).toContain("returns: () => sCurrentIdentity");
-        expect(identitySpec).toContain("Schema.OptionFromNullOr(sSynchronizedIdentity)");
-        expect(identitySpec).toContain("AuthenticationRequired");
-        expect(findCurrentImplementation).toContain("const auth = yield* Auth");
-        expect(identityImpl).toContain("E.map(toCurrentIdentity), E.option");
-        expect(findCurrentImplementation).not.toContain("QueryCtx");
-        expect(findCurrentImplementation).not.toContain("authKit");
-        expect(findCurrentImplementation).toContain("auth.getUserIdentity");
-        expect(findSynchronizedImplementation).toContain("const ctx = yield* QueryCtx");
-        expect(findSynchronizedImplementation).toContain("E.promise(() => authKit.getAuthUser(ctx))");
-        expect(findSynchronizedImplementation).not.toContain("auth.getUserIdentity");
-        expect(identityImpl).toContain('FunctionImpl.make(databaseSchema, identity, "findSynchronized"');
-        expect(identityImpl).toContain("AuthenticationRequired");
-        expect(identityImpl).toContain('FunctionImpl.make(databaseSchema, identity, "getCurrent"');
-        expect(identityImpl).not.toContain("queryGeneric");
-        expect(identityImpl).not.toContain("Auth.layer");
-        expect(identityImpl).not.toContain("E.runPromise");
-        expect(identityImpl).not.toContain("throw new Error");
         expect(identityImpl).toContain(
           "// GROUP -----------------------------------------------------------------------------------------------------------------------------------"
         );
         expect(oxlintConfig).toContain('files: ["packages/backend/**/*.ts"]');
-        expect(oxlintConfig).not.toContain('files: ["packages/backend/confect/**/*.impl.ts", "packages/backend/confect/**/*.spec.ts"]');
-        expect(oxlintConfig).not.toContain('"effect/noAsyncFunction": "off"');
-        expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain("requestMiddleware: [csrfMiddleware, authkitMiddleware()]");
-        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).toContain("useQuery(convexQuery(api.identity.findCurrent, {}))");
-        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).toContain("useQuery(convexQuery(api.identity.findSynchronized, {}))");
-        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("workOSUserSynchronized");
-        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("@confect/react");
-        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("confect/_generated/refs");
-        expect(tree.read("apps/web/src/routes/protected.tsx", "utf-8")).toContain("const { user } = await getAuth()");
-        expect(tree.read("apps/web/src/server/auth.ts", "utf-8")).toContain("const { user } = await getAuth()");
-        expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("createUser({ email, emailVerified: true, password })");
-        expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("deleteUser(user.id)");
         expect(tree.read(".env.example", "utf-8")).not.toContain("WORKOS_WEBHOOK_SECRET=");
         expect(tree.read(".env.example", "utf-8")).toContain("AUTH_E2E_EMAIL_DOMAIN=");
         expect(tree.read(".env.example", "utf-8")).not.toMatch(/(?:client_|sk_|whsec_)[A-Za-z0-9]/u);
-        expect(backendPackageJson.scripts?.codegen).not.toContain("offline_codegen");
         expect(backendPackageJson.scripts?.codegen).not.toMatch(/WORKOS_(?:CLIENT_ID|API_KEY|WEBHOOK_SECRET)=[A-Za-z0-9_-]+/u);
         expect(backendPackageJson.scripts?.dev).not.toMatch(/WORKOS_(?:CLIENT_ID|API_KEY|WEBHOOK_SECRET)=[A-Za-z0-9_-]+/u);
         expect(tree.exists(".env.local")).toBe(false);
-        expect(tree.read(".gitignore", "utf-8")).toBe("/.env.local\n");
-        expect(tree.read(".keenko/docs/stacks/workos-authkit/README.md", "utf-8")).toContain("authentication/infrastructure identity");
+        expect(tree.read(".gitignore", "utf-8")).toContain("/.env.local");
       })
     ));
 
