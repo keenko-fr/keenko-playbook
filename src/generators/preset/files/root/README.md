@@ -7,9 +7,11 @@ A Bun and Nx application workspace created with Keenko.
 - `packages/ui`: shared UI components and styles.
 - `packages/shared`: shared application contracts when needed.
 
-From the workspace root, install dependencies with `bun install` and run `bun run dev` to configure or resume the local Convex deployment, then start web and backend development. Convex creates and maintains the untracked root `.env.local`; do not create it manually or copy a deployment URL from the dashboard.
+From the workspace root, install dependencies with `bun install` and run `bun run dev` to configure or resume the local Convex deployment and its managed WorkOS AuthKit development environment, then start web and backend development. Convex creates and maintains the untracked root `.env.local`, including a generated AuthKit cookie password; do not create it manually or copy credentials from a dashboard.
 
 A Convex deployment is not required for repository setup or verification. Fresh workspaces can run code generation and `bun run check` without `.env.local`.
+
+Authentication uses WorkOS AuthKit Hosted UI. The public home route links to the sign-in flow, `/protected` demonstrates route protection, and `packages/backend/confect/authentication.ts` demonstrates authenticated Convex identity plus the official component's synchronized WorkOS user. That synchronized user is infrastructure identity, not a generated application domain user. See [.keenko/docs/stacks/workos-authkit/README.md](.keenko/docs/stacks/workos-authkit/README.md) for provisioning, webhook, security, and separate auth-smoke verification.
 
 Run `bun run codegen` to regenerate Paraglide, the TanStack Router route tree, and Confect contracts. Fresh creation materializes their required initial state. Run `bun run check` before review: it regenerates in place, fails when tracked generator-owned artifacts drift, and leaves those changes available to review and commit.
 

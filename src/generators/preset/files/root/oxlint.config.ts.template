@@ -81,6 +81,15 @@ export default defineConfig({
         "unicorn/throw-new-error": "off",
       },
     },
+    {
+      files: ["packages/backend/confect/authentication.ts"],
+      rules: {
+        "effect/noAsyncFunction": "off",
+        "effect/noNewError": "off",
+        "effect/noNullish": "off",
+        "effect/noThrowStatement": "off",
+      },
+    },
   ],
   plugins: ["effecttsgo"],
   rules: {

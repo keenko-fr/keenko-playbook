@@ -1,0 +1,7 @@
+import { FunctionSpec, GroupSpec } from "@confect/core";
+
+import type { getCurrentAuthentication, getProtectedAuthentication } from "./authentication";
+
+export default GroupSpec.make()
+  .addFunction(FunctionSpec.convexPublicQuery<typeof getCurrentAuthentication>()("getCurrentAuthentication"))
+  .addFunction(FunctionSpec.convexPublicQuery<typeof getProtectedAuthentication>()("getProtectedAuthentication"));

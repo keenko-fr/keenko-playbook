@@ -1,0 +1,8 @@
+import { AuthKit } from "@convex-dev/workos-authkit";
+import type { GenericDataModel } from "convex/server";
+
+import { components } from "./_generated/components";
+
+// AUTHKIT ---------------------------------------------------------------------------------------------------------------------------------
+// The synchronized WorkOS user is authentication infrastructure identity. It is not the application's canonical domain user.
+export const authKit = new AuthKit<GenericDataModel>(components.workOSAuthKit);

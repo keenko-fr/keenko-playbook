@@ -8,15 +8,17 @@ import { packageVersions } from "../../versions.js";
 
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
 export const START_ROUTE_TREE_FOOTER = `import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }`;
 
 export const webDependencies = Struct.pick(packageVersions, [
+  "@confect/core",
   "@convex-dev/react-query",
   "@tailwindcss/vite",
   "@tanstack/react-devtools",
@@ -28,6 +30,7 @@ export const webDependencies = Struct.pick(packageVersions, [
   "@tanstack/react-router-ssr-query",
   "@tanstack/react-start",
   "@tanstack/react-table",
+  "@workos/authkit-tanstack-react-start",
   "convex",
   "effect",
   "react",
@@ -36,6 +39,7 @@ export const webDependencies = Struct.pick(packageVersions, [
 ]);
 export const webDevDependencies = Struct.pick(packageVersions, [
   "@inlang/paraglide-js",
+  "@playwright/test",
   "@tanstack/devtools-vite",
   "@tanstack/router-cli",
   "@testing-library/dom",
@@ -44,6 +48,7 @@ export const webDevDependencies = Struct.pick(packageVersions, [
   "@types/react",
   "@types/react-dom",
   "@vitejs/plugin-react",
+  "@workos-inc/node",
   "jsdom",
   "typescript",
   "vite",
@@ -121,7 +126,12 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
 
   updateJson<PackageJson>(tree, "apps/web/package.json", (packageJson) => ({
     ...packageJson,
-    dependencies: { ...webDependencies, [`@${workspace}/shared`]: "workspace:*", [`@${workspace}/ui`]: "workspace:*" },
+    dependencies: {
+      ...webDependencies,
+      [`@${workspace}/backend`]: "workspace:*",
+      [`@${workspace}/shared`]: "workspace:*",
+      [`@${workspace}/ui`]: "workspace:*",
+    },
     devDependencies: webDevDependencies,
     imports: {
       ...packageJson.imports,
@@ -147,6 +157,7 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
       ...packageJson.scripts,
       codegen:
         "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy url baseLocale --no-emit-readme && tsr generate",
+      "test:auth:e2e": "playwright test --config playwright.config.ts --headed --workers=1",
     },
   }));
 

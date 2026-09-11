@@ -50,30 +50,31 @@ That topology is authoritative for:
 
 Do not duplicate or invent a different section grammar in project-local Confect files.
 
-## Confect refs vs native Convex refs
+## Caller representation: Convex api vs Confect refs
 
 Use the representation appropriate to the caller:
 
 ```text
-Confect ref
-→ application contract
-→ Args/Returns codecs
-→ typed Effect/codec information
+Browser / TanStack / ordinary JavaScript
+→ generated Convex api
+→ encoded plain-JavaScript args and results
 
-Convex api/internal/components ref
-→ native Convex FunctionReference
-→ integrations requiring native references
+Effect / server consumer
+→ generated Confect refs
+→ Args/Returns codecs and typed Effect-domain information
 ```
 
-Do not add cosmetic wrappers between them.
+React/browser code should not use Confect React helpers merely to decode `Option`, `Either`, typed Effect values, or other Effect-domain representations. Keep those representations on the Effect side of the boundary unless the UI has a specific product reason to own them. Do not add Keenko wrappers around either generated surface.
+
+Using generated Convex `api` in the browser does not replace the backend's Confect `FunctionSpec`/`GroupSpec` or implementation. Confect can remain the authoritative backend contract while Convex codegen exposes its encoded native function references to ordinary JavaScript callers. See `../tanstack-query/README.md` for browser query, mutation, action, and pagination lifecycle.
 
 Native Convex remains appropriate where required/materially better for components, workflows, third-party Convex libraries, generated/native APIs, and specific HTTP/provider/framework integrations. Verify installed Confect support before replacing a native boundary.
 
 ## Client/server use
 
-Browser calls use the best installed reactive/client integration; do not force Effect execution into React for symmetry. A Confect-backed mutation may be called through the appropriate client/ref while TanStack Mutation owns pending/error/success UI state.
+Browser calls use generated Convex `api` by default; do not force Effect execution or Confect decoding into React for symmetry. TanStack Query owns browser server-state lifecycle around the native Convex reference while the backend function may remain Confect-specified and implemented.
 
-TanStack Start server functions that meaningfully orchestrate validation/auth/multiple backend calls may use Effect internally; run the Effect once at the server-function boundary. Direct server-side Confect calls derive args from the actual ref (`Ref.Args<...>`) and use the codec-aware runner/client path rather than reconstructing types from a form/domain schema.
+TanStack Start ServerFns do not proxy ordinary Convex CRUD. Call Convex directly from the browser for ordinary query/mutation flows. A ServerFn may use Effect and Confect `refs` when the Start server performs genuine work: server-only authentication or validation, secret access, orchestration across multiple backend/provider calls, or explicit retry, timeout, concurrency, and failure policy. Run the Effect once at that server-function boundary. Direct server-side Confect calls derive args from the actual ref (`Ref.Args<...>`) and use the codec-aware runner/client path rather than reconstructing types from a form/domain schema.
 
 Keep these trust boundaries distinct:
 

@@ -11,6 +11,7 @@ import {
 import { packageVersions } from "../src/generators/versions.js";
 
 const OXC_EXTENSION = "oxc.oxc-vscode";
+const expectedBackendDev = `WORKOS_CLIENT_ID="$(bun --eval 'process.stdout.write(crypto.randomUUID())')" WORKOS_API_KEY="$(bun --eval 'process.stdout.write(crypto.randomUUID())')" WORKOS_WEBHOOK_SECRET="$(bun --eval 'process.stdout.write(crypto.randomUUID())')" confect dev`;
 const canonicalVscodeSettings = {
   "editor.codeActionsOnSave": {
     "source.fixAll.oxc": "always",
@@ -88,7 +89,26 @@ const sDevDependenciesPackage = S.fromJsonString(S.Struct({ devDependencies: S.R
 const sLifecyclePackage = S.fromJsonString(
   S.Struct({ devDependencies: S.Record(S.String, S.String), scripts: S.Record(S.String, S.String) })
 );
-const sConvexConfig = S.fromJsonString(S.Struct({ $schema: S.String, functions: S.String }));
+const sConvexConfig = S.fromJsonString(
+  S.Struct({
+    $schema: S.String,
+    authKit: S.Struct({
+      dev: S.Struct({
+        configure: S.Struct({
+          appHomepageUrl: S.String,
+          corsOrigins: S.Array(S.String),
+          redirectUris: S.Array(S.String),
+        }),
+        localEnvVars: S.Struct({
+          WORKOS_API_KEY: S.String,
+          WORKOS_CLIENT_ID: S.String,
+          WORKOS_REDIRECT_URI: S.String,
+        }),
+      }),
+    }),
+    functions: S.String,
+  })
+);
 const sManifest = S.fromJsonString(S.Record(S.String, S.Unknown));
 const sProject = S.fromJsonString(S.Struct({ targets: S.Record(S.String, S.Unknown) }));
 const sInlangSettings = S.fromJsonString(S.Struct({ baseLocale: S.String, locales: S.Array(S.String) }));
@@ -205,6 +225,10 @@ const product = E.gen(function* () {
     GIT_CONFIG_VALUE_0: "true",
     NX_DAEMON: "false",
     NX_INTERACTIVE: "false",
+    WORKOS_API_KEY: "",
+    WORKOS_CLIENT_ID: "",
+    WORKOS_COOKIE_PASSWORD: "",
+    WORKOS_WEBHOOK_SECRET: "",
   };
   const { bootstrapEnv, bootstrapExecutable, localLicense, packageVersion } = yield* preparePackageSource(
     source,
@@ -279,6 +303,10 @@ const product = E.gen(function* () {
   const rootManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "package.json")));
   yield* assert(rootManifest.type === "module", "Generated root package is not explicitly an ES module");
   const lifecyclePackage = yield* S.decodeEffect(sLifecyclePackage)(yield* fs.readFileString(path.join(workspace, "package.json")));
+  const backendLifecyclePackage = yield* S.decodeEffect(sLifecyclePackage)(
+    yield* fs.readFileString(path.join(workspace, "packages/backend/package.json"))
+  );
+  const backendManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "packages/backend/package.json")));
   const webManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
   const webDependencies = yield* S.decodeUnknownEffect(S.Record(S.String, S.String))(webManifest.dependencies);
   yield* assert(
@@ -297,6 +325,28 @@ const product = E.gen(function* () {
     lifecyclePackage.devDependencies["@tanstack/react-start"] === packageVersions["@tanstack/react-start"],
     "Root React Start detection marker does not use the canonical exact version"
   );
+  yield* assert(
+    webDependencies["@workos/authkit-tanstack-react-start"] === packageVersions["@workos/authkit-tanstack-react-start"],
+    "Generated web does not use the canonical AuthKit TanStack Start SDK"
+  );
+  yield* assert(
+    lifecyclePackage.scripts["test:auth:e2e"] === "bun --env-file=../../.env.local run --cwd apps/web test:auth:e2e",
+    "Generated root does not expose the separate provisioned authentication smoke"
+  );
+  yield* assert(
+    backendLifecyclePackage.scripts.dev === expectedBackendDev,
+    "Generated local Confect watcher does not contain eager WorkOS validation with process-scoped sentinels"
+  );
+  yield* assert(
+    isDeepStrictEqual(backendManifest.exports, {
+      "./confect/_generated/refs": "./confect/_generated/refs.js",
+      "./convex/_generated/api": {
+        default: "./convex/_generated/api.js",
+        types: "./convex/_generated/api.d.ts",
+      },
+    }),
+    "Generated backend does not expose both canonical caller representations"
+  );
   for (const rootCode of (yield* fs.readDirectory(workspace)).filter((entry) => /\.(?:c|m)?(?:j|t)sx?$/u.test(entry)))
     yield* assert(
       !(yield* fs.readFileString(path.join(workspace, rootCode))).includes("@tanstack/react-start"),
@@ -306,6 +356,20 @@ const product = E.gen(function* () {
   yield* assert(
     isDeepStrictEqual(convexConfig, {
       $schema: "./node_modules/convex/schemas/convex.schema.json",
+      authKit: {
+        dev: {
+          configure: {
+            appHomepageUrl: "http://localhost:3000",
+            corsOrigins: ["http://localhost:3000"],
+            redirectUris: ["http://localhost:3000/api/auth/callback"],
+          },
+          localEnvVars: {
+            WORKOS_API_KEY: `\${authEnv.WORKOS_API_KEY}`,
+            WORKOS_CLIENT_ID: `\${authEnv.WORKOS_CLIENT_ID}`,
+            WORKOS_REDIRECT_URI: "http://localhost:3000/api/auth/callback",
+          },
+        },
+      },
       functions: "packages/backend/convex",
     }),
     "Generated root Convex configuration does not preserve backend source ownership"
@@ -327,6 +391,15 @@ const product = E.gen(function* () {
   const envModule = path.join(workspace, "apps/web/src/config/env.ts");
   const viteConfig = path.join(workspace, "apps/web/vite.config.ts");
   const rootRoute = path.join(workspace, "apps/web/src/routes/__root.tsx");
+  const authStart = path.join(workspace, "apps/web/src/start.ts");
+  const authCallback = path.join(workspace, "apps/web/src/routes/api/auth/callback.tsx");
+  const authSignIn = path.join(workspace, "apps/web/src/routes/api/auth/sign-in.tsx");
+  const protectedRoute = path.join(workspace, "apps/web/src/routes/protected.tsx");
+  const backendAuthenticationSource = path.join(workspace, "packages/backend/confect/authentication.ts");
+  const backendWorkOS = path.join(workspace, "packages/backend/confect/workos.ts");
+  const backendAuthConfig = path.join(workspace, "packages/backend/convex/auth.config.ts");
+  const backendHttp = path.join(workspace, "packages/backend/convex/http.ts");
+  const backendAuthentication = path.join(workspace, "packages/backend/convex/authentication.ts");
 
   const homeRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
   const inlangSettings = path.join(workspace, "apps/web/project.inlang/settings.json");
@@ -336,6 +409,52 @@ const product = E.gen(function* () {
 
   yield* assert(!(yield* fs.exists(components)), "Fresh creation retained TanStack's generated components directory");
   yield* assert(!(yield* fs.exists(integrations)), "Fresh creation retained TanStack's generated integrations directory");
+  for (const authFile of [
+    authStart,
+    authCallback,
+    authSignIn,
+    protectedRoute,
+    backendAuthenticationSource,
+    backendWorkOS,
+    backendAuthConfig,
+    backendHttp,
+    backendAuthentication,
+  ])
+    yield* assert(yield* fs.exists(authFile), `Fresh creation is missing AuthKit scaffold: ${path.relative(workspace, authFile)}`);
+  yield* assert(
+    (yield* fs.readFileString(authStart)).includes("requestMiddleware: [csrfMiddleware, authkitMiddleware()]"),
+    "Generated AuthKit middleware does not preserve TanStack Start CSRF protection"
+  );
+  yield* assert(
+    (yield* fs.readFileString(backendWorkOS)).includes("new AuthKit<GenericDataModel>(components.workOSAuthKit)"),
+    "Generated backend does not install the official WorkOS AuthKit component client"
+  );
+  yield* assert(
+    yield* fs.exists(path.join(workspace, ".keenko/docs/stacks/workos-authkit/README.md")),
+    "Fresh creation is missing canonical WorkOS AuthKit guidance"
+  );
+  const tanStackQueryGuide = yield* fs.readFileString(path.join(workspace, ".keenko/docs/stacks/tanstack-query/README.md"));
+  const confectGuide = yield* fs.readFileString(path.join(workspace, ".keenko/docs/stacks/confect/README.md"));
+  const convexGuide = yield* fs.readFileString(path.join(workspace, ".keenko/docs/stacks/convex/README.md"));
+  yield* assert(
+    tanStackQueryGuide.includes("Browser, TanStack, and ordinary JavaScript consumers use Convex's generated `api` references by default"),
+    "Fresh creation is missing the canonical browser Convex api boundary"
+  );
+  yield* assert(
+    confectGuide.includes("Effect / server consumer\n→ generated Confect refs"),
+    "Fresh creation is missing the canonical Effect Confect refs boundary"
+  );
+  yield* assert(
+    convexGuide.includes("Infinite-scroll and load-more interfaces use native reactive Convex pagination"),
+    "Fresh creation is missing the native reactive pagination boundary"
+  );
+  const environmentExample = path.join(workspace, ".env.example");
+  yield* assert(yield* fs.exists(environmentExample), "Fresh creation is missing the secret-free env reference");
+  yield* assert(
+    !(yield* fs.readFileString(environmentExample)).includes("WORKOS_WEBHOOK_SECRET"),
+    "Fresh creation incorrectly asks developers to copy the deployment-only webhook secret into local environment state"
+  );
+  yield* assert(!(yield* fs.exists(path.join(workspace, ".env.local"))), "Fresh creation unexpectedly wrote WorkOS credentials");
   yield* assert(
     (yield* fs.readFileString(router)).includes("new ConvexQueryClient(convexClient)"),
     "Fresh creation did not install the Keenko router baseline"
@@ -377,6 +496,12 @@ const product = E.gen(function* () {
   const home = yield* fs.readFileString(homeRoute);
 
   yield* assert(home.includes("#/paraglide/messages"), "Fresh home route does not use generated Paraglide messages");
+  yield* assert(
+    home.includes("useQuery(convexQuery(api.authentication.getCurrentAuthentication, {}))"),
+    "Fresh home route does not use generated Convex api through TanStack Query"
+  );
+  yield* assert(!home.includes("@confect/react"), "Fresh home route decodes Confect representations in ordinary React code");
+  yield* assert(!home.includes("confect/_generated/refs"), "Fresh home route uses Confect refs instead of generated Convex api");
 
   for (const id of Object.keys(starterMessages))
     yield* assert(home.includes(`m.${id}(`), `Fresh home route does not use Paraglide message ${id}`);
@@ -387,6 +512,7 @@ const product = E.gen(function* () {
   yield* assert(
     isDeepStrictEqual(webRuntime.dependencies, {
       ...canonicalWebDependencies,
+      [`@${identity}/backend`]: "workspace:*",
       [`@${identity}/shared`]: "workspace:*",
       [`@${identity}/ui`]: "workspace:*",
     }),
@@ -415,6 +541,8 @@ const product = E.gen(function* () {
     "apps/web/src/routeTree.gen.ts",
     "apps/web/src/paraglide/messages.js",
     "packages/backend/confect/_generated/schema.ts",
+    "packages/backend/convex/_generated/api.d.ts",
+    "packages/backend/convex/_generated/api.js",
     "packages/backend/convex/schema.ts",
   ])
     yield* assert(yield* fs.exists(path.join(workspace, generated)), `Fresh creation did not materialize ${generated}`);
@@ -497,8 +625,8 @@ exec "${realGit}" "$@"
   const expectedBackendManifest = yield* fs.readFileString(backendManifestPath);
   const newGenerated = path.join(workspace, "packages/backend/confect/_generated/new-generated.ts");
   const changedBackendManifest = expectedBackendManifest.replace(
-    '"codegen": "confect codegen"',
-    '"codegen": "confect codegen && printf generated > confect/_generated/new-generated.ts"'
+    'confect codegen",',
+    'confect codegen && printf generated > confect/_generated/new-generated.ts",'
   );
   yield* assert(changedBackendManifest !== expectedBackendManifest, "Could not configure the new generated-file scenario");
   yield* fs.writeFileString(backendManifestPath, changedBackendManifest);

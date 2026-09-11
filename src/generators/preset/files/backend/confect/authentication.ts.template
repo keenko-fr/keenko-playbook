@@ -1,0 +1,44 @@
+import { queryGeneric, type RegisteredQuery } from "convex/server";
+import { authKit } from "./workos";
+
+// QUERIES ---------------------------------------------------------------------------------------------------------------------------------
+export const getCurrentAuthentication: RegisteredQuery<"public", Record<string, never>, AuthenticationStatus | null> = queryGeneric({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) return null;
+
+    const workOSUser = await authKit.getAuthUser(ctx);
+
+    return {
+      identityEmail: identity.email ?? null,
+      workOSUserEmail: workOSUser?.email ?? null,
+      workOSUserSynchronized: workOSUser !== null,
+    };
+  },
+});
+
+export const getProtectedAuthentication: RegisteredQuery<"public", Record<string, never>, ProtectedAuthentication> = queryGeneric({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) throw new Error("Not authenticated");
+
+    return {
+      subject: identity.subject,
+      tokenIdentifier: identity.tokenIdentifier,
+    };
+  },
+});
+
+// TYPES -----------------------------------------------------------------------------------------------------------------------------------
+interface AuthenticationStatus {
+  readonly identityEmail: string | null;
+  readonly workOSUserEmail: string | null;
+  readonly workOSUserSynchronized: boolean;
+}
+
+interface ProtectedAuthentication {
+  readonly subject: string;
+  readonly tokenIdentifier: string;
+}

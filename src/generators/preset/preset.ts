@@ -53,6 +53,7 @@ export const scripts = {
   "lint:fix": "oxlint --fix .",
   prepare: "effect-tsgo patch --no-typescript --oxlint",
   test: "nx run-many -t test",
+  "test:auth:e2e": "bun --env-file=../../.env.local run --cwd apps/web test:auth:e2e",
   typecheck: "nx run-many -t typecheck",
 } satisfies Record<string, string>;
 

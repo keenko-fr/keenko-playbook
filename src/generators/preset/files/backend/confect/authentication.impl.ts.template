@@ -1,0 +1,26 @@
+import { FunctionImpl, GroupImpl } from "@confect/server";
+import { Layer as L } from "effect";
+
+import databaseSchema from "./_generated/schema";
+import { getCurrentAuthentication, getProtectedAuthentication } from "./authentication";
+import authentication from "./authentication.spec";
+
+// QUERIES ---------------------------------------------------------------------------------------------------------------------------------
+const getCurrentAuthenticationImpl = FunctionImpl.make(
+  databaseSchema,
+  authentication,
+  "getCurrentAuthentication",
+  getCurrentAuthentication
+);
+const getProtectedAuthenticationImpl = FunctionImpl.make(
+  databaseSchema,
+  authentication,
+  "getProtectedAuthentication",
+  getProtectedAuthentication
+);
+
+export default GroupImpl.make(databaseSchema, authentication).pipe(
+  L.provide(getCurrentAuthenticationImpl),
+  L.provide(getProtectedAuthenticationImpl),
+  GroupImpl.finalize
+);
