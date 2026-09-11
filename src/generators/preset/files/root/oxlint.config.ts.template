@@ -45,7 +45,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/backend/**/*.ts"],
+      files: ["packages/backend/confect/**/*.impl.ts", "packages/backend/confect/**/*.spec.ts"],
       rules: {
         ...effectRules,
         ...effectTsgoRecommended.rules,
@@ -79,15 +79,6 @@ export default defineConfig({
         "typescript/return-await": "off",
         "unicorn/no-array-method-this-argument": "off",
         "unicorn/throw-new-error": "off",
-      },
-    },
-    {
-      files: ["packages/backend/confect/authentication.ts"],
-      rules: {
-        "effect/noAsyncFunction": "off",
-        "effect/noNewError": "off",
-        "effect/noNullish": "off",
-        "effect/noThrowStatement": "off",
       },
     },
   ],

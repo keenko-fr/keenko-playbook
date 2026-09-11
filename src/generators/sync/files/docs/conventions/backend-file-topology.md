@@ -77,11 +77,14 @@ INTERNAL MUTATIONS
 INTERNAL ACTIONS
 INTERNALS
 TYPES
+GROUP
 ```
 
 Group implementations by Confect function kind. Do not create one separator per individual implementation function.
 
-`SCHEMAS` owns only extracted schemas that genuinely belong to the implementation; their derived types remain adjacent. `INTERNALS` owns non-exported implementation helpers. `TYPES` is last and contains only standalone non-schema-derived types. Empty sections are omitted.
+`SCHEMAS` owns only extracted schemas that genuinely belong to the implementation; their derived types remain adjacent. `INTERNALS` owns non-exported implementation helpers. `TYPES` contains only standalone non-schema-derived types and precedes `GROUP` when a group implementation is present. Empty sections are omitted.
+
+`GROUP` is required for a Confect group implementation and owns the final `GroupImpl.make(...).pipe(...)` assembly. It is always last, after any `INTERNALS` and `TYPES` sections.
 
 ## Feature files
 

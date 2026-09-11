@@ -1,25 +1,31 @@
-import { FunctionImpl, GroupImpl } from "@confect/server";
-import { Layer as L } from "effect";
+import { Auth, FunctionImpl, GroupImpl } from "@confect/server";
+import { Effect as E, Layer as L } from "effect";
 
 import databaseSchema from "./_generated/schema";
-import { getCurrentAuthentication, getProtectedAuthentication } from "./authentication";
-import authentication from "./authentication.spec";
+import { getCurrentAuthentication } from "./authentication";
+import spec, { AuthenticationRequired } from "./authentication.spec";
 
 // QUERIES ---------------------------------------------------------------------------------------------------------------------------------
 const getCurrentAuthenticationImpl = FunctionImpl.make(
   databaseSchema,
-  authentication,
+  spec,
   "getCurrentAuthentication",
   getCurrentAuthentication
 );
-const getProtectedAuthenticationImpl = FunctionImpl.make(
-  databaseSchema,
-  authentication,
-  "getProtectedAuthentication",
-  getProtectedAuthentication
+const getProtectedAuthenticationImpl = FunctionImpl.make(databaseSchema, spec, "getProtectedAuthentication", () =>
+  E.gen(function* () {
+    const auth = yield* Auth.Auth;
+    const identity = yield* auth.getUserIdentity.pipe(E.mapError(() => new AuthenticationRequired()));
+
+    return {
+      subject: identity.subject,
+      tokenIdentifier: identity.tokenIdentifier,
+    };
+  })
 );
 
-export default GroupImpl.make(databaseSchema, authentication).pipe(
+// GROUP -----------------------------------------------------------------------------------------------------------------------------------
+export default GroupImpl.make(databaseSchema, spec).pipe(
   L.provide(getCurrentAuthenticationImpl),
   L.provide(getProtectedAuthenticationImpl),
   GroupImpl.finalize

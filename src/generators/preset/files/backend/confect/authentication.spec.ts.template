@@ -1,7 +1,23 @@
 import { FunctionSpec, GroupSpec } from "@confect/core";
+import * as Schema from "effect/Schema";
 
-import type { getCurrentAuthentication, getProtectedAuthentication } from "./authentication";
+import type { getCurrentAuthentication } from "./authentication";
 
+// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------
+export class AuthenticationRequired extends Schema.TaggedError<AuthenticationRequired>()("AuthenticationRequired", {}) {}
+
+// SPEC ------------------------------------------------------------------------------------------------------------------------------------
 export default GroupSpec.make()
+  // QUERIES -------------------------------------------------------------------------------------------------------------------------------
   .addFunction(FunctionSpec.convexPublicQuery<typeof getCurrentAuthentication>()("getCurrentAuthentication"))
-  .addFunction(FunctionSpec.convexPublicQuery<typeof getProtectedAuthentication>()("getProtectedAuthentication"));
+  .addFunction(
+    FunctionSpec.publicQuery({
+      error: () => AuthenticationRequired,
+      name: "getProtectedAuthentication",
+      returns: () =>
+        Schema.Struct({
+          subject: Schema.String,
+          tokenIdentifier: Schema.String,
+        }),
+    })
+  );

@@ -1,44 +1,22 @@
-import { queryGeneric, type RegisteredQuery } from "convex/server";
+import { queryGeneric } from "convex/server";
+import { Effect as E, Option as O } from "effect";
+
 import { authKit } from "./workos";
 
 // QUERIES ---------------------------------------------------------------------------------------------------------------------------------
-export const getCurrentAuthentication: RegisteredQuery<"public", Record<string, never>, AuthenticationStatus | null> = queryGeneric({
+export const getCurrentAuthentication = queryGeneric({
   args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (identity === null) return null;
+  handler: async (ctx) =>
+    await E.gen(function* currentAuthenticationWorkflow() {
+      const identity = yield* E.promise(async () => await ctx.auth.getUserIdentity());
+      if (identity === null) return null;
 
-    const workOSUser = await authKit.getAuthUser(ctx);
+      const workOSUser = yield* E.promise(async () => await authKit.getAuthUser(ctx));
 
-    return {
-      identityEmail: identity.email ?? null,
-      workOSUserEmail: workOSUser?.email ?? null,
-      workOSUserSynchronized: workOSUser !== null,
-    };
-  },
+      return {
+        identityEmail: O.getOrNull(O.fromNullishOr(identity.email)),
+        workOSUserEmail: O.getOrNull(O.fromNullishOr(workOSUser?.email)),
+        workOSUserSynchronized: workOSUser !== null,
+      };
+    }).pipe(E.runPromise),
 });
-
-export const getProtectedAuthentication: RegisteredQuery<"public", Record<string, never>, ProtectedAuthentication> = queryGeneric({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (identity === null) throw new Error("Not authenticated");
-
-    return {
-      subject: identity.subject,
-      tokenIdentifier: identity.tokenIdentifier,
-    };
-  },
-});
-
-// TYPES -----------------------------------------------------------------------------------------------------------------------------------
-interface AuthenticationStatus {
-  readonly identityEmail: string | null;
-  readonly workOSUserEmail: string | null;
-  readonly workOSUserSynchronized: boolean;
-}
-
-interface ProtectedAuthentication {
-  readonly subject: string;
-  readonly tokenIdentifier: string;
-}

@@ -396,6 +396,8 @@ const product = E.gen(function* () {
   const authSignIn = path.join(workspace, "apps/web/src/routes/api/auth/sign-in.tsx");
   const protectedRoute = path.join(workspace, "apps/web/src/routes/protected.tsx");
   const backendAuthenticationSource = path.join(workspace, "packages/backend/confect/authentication.ts");
+  const backendAuthenticationSpec = path.join(workspace, "packages/backend/confect/authentication.spec.ts");
+  const backendAuthenticationImpl = path.join(workspace, "packages/backend/confect/authentication.impl.ts");
   const backendWorkOS = path.join(workspace, "packages/backend/confect/workos.ts");
   const backendAuthConfig = path.join(workspace, "packages/backend/convex/auth.config.ts");
   const backendHttp = path.join(workspace, "packages/backend/convex/http.ts");
@@ -415,6 +417,8 @@ const product = E.gen(function* () {
     authSignIn,
     protectedRoute,
     backendAuthenticationSource,
+    backendAuthenticationSpec,
+    backendAuthenticationImpl,
     backendWorkOS,
     backendAuthConfig,
     backendHttp,
@@ -429,6 +433,45 @@ const product = E.gen(function* () {
     (yield* fs.readFileString(backendWorkOS)).includes("new AuthKit<GenericDataModel>(components.workOSAuthKit)"),
     "Generated backend does not install the official WorkOS AuthKit component client"
   );
+  const authenticationSource = yield* fs.readFileString(backendAuthenticationSource);
+  const authenticationSpec = yield* fs.readFileString(backendAuthenticationSpec);
+  const authenticationImpl = yield* fs.readFileString(backendAuthenticationImpl);
+  const oxlintConfig = yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"));
+  yield* assert(authenticationSource.includes("handler: async (ctx)"), "Generated authentication does not use the native context boundary");
+  yield* assert(authenticationSource.includes("E.runPromise"), "Generated authentication does not run its native-boundary Effect");
+  yield* assert(
+    !authenticationSource.includes("RegisteredQuery"),
+    "Generated authentication retains an unnecessary RegisteredQuery annotation"
+  );
+  yield* assert(!authenticationSource.includes("throw new Error"), "Generated authentication retains an application throw");
+  yield* assert(
+    authenticationSpec.includes(
+      "// SPEC ------------------------------------------------------------------------------------------------------------------------------------"
+    ),
+    "Generated auth spec is missing its level-1 SPEC section"
+  );
+  yield* assert(
+    authenticationSpec.includes(
+      "// QUERIES -------------------------------------------------------------------------------------------------------------------------------"
+    ),
+    "Generated auth spec is missing its query separator"
+  );
+  yield* assert(
+    authenticationSpec.includes("FunctionSpec.publicQuery"),
+    "Generated protected authentication is not a Confect Effect function"
+  );
+  yield* assert(authenticationImpl.includes("yield* Auth.Auth"), "Generated protected authentication does not use Confect Auth");
+  yield* assert(
+    authenticationImpl.includes(
+      "// GROUP -----------------------------------------------------------------------------------------------------------------------------------"
+    ),
+    "Generated auth impl is missing its final GROUP section"
+  );
+  yield* assert(
+    oxlintConfig.includes('files: ["packages/backend/confect/**/*.impl.ts", "packages/backend/confect/**/*.spec.ts"]'),
+    "Generated Effect lint scope is not limited to authored Confect source"
+  );
+  yield* assert(!oxlintConfig.includes('"effect/noAsyncFunction": "off"'), "Generated auth lint carve-out remains");
   yield* assert(
     yield* fs.exists(path.join(workspace, ".keenko/docs/stacks/workos-authkit/README.md")),
     "Fresh creation is missing canonical WorkOS AuthKit guidance"

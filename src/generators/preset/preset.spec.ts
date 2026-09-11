@@ -650,7 +650,34 @@ describe("keenko preset", () => {
         expect(tree.read("packages/backend/confect/workos.ts", "utf-8")).toContain(
           "new AuthKit<GenericDataModel>(components.workOSAuthKit)"
         );
-        expect(tree.read("packages/backend/confect/authentication.ts", "utf-8")).toContain("ctx.auth.getUserIdentity()");
+        const authenticationSource = tree.read("packages/backend/confect/authentication.ts", "utf-8");
+        const authenticationSpec = tree.read("packages/backend/confect/authentication.spec.ts", "utf-8");
+        const authenticationImpl = tree.read("packages/backend/confect/authentication.impl.ts", "utf-8");
+        const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
+
+        expect(authenticationSource).toContain("handler: async (ctx)");
+        expect(authenticationSource).toContain("E.runPromise");
+        expect(authenticationSource).toContain("ctx.auth.getUserIdentity()");
+        expect(authenticationSource).not.toContain("RegisteredQuery");
+        expect(authenticationSource).not.toContain("throw new Error");
+        expect(authenticationSpec).toContain(
+          "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
+        );
+        expect(authenticationSpec).toContain(
+          "// SPEC ------------------------------------------------------------------------------------------------------------------------------------"
+        );
+        expect(authenticationSpec).toContain(
+          "// QUERIES -------------------------------------------------------------------------------------------------------------------------------"
+        );
+        expect(authenticationSpec).toContain("FunctionSpec.publicQuery");
+        expect(authenticationImpl).toContain("yield* Auth.Auth");
+        expect(authenticationImpl).toContain("AuthenticationRequired");
+        expect(authenticationImpl).toContain(
+          "// GROUP -----------------------------------------------------------------------------------------------------------------------------------"
+        );
+        expect(oxlintConfig).toContain('files: ["packages/backend/confect/**/*.impl.ts", "packages/backend/confect/**/*.spec.ts"]');
+        expect(oxlintConfig).not.toContain('files: ["packages/backend/**/*.ts"]');
+        expect(oxlintConfig).not.toContain('"effect/noAsyncFunction": "off"');
         expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain("requestMiddleware: [csrfMiddleware, authkitMiddleware()]");
         expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).toContain(
           "useQuery(convexQuery(api.authentication.getCurrentAuthentication, {}))"
