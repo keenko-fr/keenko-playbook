@@ -458,25 +458,53 @@ const product = E.gen(function* () {
   );
   const identitySpec = yield* fs.readFileString(backendIdentitySpec);
   const identityImpl = yield* fs.readFileString(backendIdentityImpl);
+  const findCurrentImplementation = O.getOrElse(
+    O.fromNullishOr(/const findCurrentImpl[\s\S]*?(?=const getCurrentImpl)/u.exec(identityImpl)).pipe(O.map((match) => match[0])),
+    () => ""
+  );
+  const findSynchronizedImplementation = O.getOrElse(
+    O.fromNullishOr(/const findSynchronizedImpl[\s\S]*?(?=\/\/ INTERNALS)/u.exec(identityImpl)).pipe(O.map((match) => match[0])),
+    () => ""
+  );
   const oxlintConfig = yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"));
   yield* assert(
-    identitySpec.match(/FunctionSpec\.publicQuery/gu)?.length === 2,
-    "Generated identity spec does not contain two Confect queries"
+    identitySpec.match(/FunctionSpec\.publicQuery/gu)?.length === 3,
+    "Generated identity spec does not contain three Confect queries"
   );
   yield* assert(!identitySpec.includes("FunctionSpec.convexPublicQuery"), "Generated findCurrent retains native provenance");
   yield* assert(identitySpec.includes('name: "findCurrent"'), "Generated identity spec is missing findCurrent");
   yield* assert(identitySpec.includes('name: "getCurrent"'), "Generated identity spec is missing getCurrent");
-  yield* assert(identitySpec.includes("Schema.OptionFromNullOr(sCurrentIdentity)"), "Generated findCurrent is not nullable on transport");
-  yield* assert(identitySpec.includes("AuthenticationRequired"), "Generated getCurrent is missing its typed auth failure");
-  yield* assert(identityImpl.includes("const auth = yield* Auth"), "Generated findCurrent does not use Confect Auth");
-  yield* assert(identityImpl.includes("const ctx = yield* QueryCtx"), "Generated findCurrent does not use generated Confect QueryCtx");
+  yield* assert(identitySpec.includes('name: "findSynchronized"'), "Generated identity spec is missing findSynchronized");
   yield* assert(
-    identityImpl.includes("E.option(auth.getUserIdentity)"),
+    identitySpec.includes("returns: () => Schema.OptionFromNullOr(sCurrentIdentity)"),
+    "Generated findCurrent is not nullable on transport"
+  );
+  yield* assert(identitySpec.includes("returns: () => sCurrentIdentity"), "Generated getCurrent does not share CurrentIdentity");
+  yield* assert(
+    identitySpec.includes("Schema.OptionFromNullOr(sSynchronizedIdentity)"),
+    "Generated findSynchronized is not nullable on transport"
+  );
+  yield* assert(identitySpec.includes("AuthenticationRequired"), "Generated getCurrent is missing its typed auth failure");
+  yield* assert(findCurrentImplementation.includes("const auth = yield* Auth"), "Generated findCurrent does not use Confect Auth");
+  yield* assert(
+    identityImpl.includes("E.map(toCurrentIdentity), E.option"),
     "Generated findCurrent does not represent optional identity with Option"
   );
   yield* assert(
-    identityImpl.includes("E.promise(() => authKit.getAuthUser(ctx))"),
-    "Generated findCurrent does not adapt the native WorkOS Promise"
+    identityImpl.includes('FunctionImpl.make(databaseSchema, identity, "findSynchronized"'),
+    "Generated identity implementation is missing findSynchronized"
+  );
+  yield* assert(!findCurrentImplementation.includes("QueryCtx"), "Generated findCurrent unexpectedly uses QueryCtx");
+  yield* assert(!findCurrentImplementation.includes("authKit"), "Generated findCurrent unexpectedly uses WorkOS");
+  yield* assert(findCurrentImplementation.includes("auth.getUserIdentity"), "Generated findCurrent does not use Auth identity");
+  yield* assert(findSynchronizedImplementation.includes("const ctx = yield* QueryCtx"), "Generated findSynchronized does not use QueryCtx");
+  yield* assert(
+    findSynchronizedImplementation.includes("E.promise(() => authKit.getAuthUser(ctx))"),
+    "Generated findSynchronized does not adapt the native WorkOS Promise"
+  );
+  yield* assert(
+    !findSynchronizedImplementation.includes("auth.getUserIdentity"),
+    "Generated findSynchronized redundantly performs its own Auth lookup"
   );
   yield* assert(!identityImpl.includes("queryGeneric"), "Generated identity implementation retains a native query boundary");
   yield* assert(!identityImpl.includes("Auth.layer"), "Generated identity implementation manually provides Confect Auth");
@@ -573,6 +601,11 @@ const product = E.gen(function* () {
     home.includes("useQuery(convexQuery(api.identity.findCurrent, {}))"),
     "Fresh home route does not use generated Convex api through TanStack Query"
   );
+  yield* assert(
+    home.includes("useQuery(convexQuery(api.identity.findSynchronized, {}))"),
+    "Fresh home route does not query synchronized identity separately"
+  );
+  yield* assert(!home.includes("workOSUserSynchronized"), "Fresh home route retains the composite identity flag");
   yield* assert(!home.includes("@confect/react"), "Fresh home route decodes Confect representations in ordinary React code");
   yield* assert(!home.includes("confect/_generated/refs"), "Fresh home route uses Confect refs instead of generated Convex api");
 

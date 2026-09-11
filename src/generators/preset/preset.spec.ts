@@ -661,6 +661,20 @@ describe("keenko preset", () => {
         expect(tree.exists("packages/backend/confect/identity.ts")).toBe(false);
         const identitySpec = tree.read("packages/backend/confect/identity.spec.ts", "utf-8");
         const identityImpl = tree.read("packages/backend/confect/identity.impl.ts", "utf-8");
+        const findCurrentImplementation = O.getOrElse(
+          O.fromNullishOr(identityImpl).pipe(
+            O.flatMap((source) => O.fromNullishOr(/const findCurrentImpl[\s\S]*?(?=const getCurrentImpl)/u.exec(source))),
+            O.map((match) => match[0])
+          ),
+          () => ""
+        );
+        const findSynchronizedImplementation = O.getOrElse(
+          O.fromNullishOr(identityImpl).pipe(
+            O.flatMap((source) => O.fromNullishOr(/const findSynchronizedImpl[\s\S]*?(?=\/\/ INTERNALS)/u.exec(source))),
+            O.map((match) => match[0])
+          ),
+          () => ""
+        );
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(identitySpec).toContain(
@@ -672,16 +686,24 @@ describe("keenko preset", () => {
         expect(identitySpec).toContain(
           "// QUERIES -------------------------------------------------------------------------------------------------------------------------------"
         );
-        expect(identitySpec?.match(/FunctionSpec\.publicQuery/gu) ?? []).toHaveLength(2);
+        expect(identitySpec?.match(/FunctionSpec\.publicQuery/gu) ?? []).toHaveLength(3);
         expect(identitySpec).not.toContain("FunctionSpec.convexPublicQuery");
         expect(identitySpec).toContain('name: "findCurrent"');
         expect(identitySpec).toContain('name: "getCurrent"');
-        expect(identitySpec).toContain("Schema.OptionFromNullOr(sCurrentIdentity)");
+        expect(identitySpec).toContain('name: "findSynchronized"');
+        expect(identitySpec).toContain("returns: () => Schema.OptionFromNullOr(sCurrentIdentity)");
+        expect(identitySpec).toContain("returns: () => sCurrentIdentity");
+        expect(identitySpec).toContain("Schema.OptionFromNullOr(sSynchronizedIdentity)");
         expect(identitySpec).toContain("AuthenticationRequired");
-        expect(identityImpl).toContain("const auth = yield* Auth");
-        expect(identityImpl).toContain("const ctx = yield* QueryCtx");
-        expect(identityImpl).toContain("E.option(auth.getUserIdentity)");
-        expect(identityImpl).toContain("E.promise(() => authKit.getAuthUser(ctx))");
+        expect(findCurrentImplementation).toContain("const auth = yield* Auth");
+        expect(identityImpl).toContain("E.map(toCurrentIdentity), E.option");
+        expect(findCurrentImplementation).not.toContain("QueryCtx");
+        expect(findCurrentImplementation).not.toContain("authKit");
+        expect(findCurrentImplementation).toContain("auth.getUserIdentity");
+        expect(findSynchronizedImplementation).toContain("const ctx = yield* QueryCtx");
+        expect(findSynchronizedImplementation).toContain("E.promise(() => authKit.getAuthUser(ctx))");
+        expect(findSynchronizedImplementation).not.toContain("auth.getUserIdentity");
+        expect(identityImpl).toContain('FunctionImpl.make(databaseSchema, identity, "findSynchronized"');
         expect(identityImpl).toContain("AuthenticationRequired");
         expect(identityImpl).toContain('FunctionImpl.make(databaseSchema, identity, "getCurrent"');
         expect(identityImpl).not.toContain("queryGeneric");
@@ -696,6 +718,8 @@ describe("keenko preset", () => {
         expect(oxlintConfig).not.toContain('"effect/noAsyncFunction": "off"');
         expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain("requestMiddleware: [csrfMiddleware, authkitMiddleware()]");
         expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).toContain("useQuery(convexQuery(api.identity.findCurrent, {}))");
+        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).toContain("useQuery(convexQuery(api.identity.findSynchronized, {}))");
+        expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("workOSUserSynchronized");
         expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("@confect/react");
         expect(tree.read("apps/web/src/routes/index.tsx", "utf-8")).not.toContain("confect/_generated/refs");
         expect(tree.read("apps/web/src/routes/protected.tsx", "utf-8")).toContain("const { user } = await getAuth()");

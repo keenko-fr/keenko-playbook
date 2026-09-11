@@ -43,19 +43,18 @@ function IndexPage() {
 
 function IdentityStatus() {
   const { data: currentIdentity } = useQuery(convexQuery(api.identity.findCurrent, {}));
+  const { data: synchronizedIdentity } = useQuery(convexQuery(api.identity.findSynchronized, {}));
 
   if (currentIdentity === undefined || currentIdentity === null) return null;
-
-  const { identityEmail, workOSUserEmail, workOSUserSynchronized } = currentIdentity;
 
   return (
     <section>
       <p data-testid="convex-authenticated">
-        {m.swift_coral_panda()}: {identityEmail}
+        {m.swift_coral_panda()}: {currentIdentity.email}
       </p>
-      {workOSUserSynchronized ? (
+      {synchronizedIdentity !== undefined && synchronizedIdentity !== null ? (
         <p data-testid="workos-user-synchronized">
-          {m.warm_violet_whale()}: {workOSUserEmail}
+          {m.warm_violet_whale()}: {synchronizedIdentity.email}
         </p>
       ) : null}
     </section>

@@ -1,51 +1,53 @@
+import type { UserIdentity } from "convex/server";
 import { FunctionImpl, GroupImpl } from "@confect/server";
 import { Effect as E, Layer as L, Option as O } from "effect";
 
 import databaseSchema from "./_generated/schema";
 import { Auth, QueryCtx } from "./_generated/services";
-import identity, { AuthenticationRequired, type CurrentIdentity } from "./identity.spec";
+import spec, { AuthenticationRequired, type CurrentIdentity, type SynchronizedIdentity } from "./identity.spec";
 import { authKit } from "./workos";
 
 // QUERIES ---------------------------------------------------------------------------------------------------------------------------------
-const findCurrentImpl = FunctionImpl.make(databaseSchema, identity, "findCurrent", () =>
+const findCurrent = FunctionImpl.make(databaseSchema, spec, "findCurrent", () =>
   E.gen(function* () {
     const auth = yield* Auth;
-    const ctx = yield* QueryCtx;
-    const currentIdentity = yield* E.option(auth.getUserIdentity);
-
-    return yield* O.match(currentIdentity, {
-      onNone: () => E.succeed(O.none<CurrentIdentity>()),
-      onSome: (authenticatedIdentity) =>
-        E.promise(() => authKit.getAuthUser(ctx)).pipe(
-          E.map((workOSUser) => {
-            const synchronizedUser = O.fromNullishOr(workOSUser);
-
-            return O.some({
-              identityEmail: O.fromNullishOr(authenticatedIdentity.email),
-              workOSUserEmail: O.flatMap(synchronizedUser, (user) => O.fromNullishOr(user.email)),
-              workOSUserSynchronized: O.isSome(synchronizedUser),
-            });
-          })
-        ),
-    });
+    return yield* auth.getUserIdentity.pipe(E.map(toCurrentIdentity), E.option);
   })
 );
 
-const getCurrentImpl = FunctionImpl.make(databaseSchema, identity, "getCurrent", () =>
+const getCurrent = FunctionImpl.make(databaseSchema, spec, "getCurrent", () =>
   E.gen(function* () {
     const auth = yield* Auth;
     const currentIdentity = yield* auth.getUserIdentity.pipe(E.mapError(() => new AuthenticationRequired()));
 
-    return {
-      subject: currentIdentity.subject,
-      tokenIdentifier: currentIdentity.tokenIdentifier,
-    };
+    return toCurrentIdentity(currentIdentity);
   })
 );
 
+const findSynchronized = FunctionImpl.make(databaseSchema, spec, "findSynchronized", () =>
+  E.gen(function* () {
+    const ctx = yield* QueryCtx;
+    return yield* E.promise(() => authKit.getAuthUser(ctx)).pipe(
+      E.map((workOSUser) =>
+        O.map(O.fromNullishOr(workOSUser), (user): SynchronizedIdentity => ({
+          email: O.fromNullishOr(user.email),
+        }))
+      )
+    );
+  })
+);
+
+// INTERNALS --------------------------------------------------------------------------------------------------------------------------------
+const toCurrentIdentity = (userIdentity: UserIdentity): CurrentIdentity => ({
+  email: O.fromNullishOr(userIdentity.email),
+  subject: userIdentity.subject,
+  tokenIdentifier: userIdentity.tokenIdentifier,
+});
+
 // GROUP -----------------------------------------------------------------------------------------------------------------------------------
-export default GroupImpl.make(databaseSchema, identity).pipe(
-  L.provide(findCurrentImpl),
-  L.provide(getCurrentImpl),
+export default GroupImpl.make(databaseSchema, spec).pipe(
+  L.provide(findCurrent),
+  L.provide(getCurrent),
+  L.provide(findSynchronized),
   GroupImpl.finalize
 );
