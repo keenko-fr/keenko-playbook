@@ -1,9 +1,15 @@
 {
   "name": "@<%= workspace %>/backend",
-  "exports": {},
+  "exports": {
+    "./confect/_generated/refs": "./confect/_generated/refs.js",
+    "./convex/_generated/api": {
+      "types": "./convex/_generated/api.d.ts",
+      "default": "./convex/_generated/api.js"
+    }
+  },
   "scripts": {
-    "codegen": "confect codegen",
-    "dev": "confect dev"
+    "codegen": "WORKOS_CLIENT_ID=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" WORKOS_API_KEY=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" WORKOS_WEBHOOK_SECRET=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" confect codegen",
+    "dev": "WORKOS_CLIENT_ID=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" WORKOS_API_KEY=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" WORKOS_WEBHOOK_SECRET=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" confect dev"
   },
   "nx": {
     "tags": ["type:package", "scope:backend"],

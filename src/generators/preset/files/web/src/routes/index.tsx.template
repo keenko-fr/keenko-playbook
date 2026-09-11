@@ -1,4 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { convexQuery } from "@convex-dev/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import { useAuth } from "@workos/authkit-tanstack-react-start/client";
+import { Authenticated, Unauthenticated } from "convex/react";
+
+import { api } from "@<%= workspace %>/backend/convex/_generated/api";
 
 import * as m from "#/paraglide/messages";
 
@@ -9,9 +15,48 @@ export const Route = createFileRoute("/")({
 
 // PAGE ------------------------------------------------------------------------------------------------------------------------------------
 function IndexPage() {
+  const { signOut } = useAuth();
+
   return (
     <main>
       <h1>{m.calm_green_otter()}</h1>
+      <Unauthenticated>
+        <a data-testid="auth-sign-in" href="/api/auth/sign-in">
+          {m.bright_amber_falcon()}
+        </a>
+      </Unauthenticated>
+      <Authenticated>
+        <IdentityStatus />
+        <button data-testid="auth-sign-out" onClick={handleSignOut} type="button">
+          {m.gentle_indigo_fox()}
+        </button>
+      </Authenticated>
+      <Link to="/protected">{m.quiet_silver_lynx()}</Link>
     </main>
+  );
+
+  function handleSignOut() {
+    // oxlint-disable-next-line eslint/no-void -- The click boundary deliberately starts AuthKit's redirecting sign-out request.
+    void signOut();
+  }
+}
+
+function IdentityStatus() {
+  const { data: currentIdentity } = useQuery(convexQuery(api.identity.findCurrent, {}));
+  const { data: synchronizedIdentity } = useQuery(convexQuery(api.identity.findSynchronized, {}));
+
+  if (currentIdentity === undefined || currentIdentity === null) return null;
+
+  return (
+    <section>
+      <p data-testid="convex-authenticated">
+        {m.swift_coral_panda()}: {currentIdentity.email}
+      </p>
+      {synchronizedIdentity !== undefined && synchronizedIdentity !== null ? (
+        <p data-testid="workos-user-synchronized">
+          {m.warm_violet_whale()}: {synchronizedIdentity.email}
+        </p>
+      ) : null}
+    </section>
   );
 }

@@ -1,4 +1,9 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-  "calm_green_otter": "Bienvenue chez Keenko"
+  "calm_green_otter": "Bienvenue chez Keenko",
+  "bright_amber_falcon": "Se connecter",
+  "gentle_indigo_fox": "Se déconnecter",
+  "quiet_silver_lynx": "Exemple d’authentification protégée",
+  "swift_coral_panda": "Authentifié avec Convex",
+  "warm_violet_whale": "Utilisateur WorkOS synchronisé"
 }

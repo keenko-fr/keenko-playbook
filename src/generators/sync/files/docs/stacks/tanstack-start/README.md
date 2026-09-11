@@ -37,3 +37,7 @@ This exemption is intentionally web-wide rather than limited to route-definition
 Where TanStack defines semantic property order, follow TanStack's required order. Do not manually alphabetize those objects. Treat automatic TanStack-specific route-order enforcement as unavailable until the Oxlint plugin integration is verified.
 
 Use TanStack Intent/current package guidance for exact APIs.
+
+## Authentication
+
+WorkOS AuthKit Hosted UI is the default. Use the official TanStack Start AuthKit middleware, callback/sign-in handlers, `AuthKitProvider`, and `getAuth`/`useAuth` APIs directly. Routes stay public unless their loader explicitly requires authentication. Preserve TanStack Start's CSRF middleware when adding AuthKit request middleware. See `../workos-authkit/README.md` for the full cross-stack contract.

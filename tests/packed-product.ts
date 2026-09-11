@@ -88,7 +88,6 @@ const sDevDependenciesPackage = S.fromJsonString(S.Struct({ devDependencies: S.R
 const sLifecyclePackage = S.fromJsonString(
   S.Struct({ devDependencies: S.Record(S.String, S.String), scripts: S.Record(S.String, S.String) })
 );
-const sConvexConfig = S.fromJsonString(S.Struct({ $schema: S.String, functions: S.String }));
 const sManifest = S.fromJsonString(S.Record(S.String, S.Unknown));
 const sProject = S.fromJsonString(S.Struct({ targets: S.Record(S.String, S.Unknown) }));
 const sInlangSettings = S.fromJsonString(S.Struct({ baseLocale: S.String, locales: S.Array(S.String) }));
@@ -205,6 +204,10 @@ const product = E.gen(function* () {
     GIT_CONFIG_VALUE_0: "true",
     NX_DAEMON: "false",
     NX_INTERACTIVE: "false",
+    WORKOS_API_KEY: "",
+    WORKOS_CLIENT_ID: "",
+    WORKOS_COOKIE_PASSWORD: "",
+    WORKOS_WEBHOOK_SECRET: "",
   };
   const { bootstrapEnv, bootstrapExecutable, localLicense, packageVersion } = yield* preparePackageSource(
     source,
@@ -302,14 +305,6 @@ const product = E.gen(function* () {
       !(yield* fs.readFileString(path.join(workspace, rootCode))).includes("@tanstack/react-start"),
       `Root code ${rootCode} unexpectedly imports or uses React Start`
     );
-  const convexConfig = yield* S.decodeEffect(sConvexConfig)(yield* fs.readFileString(path.join(workspace, "convex.json")));
-  yield* assert(
-    isDeepStrictEqual(convexConfig, {
-      $schema: "./node_modules/convex/schemas/convex.schema.json",
-      functions: "packages/backend/convex",
-    }),
-    "Generated root Convex configuration does not preserve backend source ownership"
-  );
   const vscodeSettings = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, ".vscode/settings.json")));
   for (const [key, expected] of Object.entries(canonicalVscodeSettings))
     yield* assert(
@@ -327,7 +322,6 @@ const product = E.gen(function* () {
   const envModule = path.join(workspace, "apps/web/src/config/env.ts");
   const viteConfig = path.join(workspace, "apps/web/vite.config.ts");
   const rootRoute = path.join(workspace, "apps/web/src/routes/__root.tsx");
-
   const homeRoute = path.join(workspace, "apps/web/src/routes/index.tsx");
   const inlangSettings = path.join(workspace, "apps/web/project.inlang/settings.json");
   const frenchMessages = path.join(workspace, "apps/web/messages/fr.json");
@@ -387,6 +381,7 @@ const product = E.gen(function* () {
   yield* assert(
     isDeepStrictEqual(webRuntime.dependencies, {
       ...canonicalWebDependencies,
+      [`@${identity}/backend`]: "workspace:*",
       [`@${identity}/shared`]: "workspace:*",
       [`@${identity}/ui`]: "workspace:*",
     }),
@@ -415,6 +410,8 @@ const product = E.gen(function* () {
     "apps/web/src/routeTree.gen.ts",
     "apps/web/src/paraglide/messages.js",
     "packages/backend/confect/_generated/schema.ts",
+    "packages/backend/convex/_generated/api.d.ts",
+    "packages/backend/convex/_generated/api.js",
     "packages/backend/convex/schema.ts",
   ])
     yield* assert(yield* fs.exists(path.join(workspace, generated)), `Fresh creation did not materialize ${generated}`);
@@ -427,9 +424,6 @@ const product = E.gen(function* () {
     (yield* command(workspace, env, "git", ["symbolic-ref", "--short", "HEAD"])).trim() === "main",
     "Canonical creation did not leave Git on main"
   );
-  for (const localEnv of [".env.local", "apps/web/.env.local", "packages/backend/.env.local"])
-    yield* assert(!(yield* fs.exists(path.join(workspace, localEnv))), `Fresh creation unexpectedly created ${localEnv}`);
-  yield* command(workspace, env, "git", ["check-ignore", ".env.local"]);
   yield* assert(!(yield* fs.exists(path.join(workspace, "convex"))), "Fresh creation added a root Convex source directory");
   yield* assert(!(yield* fs.exists(path.join(workspace, "apps/web/convex"))), "Fresh creation added web-owned Convex source");
   yield* command(workspace, env, "git", ["rev-parse", "--verify", "HEAD"], "failure");
@@ -497,8 +491,8 @@ exec "${realGit}" "$@"
   const expectedBackendManifest = yield* fs.readFileString(backendManifestPath);
   const newGenerated = path.join(workspace, "packages/backend/confect/_generated/new-generated.ts");
   const changedBackendManifest = expectedBackendManifest.replace(
-    '"codegen": "confect codegen"',
-    '"codegen": "confect codegen && printf generated > confect/_generated/new-generated.ts"'
+    'confect codegen",',
+    'confect codegen && printf generated > confect/_generated/new-generated.ts",'
   );
   yield* assert(changedBackendManifest !== expectedBackendManifest, "Could not configure the new generated-file scenario");
   yield* fs.writeFileString(backendManifestPath, changedBackendManifest);

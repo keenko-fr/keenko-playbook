@@ -34,6 +34,17 @@ infra
 
 Do not collapse layers merely because current implementations are small. See `backend-file-topology.md` for canonical file section grammar.
 
+## Retrieval semantics
+
+Name backend retrieval operations by what absence means:
+
+- `find` / `findByX`: absence is a valid result, normally represented with `Option` inside Effect-owned workflows;
+- `get` / `getByX`: absence is exceptional and is represented as a typed failure.
+
+Corresponding `findX` / `getX` operations retrieve the same conceptual resource and normally share the same success representation. Do not use a `find` / `get` pair for endpoints that return materially different resources or projections.
+
+Use contextual names. Do not repeat the owning module or domain noun when the module already supplies it. For example, an `identity` group exposes `findCurrent` and `getCurrent` for the same `CurrentIdentity` representation, not `getCurrentIdentity` or policy-oriented names such as `getProtectedIdentity`.
+
 ## Confect
 
 `confect/` owns backend function contracts and their Confect implementations. Keep endpoint/framework concerns at this boundary and delegate application policy to features or the narrower owning layer.
@@ -75,11 +86,7 @@ Do not preserve a feature wrapper merely for symmetry. If a future function beco
 
 `data/` owns narrow persistence concerns such as indexed reads, inserts, patches, removals, and pagination. It does not own full business workflows.
 
-Use concise contextual names:
-
-- `find` / `findByX`: absence is a legitimate result, normally represented with `Option` internally;
-- `get` / `getByX`: the resource is required and absence is a typed failure;
-- direct verbs such as `insert`, `patch`, and `remove` for writes.
+Apply the general backend retrieval semantics above to persistence reads. Use direct verbs such as `insert`, `patch`, and `remove` for writes.
 
 Creation operations accept the semantic `FooInsert` contract, not `FooFields` or read-side `Foo`, even when their current shapes coincide. Focused persistence-only Patch contracts remain data-owned and derive from shared `Fields`.
 
