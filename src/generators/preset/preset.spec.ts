@@ -488,7 +488,7 @@ describe("keenko preset", () => {
 
         expect(rootRoute).not.toContain("MyRouterContext");
         expect(rootRoute).toContain("title: m.calm_green_otter()");
-        expect(rootRoute).toContain("notFoundComponent: () => <p>Not Found</p>");
+        expect(rootRoute).toContain(`notFoundComponent: () => <h1 className="text-3xl font-bold">{m.plain_dark_angelfish_scoop()}</h1>`);
         expect(router).toContain("<AuthKitProvider>");
         expect(router).toContain("<ConvexProviderWithAuth client={convexClient} useAuth={useAuthFromWorkOS}>");
         expect(rootRoute).not.toContain("<ConvexProvider");
