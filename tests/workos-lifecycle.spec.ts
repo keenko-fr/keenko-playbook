@@ -1,6 +1,6 @@
 /* oxlint-disable effect/noAsyncFunction, effect/noGlobals, effect/noNewPromise, effect/noNodeBuiltinImport, effect/noTestLifecycleHooks, eslint/no-await-in-loop -- This test orchestrates a disposable native package installation and child Vitest process. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { packageVersions } from "../src/generators/versions.js";
@@ -8,16 +8,32 @@ import { packageVersions } from "../src/generators/versions.js";
 const repository = path.resolve(import.meta.dir, "..");
 let fixtureRoot = "";
 
+const materializeTemplates = async (sourceRoot: string, targetRoot: string) => {
+  const entries = await readdir(sourceRoot, { withFileTypes: true });
+  await Promise.all(
+    entries.map(async (entry) => {
+      const source = path.join(sourceRoot, entry.name);
+      const target = path.join(targetRoot, entry.name.replace(/\.template$/u, ""));
+
+      if (entry.isDirectory()) {
+        await mkdir(target, { recursive: true });
+        await materializeTemplates(source, target);
+        return;
+      }
+
+      if (!entry.name.endsWith(".template")) return;
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, await readFile(source));
+    })
+  );
+};
+
 const materialize = async () => {
   await mkdir(path.join(repository, ".tmp"), { recursive: true });
   fixtureRoot = await mkdtemp(path.join(repository, ".tmp", "workos-lifecycle-"));
   const confect = path.join(fixtureRoot, "confect");
   await mkdir(path.join(confect, "_generated"), { recursive: true });
-
-  for (const source of ["http.ts", "identity.impl.ts", "identity.spec.ts", "workos.ts"]) {
-    const template = path.join(repository, "src/generators/preset/files/backend/confect", `${source}.template`);
-    await writeFile(path.join(confect, source), await readFile(template));
-  }
+  await materializeTemplates(path.join(repository, "src/generators/preset/files/backend/confect"), confect);
 
   await writeFile(
     path.join(confect, "workos-lifecycle.test.ts"),
