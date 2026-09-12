@@ -645,7 +645,7 @@ describe("keenko preset", () => {
         const generatedApi = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/convex/_generated/api.d.ts", "utf-8")));
         const identitySpec = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.spec.ts", "utf-8")));
         const identityImpl = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.impl.ts", "utf-8")));
-        // const homeRoute = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/src/routes/index.tsx", "utf-8")));
+        const workspaceRoute = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/src/routes/mon-espace.tsx", "utf-8")));
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(convexConfig).toContain('"@convex-dev/workos-authkit/convex.config"');
@@ -671,9 +671,9 @@ describe("keenko preset", () => {
         expect(identitySpec).toContain("error: () => AuthenticationRequired");
         expect(identitySpec).toContain("returns: () => Schema.OptionFromNullOr(sSynchronizedIdentity)");
 
-        // expect(homeRoute).toContain("api.identity.findCurrent");
-        // expect(homeRoute).toContain("api.identity.findSynchronized");
-        // expect(homeRoute).not.toContain("workOSUserSynchronized");
+        expect(workspaceRoute).toContain("api.identity.findCurrent");
+        expect(workspaceRoute).toContain("api.identity.findSynchronized");
+        expect(workspaceRoute).not.toContain("workOSUserSynchronized");
 
         expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"

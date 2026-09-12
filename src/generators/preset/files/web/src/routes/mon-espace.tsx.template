@@ -23,8 +23,8 @@ export const Route = createFileRoute("/mon-espace")({
 
 function ProtectedPage() {
   const { user } = Route.useLoaderData();
-  const { data: currentIdentity } = useQuery(convexQuery(api.identity.findCurrent, {}));
-  const { data: synchronizedIdentity } = useQuery(convexQuery(api.identity.findSynchronized, {}));
+  const { data: convexUser } = useQuery(convexQuery(api.identity.findCurrent, {}));
+  const { data: workosUser } = useQuery(convexQuery(api.identity.findSynchronized, {}));
 
   return (
     <div className="flex flex-col gap-4">
@@ -43,29 +43,29 @@ function ProtectedPage() {
               <ItemDescription>{user.email}</ItemDescription>
             </ItemContent>
           </Item>
-          <Item variant="outline" data-testid="convex-authenticated">
+          <Item variant="outline">
             <ItemMedia variant="icon">
               <Convex />
             </ItemMedia>
             <ItemContent>
               <ItemTitle>Convex</ItemTitle>
-              <ItemDescription>{currentIdentity?.subject ?? "..."}</ItemDescription>
+              <ItemDescription>{convexUser && <span data-testid="convex-authenticated">{convexUser.subject}</span>}</ItemDescription>
             </ItemContent>
           </Item>
-          {synchronizedIdentity === null ? (
-            <Alert variant="destructive" data-testid="convex-authenticated">
+          {workosUser === null ? (
+            <Alert variant="destructive">
               <Workos />
               <AlertTitle>WorkOS</AlertTitle>
               <AlertDescription>Vous devez configurer WORKOS_WEBHOOK_SECRET</AlertDescription>
             </Alert>
           ) : (
-            <Item variant="outline" data-testid="convex-authenticated">
+            <Item variant="outline">
               <ItemMedia variant="icon">
                 <Workos />
               </ItemMedia>
               <ItemContent>
                 <ItemTitle>WorkOS</ItemTitle>
-                <ItemDescription>{synchronizedIdentity?.email ?? "..."} </ItemDescription>
+                <ItemDescription>{workosUser && <span data-testid="workos-user-synchronized">{workosUser.email}</span>}</ItemDescription>
               </ItemContent>
             </Item>
           )}
