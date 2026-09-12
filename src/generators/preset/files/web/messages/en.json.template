@@ -2,6 +2,8 @@
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "calm_green_otter": "Keenko",
   "great_zany_tapir_gaze": "Identity",
+  "nimble_gross_lionfish_gulp": "Sign out",
   "plain_dark_angelfish_scoop": "Page unknown",
-  "quiet_silver_lynx": "My workspace"
+  "quiet_silver_lynx": "My workspace",
+  "that_brave_falcon_twirl": "Sign in"
 }

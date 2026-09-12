@@ -32,8 +32,8 @@ test("email/password auth reaches Convex identity, WorkOS synchronization, and s
 
     await expect(page.getByTestId("convex-authenticated")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("workos-user-synchronized")).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("auth-sign-out").click();
-    await expect(page.getByTestId("auth-sign-in")).toBeVisible();
+    await page.getByRole("button", { name: "Me déconnecter" }).click();
+    await expect(page.getByRole("link", { name: "Me connecter" })).toBeVisible();
   } finally {
     await workos.userManagement.deleteUser(user.id);
   }

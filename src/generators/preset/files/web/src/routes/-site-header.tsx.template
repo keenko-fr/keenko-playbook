@@ -33,14 +33,18 @@ export function SiteHeader() {
       </nav>
       <aside className="flex gap-1">
         <Unauthenticated>
-          <Link to="/api/auth/sign-in" reloadDocument>
-            <Button variant="outline" size="icon">
-              <LogInIcon />
-            </Button>
+          <Link
+            to="/api/auth/sign-in"
+            reloadDocument
+            aria-label="{m.that_brave_falcon_twirl()}"
+            className={buttonVariants({ variant: "outline", size: "icon" })}
+          >
+            <LogInIcon />
           </Link>
         </Unauthenticated>
         <Authenticated>
           <Button
+            aria-label="{m.nimble_gross_lionfish_gulp()}"
             onClick={() => {
               void signOut();
             }}
