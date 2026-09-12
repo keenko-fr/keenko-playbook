@@ -1,0 +1,58 @@
+import { Button, buttonVariants } from "@<%= workspace %>/ui/components/button";
+import { Link, linkOptions } from "@tanstack/react-router";
+import { useAuth } from "@workos/authkit-tanstack-react-start/client";
+import { Authenticated, Unauthenticated } from "convex/react";
+import { LogInIcon, LogOutIcon } from "lucide-react";
+
+import { ThemeToggle } from "#/infra/theme/toggle";
+import * as m from "#/paraglide/messages";
+
+// CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
+const navs = linkOptions([
+  { key: "home", label: m.calm_green_otter(), to: "/" },
+  { key: "workspace", label: m.quiet_silver_lynx(), to: "/mon-espace" },
+]);
+
+// COMPONENT -------------------------------------------------------------------------------------------------------------------------------
+export function SiteHeader() {
+  const { signOut } = useAuth();
+
+  return (
+    <header className="bg-card text-card-foreground sticky top-0 z-50 flex w-full items-center justify-between gap-4 border-b p-2">
+      <nav>
+        {navs.map(({ key, label, ...link }) => (
+          <Link
+            key={key}
+            {...link}
+            className={buttonVariants({ variant: "ghost" })}
+            activeProps={{ className: "bg-accent text-accent-foreground" }}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+      <aside className="flex gap-1">
+        <Unauthenticated>
+          <Link to="/api/auth/sign-in" reloadDocument>
+            <Button variant="outline" size="icon">
+              <LogInIcon />
+            </Button>
+          </Link>
+        </Unauthenticated>
+        <Authenticated>
+          <Button
+            onClick={() => {
+              void signOut();
+            }}
+            type="button"
+            variant="outline"
+            size="icon"
+          >
+            <LogOutIcon />
+          </Button>
+        </Authenticated>
+        <ThemeToggle />
+      </aside>
+    </header>
+  );
+}

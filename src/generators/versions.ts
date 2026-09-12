@@ -8,6 +8,7 @@ export const packageVersions = {
   "@edge-runtime/vm": "5.0.0",
   "@effect/platform-node": "4.0.0-rc.113",
   "@effect/tsgo": "0.43.0",
+  "@fontsource-variable/inter": "5.3.0",
   "@inlang/paraglide-js": "2.25.0",
   "@nx/devkit": "23.2.0",
   "@nx/oxlint": "23.2.0",

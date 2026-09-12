@@ -3,7 +3,7 @@ import { createApp, createMemoryEnvironment, finalizeAddOns, getFrameworkById, p
 import { Effect as E, Option as O, Path, Struct } from "effect";
 
 import { TanStackCreateFailure } from "../../errors.js";
-import type { PackageJson } from "../../helpers.js";
+import { replaceExpected, type PackageJson } from "../../helpers.js";
 import { packageVersions } from "../../versions.js";
 
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
@@ -33,6 +33,7 @@ export const webDependencies = Struct.pick(packageVersions, [
   "@workos/authkit-tanstack-react-start",
   "convex",
   "effect",
+  "lucide-react",
   "react",
   "react-dom",
   "tailwindcss",
@@ -96,17 +97,26 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
   if (output.commands.length > 0) return yield* new TanStackCreateFailure({ issue: "unexpected_command" });
   if (!("package.json" in output.files)) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
   if (!("vite.config.ts" in output.files)) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
+
   const viteConfig = output.files["vite.config.ts"];
-
-  const viteWithRootEnv = viteConfig.replace("const config = defineConfig({", "const config = defineConfig({\n  envDir: '../..',");
-  if (viteWithRootEnv === viteConfig) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
-
-  const configuredVite = viteWithRootEnv.replace(
+  const viteWithRootConfig = replaceExpected(
+    viteConfig,
+    "const config = defineConfig({",
+    `const config = defineConfig({
+  envDir: '../..',
+  server: {
+    port: 3210,
+    strictPort: true,
+  },`
+  );
+  if (O.isNone(viteWithRootConfig)) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
+  const configuredVite = replaceExpected(
+    viteWithRootConfig.value,
     "    outdir: './src/paraglide',",
     "    outdir: './src/paraglide',\n    emitReadme: false,"
   );
-  if (configuredVite === viteWithRootEnv) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
-  output.files["vite.config.ts"] = configuredVite;
+  if (O.isNone(configuredVite)) return yield* new TanStackCreateFailure({ issue: "unexpected_output" });
+  output.files["vite.config.ts"] = configuredVite.value;
 
   for (const [relativePath, contents] of Object.entries(output.files)) {
     if (relativePath.startsWith("src/components/") || relativePath.startsWith("src/integrations/") || relativePath.startsWith("messages/"))
@@ -121,8 +131,6 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
     "apps/web/vitest.config.ts",
     'import { defineConfig } from "vitest/config";\n\nexport default defineConfig({ test: { environment: "jsdom", passWithNoTests: true } });\n'
   );
-
-  tree.write("apps/web/src/styles.css", `@import "@${workspace}/ui/globals.css";\n`);
 
   updateJson<PackageJson>(tree, "apps/web/package.json", (packageJson) => ({
     ...packageJson,

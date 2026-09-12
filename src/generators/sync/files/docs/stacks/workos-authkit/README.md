@@ -35,7 +35,7 @@ Production WorkOS environments, credentials, redirect URLs, hosting secrets, and
 2. Follow the Convex prompts to create or select the development deployment and associate the Convex team with a Convex-managed WorkOS team.
 3. Convex provisions the non-production WorkOS environment, stores `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, and environment identity in the Convex deployment, configures the development URLs from root `convex.json`, and writes the required local AuthKit values plus a generated cookie password to untracked `.env.local`.
 4. Convex completes the first backend push without `WORKOS_WEBHOOK_SECRET`, then starts the generated application.
-5. Open `http://localhost:3000` and use the sign-in link. AuthKit Hosted UI is the canonical default, and email/password is enabled by default without any WorkOS Dashboard configuration.
+5. Open `http://localhost:3210` and use the sign-in link. AuthKit Hosted UI is the canonical default, and email/password is enabled by default without any WorkOS Dashboard configuration.
 
 Expected result: Hosted UI returns to `/api/auth/callback`, the client obtains a WorkOS access token, and Convex validates the identity. `useConvexAuth()` becomes authenticated before authenticated Convex UI is shown. `identity.findCurrent` is available immediately. Component synchronization is not expected yet: `identity.findSynchronized` returns `null`, and the component webhook route is not registered until the real deployment secret is configured.
 
@@ -90,7 +90,7 @@ The separate smoke creates a verified disposable user on the explicitly configur
 1. Complete development provisioning and component webhook setup above.
 2. Keep `bun run dev` running.
 3. In another terminal at the workspace root, install the Playwright browser once with `bun x playwright install chromium`.
-4. Run `AUTH_E2E_BASE_URL=http://localhost:3000 AUTH_E2E_EMAIL_DOMAIN=<project-controlled-domain> bun run test:auth:e2e`.
+4. Run `AUTH_E2E_BASE_URL=http://localhost:3210 AUTH_E2E_EMAIL_DOMAIN=<project-controlled-domain> bun run test:auth:e2e`.
 5. Observe Playwright complete Hosted UI email/password sign-in and its assertions. No manual credentials or inbox access are required.
 
 The smoke verifies the Hosted UI redirect, authenticated Convex state, synchronized WorkOS component user, and sign-out. It also verifies test-user cleanup. It is not part of `bun run check` and must not be enabled in ordinary CI without a separately approved secret/account design.

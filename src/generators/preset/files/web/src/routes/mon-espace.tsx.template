@@ -1,0 +1,27 @@
+import { Badge } from "@<%= workspace %>/ui/components/badge";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { getAuth } from "@workos/authkit-tanstack-react-start";
+
+import * as m from "#/paraglide/messages";
+
+export const Route = createFileRoute("/mon-espace")({
+  loader: async ({ location }) => {
+    const { user } = await getAuth();
+    // oxlint-disable-next-line typescript/only-throw-error
+    if (user === null) throw redirect({ to: `/api/auth/sign-in`, search: { returnPathname: location.pathname }, reloadDocument: true });
+
+    return { user };
+  },
+  component: ProtectedPage,
+});
+
+function ProtectedPage() {
+  const { user } = Route.useLoaderData();
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h1 className="text-3xl font-bold">{m.quiet_silver_lynx()}</h1>
+      <Badge variant="default">{user.email}</Badge>
+    </div>
+  );
+}

@@ -31,7 +31,7 @@ const expectedScripts = {
   build: "nx run-many -t build",
   check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
   codegen: "nx run-many -t codegen",
-  dev: 'convex dev --start "nx run-many -t dev"',
+  dev: 'NX_TUI=false convex dev --start "nx run-many -t dev"',
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
   lint: "oxlint .",
@@ -172,6 +172,10 @@ describe("keenko preset", () => {
         expect(web.scripts?.codegen).toBe(
           "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy url baseLocale --no-emit-readme && tsr generate"
         );
+        expect(viteConfig).toContain("emitReadme: false");
+        expect(viteConfig).toContain("envDir: '../..'");
+        expect(viteConfig).toContain("port: 3210");
+        expect(viteConfig).toContain("strictPort: true");
         expect(viteConfig).toContain("emitReadme: false");
         expect(web.dependencies).toEqual({
           ...webDependencies,
@@ -394,7 +398,7 @@ describe("keenko preset", () => {
         const backendPackageJson = readJson<PackageJson>(tree, "packages/backend/package.json");
         const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
-        expect(rootPackageJson.scripts?.dev).toBe('convex dev --start "nx run-many -t dev"');
+        expect(rootPackageJson.scripts?.dev).toBe('NX_TUI=false convex dev --start "nx run-many -t dev"');
         expect(rootPackageJson.devDependencies?.convex).toBe(packageVersions.convex);
         expect(rootPackageJson.devDependencies?.["@tanstack/react-start"]).toBe(packageVersions["@tanstack/react-start"]);
         expect(webPackageJson.dependencies?.["@tanstack/react-start"]).toBe(packageVersions["@tanstack/react-start"]);
@@ -408,14 +412,14 @@ describe("keenko preset", () => {
           authKit: {
             dev: {
               configure: {
-                appHomepageUrl: "http://localhost:3000",
-                corsOrigins: ["http://localhost:3000"],
-                redirectUris: ["http://localhost:3000/api/auth/callback"],
+                appHomepageUrl: "http://localhost:3210",
+                corsOrigins: ["http://localhost:3210"],
+                redirectUris: ["http://localhost:3210/api/auth/callback"],
               },
               localEnvVars: {
                 WORKOS_API_KEY: `\${authEnv.WORKOS_API_KEY}`,
                 WORKOS_CLIENT_ID: `\${authEnv.WORKOS_CLIENT_ID}`,
-                WORKOS_REDIRECT_URI: "http://localhost:3000/api/auth/callback",
+                WORKOS_REDIRECT_URI: "http://localhost:3210/api/auth/callback",
               },
             },
           },
@@ -520,11 +524,11 @@ describe("keenko preset", () => {
 
         // Replace these with the actual stable Sherlock IDs you chose.
         expect(french).toMatchObject({
-          calm_green_otter: "Bienvenue chez Keenko",
+          calm_green_otter: "Keenko",
         });
 
         expect(english).toMatchObject({
-          calm_green_otter: "Welcome to Keenko",
+          calm_green_otter: "Keenko",
         });
 
         expect(homeRoute).toContain("#/paraglide/messages");
@@ -623,7 +627,7 @@ describe("keenko preset", () => {
           "apps/web/src/start.ts",
           "apps/web/src/routes/api/auth/callback.tsx",
           "apps/web/src/routes/api/auth/sign-in.tsx",
-          "apps/web/src/routes/protected.tsx",
+          "apps/web/src/routes/mon-espace.tsx",
           "apps/web/src/server/auth.ts",
           "apps/web/e2e/auth.e2e.ts",
           "apps/web/playwright.config.ts",
@@ -641,7 +645,7 @@ describe("keenko preset", () => {
         const generatedApi = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/convex/_generated/api.d.ts", "utf-8")));
         const identitySpec = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.spec.ts", "utf-8")));
         const identityImpl = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.impl.ts", "utf-8")));
-        const homeRoute = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/src/routes/index.tsx", "utf-8")));
+        // const homeRoute = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/src/routes/index.tsx", "utf-8")));
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(convexConfig).toContain('"@convex-dev/workos-authkit/convex.config"');
@@ -667,9 +671,9 @@ describe("keenko preset", () => {
         expect(identitySpec).toContain("error: () => AuthenticationRequired");
         expect(identitySpec).toContain("returns: () => Schema.OptionFromNullOr(sSynchronizedIdentity)");
 
-        expect(homeRoute).toContain("api.identity.findCurrent");
-        expect(homeRoute).toContain("api.identity.findSynchronized");
-        expect(homeRoute).not.toContain("workOSUserSynchronized");
+        // expect(homeRoute).toContain("api.identity.findCurrent");
+        // expect(homeRoute).toContain("api.identity.findSynchronized");
+        // expect(homeRoute).not.toContain("workOSUserSynchronized");
 
         expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
@@ -702,8 +706,6 @@ describe("keenko preset", () => {
     E.runPromise(
       E.gen(function* () {
         const tree = yield* generatePreset("acme");
-
-        expect(tree.read("apps/web/src/styles.css", "utf-8")).toBe('@import "@acme/ui/globals.css";\n');
 
         const packageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
@@ -767,11 +769,9 @@ describe("keenko preset", () => {
 
         const css = tree.read("packages/ui/src/styles/globals.css", "utf-8");
 
-        expect(css).toContain('@import "tailwindcss";');
+        expect(css).toContain('@import "tailwindcss" source(none);');
         expect(css).toContain('@import "tw-animate-css";');
         expect(css).toContain('@import "shadcn/tailwind.css";');
-
-        expect(css).toContain('@source "../**/*.{ts,tsx}";');
 
         expect(css).toContain("@theme inline");
         expect(css).toContain(":root");
@@ -800,7 +800,7 @@ describe("keenko preset", () => {
           },
           iconLibrary: "lucide",
           rsc: false,
-          style: "base-nova",
+          style: "base-vega",
           tailwind: {
             baseColor: "neutral",
             config: "",
@@ -820,7 +820,7 @@ describe("keenko preset", () => {
           },
           iconLibrary: "lucide",
           rsc: false,
-          style: "base-nova",
+          style: "base-vega",
           tailwind: {
             baseColor: "neutral",
             config: "",

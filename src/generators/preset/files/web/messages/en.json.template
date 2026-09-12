@@ -1,9 +1,5 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-  "calm_green_otter": "Welcome to Keenko",
-  "bright_amber_falcon": "Sign in",
-  "gentle_indigo_fox": "Sign out",
-  "quiet_silver_lynx": "Protected authentication example",
-  "swift_coral_panda": "Authenticated with Convex",
-  "warm_violet_whale": "WorkOS user synchronized"
+  "calm_green_otter": "Keenko",
+  "quiet_silver_lynx": "My workspace"
 }

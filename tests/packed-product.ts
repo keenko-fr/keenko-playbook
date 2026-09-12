@@ -285,7 +285,7 @@ const product = E.gen(function* () {
   const webManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")));
   const webDependencies = yield* S.decodeUnknownEffect(S.Record(S.String, S.String))(webManifest.dependencies);
   yield* assert(
-    lifecyclePackage.scripts.dev === 'convex dev --start "nx run-many -t dev"',
+    lifecyclePackage.scripts.dev === 'NX_TUI=false convex dev --start "nx run-many -t dev"',
     "Generated root dev script does not let Convex establish deployment state before Nx application processes"
   );
   yield* assert(
@@ -358,8 +358,8 @@ const product = E.gen(function* () {
 
   const starterMessages = {
     calm_green_otter: {
-      en: "Welcome to Keenko",
-      fr: "Bienvenue chez Keenko",
+      en: "Keenko",
+      fr: "Keenko",
     },
   };
 
