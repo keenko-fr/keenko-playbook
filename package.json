@@ -1,6 +1,6 @@
 {
   "name": "keenko",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": false,
   "description": "An opinionated Nx-based TypeScript application distribution.",
   "license": "MIT",
