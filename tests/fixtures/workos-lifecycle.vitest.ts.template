@@ -1,0 +1,105 @@
+/* oxlint-disable effect/noAs, effect/noAsyncFunction, effect/noGlobals, effect/noModuleMocks, typescript/no-unsafe-type-assertion -- This Playbook-owned Vitest seam controls the deployment environment, captures framework handlers, and replaces only first-party registration boundaries. */
+import type * as ConfectServerModule from "@confect/server";
+import { Effect as E, Layer as L, Option as O } from "effect";
+import { describe, expect, test, vi } from "vitest";
+
+import type { QueryCtx as QueryCtxService } from "./_generated/services";
+
+declare const process: {
+  readonly env: {
+    WORKOS_WEBHOOK_SECRET?: string;
+  };
+};
+
+type SynchronizedResult = O.Option<{ readonly email: O.Option<string> }>;
+
+const authKitClient = {
+  getAuthUser: vi.fn<() => Promise<{ readonly email: string }>>(),
+  registerRoutes: vi.fn(),
+};
+const constructAuthKit = vi.fn();
+const handlers = new Map<string, () => E.Effect<SynchronizedResult, never, QueryCtxService>>();
+const queryCtx = { auth: {} } as QueryCtxService;
+
+const installModuleFakes = () => {
+  vi.doMock("@convex-dev/workos-authkit", () => ({
+    AuthKit: function AuthKit() {
+      constructAuthKit();
+      return authKitClient;
+    },
+  }));
+  vi.doMock("@confect/server", async (importOriginal) => {
+    const original = await importOriginal<typeof ConfectServerModule>();
+    return {
+      ...original,
+      FunctionImpl: {
+        ...original.FunctionImpl,
+        make: vi.fn((_schema, _spec, name: string, handler: () => E.Effect<SynchronizedResult, never, QueryCtxService>) => {
+          handlers.set(name, handler);
+          return L.empty;
+        }),
+      },
+      GroupImpl: {
+        ...original.GroupImpl,
+        finalize: <A>(value: A) => value,
+        make: vi.fn(() => L.empty),
+      },
+    };
+  });
+};
+
+const loadHttp = () => import("./http");
+const loadIdentity = () => import("./identity.impl");
+const loadServices = () => import("./_generated/services");
+
+const resetLifecycle = () => {
+  vi.resetModules();
+  installModuleFakes();
+  delete process.env.WORKOS_WEBHOOK_SECRET;
+  constructAuthKit.mockClear();
+  authKitClient.getAuthUser.mockClear();
+  authKitClient.registerRoutes.mockClear();
+  handlers.clear();
+};
+
+describe("WorkOS component lifecycle", () => {
+  test("keeps backend loading and synchronized identity inactive without the webhook secret", () =>
+    E.gen(function* () {
+      resetLifecycle();
+      yield* E.promise(loadHttp);
+      yield* E.promise(loadIdentity);
+
+      expect(constructAuthKit).not.toHaveBeenCalled();
+      expect(authKitClient.registerRoutes).not.toHaveBeenCalled();
+
+      const findSynchronized = O.getOrThrow(O.fromNullishOr(handlers.get("findSynchronized")));
+      const { QueryCtx } = yield* E.promise(loadServices);
+      const result = yield* findSynchronized().pipe(E.provideService(QueryCtx, queryCtx));
+
+      expect(O.isNone(result)).toBe(true);
+      expect(constructAuthKit).not.toHaveBeenCalled();
+      expect(authKitClient.getAuthUser).not.toHaveBeenCalled();
+      delete process.env.WORKOS_WEBHOOK_SECRET;
+    }).pipe(E.runPromise));
+
+  test("activates official routes and synchronized identity when the webhook secret is configured", () =>
+    E.gen(function* () {
+      resetLifecycle();
+      process.env.WORKOS_WEBHOOK_SECRET = "test-webhook-secret";
+      authKitClient.getAuthUser.mockResolvedValue({ email: "identity@example.test" });
+      yield* E.promise(loadHttp);
+      yield* E.promise(loadIdentity);
+
+      expect(constructAuthKit).toHaveBeenCalledTimes(1);
+      expect(authKitClient.registerRoutes).toHaveBeenCalledTimes(1);
+
+      const findSynchronized = O.getOrThrow(O.fromNullishOr(handlers.get("findSynchronized")));
+      const { QueryCtx } = yield* E.promise(loadServices);
+      const result = yield* findSynchronized().pipe(E.provideService(QueryCtx, queryCtx));
+
+      expect(O.getOrThrow(result).email).toEqual(O.some("identity@example.test"));
+      expect(constructAuthKit).toHaveBeenCalledTimes(2);
+      expect(authKitClient.getAuthUser).toHaveBeenCalledTimes(1);
+      delete process.env.WORKOS_WEBHOOK_SECRET;
+    }).pipe(E.runPromise));
+});
