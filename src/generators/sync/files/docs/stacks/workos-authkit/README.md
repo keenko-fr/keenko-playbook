@@ -9,7 +9,7 @@ Every Keenko project starts with a production-shaped WorkOS AuthKit foundation t
 - Root `convex.json` owns Convex-managed WorkOS environment provisioning and development redirect/CORS configuration.
 - `apps/web/src/start.ts` installs the official AuthKit middleware and preserves TanStack Start CSRF protection.
 - `apps/web/src/routes/api/auth/**` owns the Hosted UI sign-in and callback HTTP routes.
-- `apps/web/src/routes/protected.tsx` and `apps/web/src/server/auth.ts` demonstrate opt-in protected route and server-function boundaries with the official `getAuth` API.
+- `apps/web/src/routes/mon-espace.tsx` and `apps/web/src/server/auth.ts` demonstrate opt-in protected route and server-function boundaries with the official `getAuth` API.
 - `apps/web/src/router.tsx` bridges AuthKit access tokens to Convex through `ConvexProviderWithAuth`.
 - `packages/backend/confect/auth.ts` configures the documented WorkOS JWT providers through Confect's official Convex auth-config extension point. It deliberately does not import the component client's `getAuthConfigProviders()` helper: the current component package causes Convex auth-config analysis to require the optional `WORKOS_ACTION_SECRET` even when WorkOS Actions are not configured.
 - `packages/backend/confect/workos.ts` owns deferred construction of the official component client. Construction occurs only for synchronized-user or webhook functionality after the real deployment webhook secret exists. `packages/backend/confect/identity.spec.ts` and `identity.impl.ts` own the ordinary Confect/Effect `identity.findCurrent`, `identity.getCurrent`, and `identity.findSynchronized` queries.
@@ -61,7 +61,7 @@ WorkOS Actions are not part of the Keenko baseline. `WORKOS_ACTION_SECRET` becom
 ## Public and protected boundaries
 
 - Public is the default. A route with no auth loader remains public.
-- A protected TanStack route calls `getAuth()` in its loader and redirects to `/api/auth/sign-in` when no user exists.
+- - A protected TanStack route calls `getAuth()` in its loader. When no user exists, it redirects to the server-only `/api/auth/sign-in` endpoint with `reloadDocument: true` so the transition leaves SPA navigation and performs a full document request. Preserve the intended return pathname in the redirect search parameters.
 - A protected TanStack server function calls `getAuth()` inside its handler and rejects an absent user.
 - `identity.findCurrent` is public and nullable at the Convex/JavaScript boundary. Its Effect-owned workflow uses only Confect's `Auth` service, represents absence with `Option`, and returns the narrow `CurrentIdentity` representation.
 - `identity.getCurrent` derives the same `CurrentIdentity` representation through Confect's `Auth` service and maps absent identity to the typed `AuthenticationRequired` failure. Never accept a caller-supplied user identifier for authorization.
@@ -86,6 +86,8 @@ Expected result: the check passes and Git remains clean. Failure recovery is ord
 ## Provisioned authentication smoke
 
 The separate smoke creates a verified disposable user on the explicitly configured `AUTH_E2E_EMAIL_DOMAIN` through the official server SDK, signs that user in with email/password through Hosted UI, and deletes it in cleanup. Do not use `example.com`: a WorkOS staging environment may route that reserved domain to its test IdP instead of password authentication. The generated password exists only in the Playwright process and is never printed, persisted, or added to configuration. Email verification delivery is not the behavior under test.
+
+The smoke begins from the public application and navigates to `/mon-espace` while anonymous, exercising the protected-route loader → document redirect → Hosted UI path before completing email/password authentication.
 
 1. Complete development provisioning and component webhook setup above.
 2. Keep `bun run dev` running.

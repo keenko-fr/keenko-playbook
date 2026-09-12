@@ -56,7 +56,7 @@ function ProtectedPage() {
             <Alert variant="destructive">
               <Workos />
               <AlertTitle>WorkOS</AlertTitle>
-              <AlertDescription>Vous devez configurer WORKOS_WEBHOOK_SECRET</AlertDescription>
+              <AlertDescription>{m.brave_noisy_deer_treasure()}</AlertDescription>
             </Alert>
           ) : (
             <Item variant="outline">
