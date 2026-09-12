@@ -48,12 +48,14 @@ Keenko supports Node 24 and Bun `>=1.4.0 <2`; the current reference Bun version 
 bun install --frozen-lockfile
 bun run check
 bun run test:product
+bun run test:shadcn
 bun run test:published -- <exact-version>
 bun run deps:update
 ```
 
 - `check` is the deterministic repository gate.
 - `test:product` is the required Verdaccio-backed fresh-creation acceptance test for the unpublished packed artifact.
+- `test:shadcn` is the explicit live-registry compatibility smoke and is not a normal PR or release gate.
 - `test:published` is the release-grade fresh-consumer acceptance test for one exact version already published to npm.
 - `deps:update` updates compatibility pins for maintainer review.
 

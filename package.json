@@ -45,6 +45,7 @@
     "test": "bun test",
     "test:product": "bun run tests/packed-product.ts",
     "test:published": "bun run tests/packed-product.ts --published",
+    "test:shadcn": "bun run tests/packed-product.ts --shadcn",
     "typecheck": "node ./node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
