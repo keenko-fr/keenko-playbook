@@ -61,7 +61,7 @@ WorkOS Actions are not part of the Keenko baseline. `WORKOS_ACTION_SECRET` becom
 ## Public and protected boundaries
 
 - Public is the default. A route with no auth loader remains public.
-- - A protected TanStack route calls `getAuth()` in its loader. When no user exists, it redirects to the server-only `/api/auth/sign-in` endpoint with `reloadDocument: true` so the transition leaves SPA navigation and performs a full document request. Preserve the intended return pathname in the redirect search parameters.
+- A protected TanStack route calls `getAuth()` in its loader. When no user exists, it redirects to the server-only `/api/auth/sign-in` endpoint with `reloadDocument: true` so the transition leaves SPA navigation and performs a full document request. Preserve the intended return pathname in the redirect search parameters.
 - A protected TanStack server function calls `getAuth()` inside its handler and rejects an absent user.
 - `identity.findCurrent` is public and nullable at the Convex/JavaScript boundary. Its Effect-owned workflow uses only Confect's `Auth` service, represents absence with `Option`, and returns the narrow `CurrentIdentity` representation.
 - `identity.getCurrent` derives the same `CurrentIdentity` representation through Confect's `Auth` service and maps absent identity to the typed `AuthenticationRequired` failure. Never accept a caller-supplied user identifier for authorization.
