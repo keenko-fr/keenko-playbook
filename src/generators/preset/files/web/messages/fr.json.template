@@ -1,9 +1,14 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
+  "bland_weak_osprey_nudge": "Changer de thème",
+  "brave_noisy_deer_treasure": "La synchronisation WorkOS nécessite la configuration de WORKOS_WEBHOOK_SECRET.",
   "calm_green_otter": "Keenko",
   "great_zany_tapir_gaze": "Identité",
   "nimble_gross_lionfish_gulp": "Me déconnecter",
   "plain_dark_angelfish_scoop": "Page inconnue",
   "quiet_silver_lynx": "Mon espace",
-  "that_brave_falcon_twirl": "Me connecter"
+  "solid_busy_zebra_flow": "Clair",
+  "sound_yummy_boar_endure": "Sombre",
+  "that_brave_falcon_twirl": "Me connecter",
+  "upper_plain_vole_borrow": "Système"
 }

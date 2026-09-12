@@ -36,7 +36,7 @@ export function SiteHeader() {
           <Link
             to="/api/auth/sign-in"
             reloadDocument
-            aria-label="{m.that_brave_falcon_twirl()}"
+            aria-label={m.that_brave_falcon_twirl()}
             className={buttonVariants({ variant: "outline", size: "icon" })}
           >
             <LogInIcon />
@@ -44,7 +44,7 @@ export function SiteHeader() {
         </Unauthenticated>
         <Authenticated>
           <Button
-            aria-label="{m.nimble_gross_lionfish_gulp()}"
+            aria-label={m.nimble_gross_lionfish_gulp()}
             onClick={() => {
               void signOut();
             }}
