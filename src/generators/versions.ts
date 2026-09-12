@@ -29,6 +29,7 @@ export const packageVersions = {
   "@tanstack/router-cli": "1.167.34",
   "@testing-library/dom": "10.4.1",
   "@testing-library/react": "16.3.3",
+  "@thesvg/react": "3.3.6",
   "@types/bun": "1.4.2",
   "@types/node": "24.13.3",
   "@types/react": "19.3.0",

@@ -30,6 +30,7 @@ export const webDependencies = Struct.pick(packageVersions, [
   "@tanstack/react-router-ssr-query",
   "@tanstack/react-start",
   "@tanstack/react-table",
+  "@thesvg/react",
   "@workos/authkit-tanstack-react-start",
   "convex",
   "effect",

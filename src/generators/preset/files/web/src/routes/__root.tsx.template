@@ -20,7 +20,7 @@ export const Route = createRootRouteWithContext<RootRouteContext>()({
     links: [{ href: appCss, rel: "stylesheet" }],
     meta: [{ charSet: "utf-8" }, { content: "width=device-width, initial-scale=1", name: "viewport" }, { title: m.calm_green_otter() }],
   }),
-  notFoundComponent: () => <p>Not Found</p>,
+  notFoundComponent: () => <h1 className="text-3xl font-bold">{m.plain_dark_angelfish_scoop()}</h1>,
   shellComponent: RootDocument,
 });
 interface RootRouteContext {
