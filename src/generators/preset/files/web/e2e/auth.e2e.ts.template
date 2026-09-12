@@ -19,14 +19,16 @@ test("email/password auth reaches Convex identity, WorkOS synchronization, and s
 
   try {
     await page.goto("/");
-    await page.getByTestId("auth-sign-in").click();
+    await page.getByRole("link", { name: "Mon espace" }).click();
     await expect(page).toHaveURL(/(?:authkit|workos)/u);
 
     await page.getByRole("textbox", { name: "Email" }).fill(email);
     await page.getByRole("button", { name: "Continue with email" }).click();
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(new RegExp(`^${escapeRegExp(process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210")}`, "u"));
+    const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
+
+    await page.waitForURL(new RegExp(`^${escapeRegExp(baseUrl)}/mon-espace(?:[?#]|$)`, "u"));
 
     await expect(page.getByTestId("convex-authenticated")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("workos-user-synchronized")).toBeVisible({ timeout: 30_000 });
