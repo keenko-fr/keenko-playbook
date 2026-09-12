@@ -1,11 +1,10 @@
 import { api } from "@<%= workspace %>/backend/convex/_generated/api";
 import { Alert, AlertDescription, AlertTitle } from "@<%= workspace %>/ui/components/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@<%= workspace %>/ui/components/card";
-import { Item, ItemMedia, ItemContent, ItemTitle, ItemDescription } from "@<%= workspace %>/ui/components/item";
+import { Item, ItemContent, ItemTitle, ItemDescription } from "@<%= workspace %>/ui/components/item";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Convex, Tanstack, Workos } from "@thesvg/react";
 import { getAuth } from "@workos/authkit-tanstack-react-start";
 
 import * as m from "#/paraglide/messages";
@@ -35,18 +34,12 @@ function ProtectedPage() {
         </CardHeader>
         <CardContent>
           <Item variant="outline">
-            <ItemMedia variant="icon">
-              <Tanstack />
-            </ItemMedia>
             <ItemContent>
               <ItemTitle>Tanstack Start</ItemTitle>
               <ItemDescription>{user.email}</ItemDescription>
             </ItemContent>
           </Item>
           <Item variant="outline">
-            <ItemMedia variant="icon">
-              <Convex />
-            </ItemMedia>
             <ItemContent>
               <ItemTitle>Convex</ItemTitle>
               <ItemDescription>{convexUser && <span data-testid="convex-authenticated">{convexUser.subject}</span>}</ItemDescription>
@@ -54,15 +47,11 @@ function ProtectedPage() {
           </Item>
           {workosUser === null ? (
             <Alert variant="destructive">
-              <Workos />
               <AlertTitle>WorkOS</AlertTitle>
               <AlertDescription>{m.brave_noisy_deer_treasure()}</AlertDescription>
             </Alert>
           ) : (
             <Item variant="outline">
-              <ItemMedia variant="icon">
-                <Workos />
-              </ItemMedia>
               <ItemContent>
                 <ItemTitle>WorkOS</ItemTitle>
                 <ItemDescription>{workosUser && <span data-testid="workos-user-synchronized">{workosUser.email}</span>}</ItemDescription>
