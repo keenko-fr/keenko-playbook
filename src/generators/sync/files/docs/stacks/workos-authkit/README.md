@@ -12,8 +12,8 @@ Every Keenko project starts with a production-shaped WorkOS AuthKit foundation t
 - `apps/web/src/routes/protected.tsx` and `apps/web/src/server/auth.ts` demonstrate opt-in protected route and server-function boundaries with the official `getAuth` API.
 - `apps/web/src/router.tsx` bridges AuthKit access tokens to Convex through `ConvexProviderWithAuth`.
 - `packages/backend/confect/auth.ts` configures the documented WorkOS JWT providers through Confect's official Convex auth-config extension point. It deliberately does not import the component client's `getAuthConfigProviders()` helper: the current component package causes Convex auth-config analysis to require the optional `WORKOS_ACTION_SECRET` even when WorkOS Actions are not configured.
-- `packages/backend/confect/workos.ts` owns the official component client. `packages/backend/confect/identity.spec.ts` and `identity.impl.ts` own the ordinary Confect/Effect `identity.findCurrent`, `identity.getCurrent`, and `identity.findSynchronized` queries.
-- `packages/backend/confect/http.ts` owns the component webhook endpoint through Confect's official HTTP extension point.
+- `packages/backend/confect/workos.ts` owns deferred construction of the official component client. Construction occurs only for synchronized-user or webhook functionality after the real deployment webhook secret exists. `packages/backend/confect/identity.spec.ts` and `identity.impl.ts` own the ordinary Confect/Effect `identity.findCurrent`, `identity.getCurrent`, and `identity.findSynchronized` queries.
+- `packages/backend/confect/http.ts` owns conditional registration of the component webhook endpoint through Confect's official HTTP extension point. The route is registered only after `WORKOS_WEBHOOK_SECRET` exists in the Convex deployment.
 - Confect materializes those extension points into `packages/backend/convex/auth.config.ts`, `packages/backend/convex/identity.ts`, and `packages/backend/convex/http.ts`; do not edit the generated files.
 - WorkOS owns authentication and synchronized identity metadata. Convex/application code owns authorization, resource ownership, permissions, and business policy.
 
@@ -34,22 +34,23 @@ Production WorkOS environments, credentials, redirect URLs, hosting secrets, and
 1. From the generated workspace root, run `bun run dev`.
 2. Follow the Convex prompts to create or select the development deployment and associate the Convex team with a Convex-managed WorkOS team.
 3. Convex provisions the non-production WorkOS environment, stores `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, and environment identity in the Convex deployment, configures the development URLs from root `convex.json`, and writes the required local AuthKit values plus a generated cookie password to untracked `.env.local`.
-4. Open `http://localhost:3000` and use the sign-in link. AuthKit Hosted UI is the canonical default, and email/password is enabled by default without any WorkOS Dashboard configuration.
+4. Convex completes the first backend push without `WORKOS_WEBHOOK_SECRET`, then starts the generated application.
+5. Open `http://localhost:3000` and use the sign-in link. AuthKit Hosted UI is the canonical default, and email/password is enabled by default without any WorkOS Dashboard configuration.
 
-Expected result: Hosted UI returns to `/api/auth/callback`, the client obtains a WorkOS access token, and Convex validates the identity. `useConvexAuth()` becomes authenticated before authenticated Convex UI is shown.
+Expected result: Hosted UI returns to `/api/auth/callback`, the client obtains a WorkOS access token, and Convex validates the identity. `useConvexAuth()` becomes authenticated before authenticated Convex UI is shown. `identity.findCurrent` is available immediately. Component synchronization is not expected yet: `identity.findSynchronized` returns `null`, and the component webhook route is not registered until the real deployment secret is configured.
 
 If a project already owns a WorkOS team, follow the current official Convex manual-team path instead. That is a project-specific provisioning choice; it does not change the generated architecture.
 
 ## Synchronized WorkOS user
 
-Convex-managed AuthKit provisioning does not currently create the webhook required by the official component. For v1, this is an explicit first-party provisioning step in addition to normal AuthKit provisioning:
+Convex-managed AuthKit provisioning does not currently create the webhook required by the official component. Basic authentication and the first backend push already work at this point. For v1, synchronization requires this explicit first-party provisioning step after normal AuthKit provisioning:
 
 1. Find the development deployment HTTP Actions URL in the Convex dashboard.
 2. In the corresponding WorkOS non-production environment, create a webhook for `user.created`, `user.updated`, and `user.deleted` at `https://<deployment>.convex.site/workos/webhook`.
 3. Copy the webhook secret directly into the Convex deployment environment as `WORKOS_WEBHOOK_SECRET` using the dashboard or `bun x convex env set WORKOS_WEBHOOK_SECRET <secret>`.
 4. Restart or let `bun run dev` push the updated environment and sign in once through Hosted UI.
 
-The real webhook secret belongs only in the provisioned Convex deployment. Do not copy it into root `.env.local`: local Confect codegen and watch processes construct the component only to analyze and materialize backend modules; they do not receive or verify incoming WorkOS webhooks. Their generated package scripts provide fresh process-scoped UUID sentinels for the component's three eagerly validated values. The remote Convex HTTP action verifies real webhook signatures with the deployment secret.
+The real webhook secret belongs only in the provisioned Convex deployment. Do not copy it into root `.env.local`. Local Confect codegen and watch processes do not receive or verify incoming WorkOS webhooks; their generated package scripts provide fresh process-scoped UUID sentinels only for static analysis and materialization. In the deployed backend, Keenko defers construction of the official component client: without the real secret, webhook routes are not registered and synchronized identity reports absence. After the secret is set and the backend is pushed again, the official client registers the route and the remote Convex HTTP action verifies real webhook signatures with that deployment secret.
 
 Expected result: `identity.findSynchronized` returns the narrow synchronized WorkOS identity for an authenticated caller and `null` for an anonymous or not-yet-synchronized caller. Do not mirror it into an application table unless a product-owned domain concept requires that data.
 
@@ -64,13 +65,13 @@ WorkOS Actions are not part of the Keenko baseline. `WORKOS_ACTION_SECRET` becom
 - A protected TanStack server function calls `getAuth()` inside its handler and rejects an absent user.
 - `identity.findCurrent` is public and nullable at the Convex/JavaScript boundary. Its Effect-owned workflow uses only Confect's `Auth` service, represents absence with `Option`, and returns the narrow `CurrentIdentity` representation.
 - `identity.getCurrent` derives the same `CurrentIdentity` representation through Confect's `Auth` service and maps absent identity to the typed `AuthenticationRequired` failure. Never accept a caller-supplied user identifier for authorization.
-- `identity.findSynchronized` is a separate public query for the official component's synchronized infrastructure identity. It obtains raw query context from Confect's generated `QueryCtx` service only because `authKit.getAuthUser(ctx)` requires it, and represents the nullable component result as `Option<SynchronizedIdentity>` internally.
+- `identity.findSynchronized` is a separate public query for the official component's synchronized infrastructure identity. Before the real webhook secret exists in the deployment, it returns `null` without constructing the component client. After configuration, it obtains raw query context from Confect's generated `QueryCtx` service only because the official `getAuthUser(ctx)` method requires it, and represents the nullable component result as `Option<SynchronizedIdentity>` internally.
 - Normal Confect queries may access the native Convex query context through Confect's `QueryCtx` Effect service when a first-party integration specifically requires that context. Prefer narrower Confect services such as `Auth`, database services, and runners whenever they already own the capability; do not reach for raw context routinely.
 - Use `identity.tokenIdentifier` as the stable authenticated identity key when application data needs an ownership reference. Keep authorization decisions in Convex/application code; do not treat WorkOS roles, permissions, organizations, or entitlements as Keenko's general policy model.
 
 ## Deterministic verification
 
-`bun run check` intentionally does not start Convex, contact WorkOS, read production secrets, or run provisioned auth E2E. The official component currently validates `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, and `WORKOS_WEBHOOK_SECRET` eagerly during construction, so the backend codegen and local Confect watch commands create invalid, non-secret UUID sentinels directly in their process environments while Confect analyzes and materializes static generated state. UUIDs lack the WorkOS credential prefixes and are deliberately unusable as real credentials. Those local paths only construct the SDK and register functions; they do not invoke WorkOS operations or webhook verification. No sentinel value is stored in package configuration, `.env` files, generated output, deployment state, or application runtime. This is narrow upstream compatibility debt, not a pattern to copy into project code.
+`bun run check` intentionally does not start Convex, contact WorkOS, read production secrets, or run provisioned auth E2E. The official component currently validates `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, and `WORKOS_WEBHOOK_SECRET` eagerly during construction, so the backend codegen and local Confect watch commands create invalid, non-secret UUID sentinels directly in their process environments while Confect analyzes and materializes static generated state. UUIDs lack the WorkOS credential prefixes and are deliberately unusable as real credentials. Those local paths do not invoke WorkOS operations or verify webhooks. No sentinel value is stored in package configuration, `.env` files, generated output, deployment state, or application runtime, and no sentinel is supplied to a Convex deployment. This is narrow upstream compatibility debt, not a pattern to copy into project code.
 
 From a clean generated repository with no `.env.local`, run:
 

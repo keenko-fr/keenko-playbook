@@ -1,9 +1,9 @@
 import { httpRouter } from "convex/server";
 
-import { authKit } from "./workos";
+import { isWorkOSWebhookConfigured, makeAuthKit } from "./workos";
 
 const http = httpRouter();
 
-authKit.registerRoutes(http);
+if (isWorkOSWebhookConfigured()) makeAuthKit().registerRoutes(http);
 
 export default http;

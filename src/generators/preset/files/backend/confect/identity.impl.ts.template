@@ -5,7 +5,7 @@ import { Effect as E, Layer as L, Option as O } from "effect";
 import databaseSchema from "./_generated/schema";
 import { Auth, QueryCtx } from "./_generated/services";
 import spec, { AuthenticationRequired, type CurrentIdentity, type SynchronizedIdentity } from "./identity.spec";
-import { authKit } from "./workos";
+import { isWorkOSWebhookConfigured, makeAuthKit } from "./workos";
 
 // QUERIES ---------------------------------------------------------------------------------------------------------------------------------
 const findCurrent = FunctionImpl.make(databaseSchema, spec, "findCurrent", () =>
@@ -26,8 +26,10 @@ const getCurrent = FunctionImpl.make(databaseSchema, spec, "getCurrent", () =>
 
 const findSynchronized = FunctionImpl.make(databaseSchema, spec, "findSynchronized", () =>
   E.gen(function* () {
+    if (!isWorkOSWebhookConfigured()) return O.none();
+
     const ctx = yield* QueryCtx;
-    return yield* E.promise(() => authKit.getAuthUser(ctx)).pipe(
+    return yield* E.promise(() => makeAuthKit().getAuthUser(ctx)).pipe(
       E.map((workOSUser) =>
         O.map(O.fromNullishOr(workOSUser), (user): SynchronizedIdentity => ({
           email: O.fromNullishOr(user.email),
