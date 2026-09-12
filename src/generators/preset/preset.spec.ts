@@ -642,12 +642,18 @@ describe("keenko preset", () => {
         const identitySpec = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.spec.ts", "utf-8")));
         const identityImpl = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.impl.ts", "utf-8")));
         const homeRoute = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/src/routes/index.tsx", "utf-8")));
+        const httpIntegration = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/http.ts", "utf-8")));
+        const workOSIntegration = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/workos.ts", "utf-8")));
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(convexConfig).toContain('"@convex-dev/workos-authkit/convex.config"');
         expect(tree.read("packages/backend/confect/workos.ts", "utf-8")).toContain('"@convex-dev/workos-authkit"');
         expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).toContain("WORKOS_CLIENT_ID");
         expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain('"@workos/authkit-tanstack-react-start"');
+        expect(workOSIntegration).not.toContain("= new AuthKit");
+        expect(workOSIntegration).toContain("WORKOS_WEBHOOK_SECRET");
+        expect(httpIntegration).not.toContain("WORKOS_WEBHOOK_SECRET");
+        expect(identityImpl).not.toContain("WORKOS_WEBHOOK_SECRET");
         expect(generatedApi).toContain("identity: typeof");
         expect(generatedApi).not.toContain("authentication: typeof");
 

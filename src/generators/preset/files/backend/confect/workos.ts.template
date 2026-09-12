@@ -3,6 +3,17 @@ import type { GenericDataModel } from "convex/server";
 
 import { components } from "./_generated/components";
 
+declare const process: {
+  readonly env: {
+    readonly WORKOS_WEBHOOK_SECRET?: string;
+  };
+};
+
 // AUTHKIT ---------------------------------------------------------------------------------------------------------------------------------
 // The synchronized WorkOS user is authentication infrastructure identity. It is not the application's canonical domain user.
-export const authKit = new AuthKit<GenericDataModel>(components.workOSAuthKit);
+export const isWorkOSWebhookConfigured = () => {
+  const webhookSecret = process.env.WORKOS_WEBHOOK_SECRET;
+  return Boolean(webhookSecret);
+};
+
+export const makeAuthKit = () => new AuthKit<GenericDataModel>(components.workOSAuthKit);
