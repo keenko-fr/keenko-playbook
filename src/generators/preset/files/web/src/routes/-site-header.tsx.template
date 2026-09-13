@@ -9,8 +9,8 @@ import * as m from "#/paraglide/messages";
 
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
 const navs = linkOptions([
-  { key: "home", label: m.calm_green_otter(), to: "/" },
-  { key: "workspace", label: m.quiet_silver_lynx(), to: "/mon-espace" },
+  { key: "home", label: m.calm_green_otter, to: "/" },
+  { key: "workspace", label: m.quiet_silver_lynx, to: "/mon-espace" },
 ]);
 
 // COMPONENT -------------------------------------------------------------------------------------------------------------------------------
@@ -27,7 +27,7 @@ export function SiteHeader() {
             className={buttonVariants({ variant: "ghost" })}
             activeProps={{ className: "bg-accent text-accent-foreground" }}
           >
-            {label}
+            {label()}
           </Link>
         ))}
       </nav>

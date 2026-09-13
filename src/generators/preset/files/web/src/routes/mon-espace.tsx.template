@@ -1,5 +1,4 @@
 import { api } from "@<%= workspace %>/backend/convex/_generated/api";
-import { Alert, AlertDescription, AlertTitle } from "@<%= workspace %>/ui/components/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@<%= workspace %>/ui/components/card";
 import { Item, ItemContent, ItemTitle, ItemDescription } from "@<%= workspace %>/ui/components/item";
 import { convexQuery } from "@convex-dev/react-query";
@@ -9,6 +8,7 @@ import { getAuth } from "@workos/authkit-tanstack-react-start";
 
 import * as m from "#/paraglide/messages";
 
+// ROUTE -----------------------------------------------------------------------------------------------------------------------------------
 export const Route = createFileRoute("/mon-espace")({
   loader: async ({ location }) => {
     const { user } = await getAuth();
@@ -20,6 +20,7 @@ export const Route = createFileRoute("/mon-espace")({
   component: ProtectedPage,
 });
 
+// PAGE ------------------------------------------------------------------------------------------------------------------------------------
 function ProtectedPage() {
   const { user } = Route.useLoaderData();
   const { data: convexUser } = useQuery(convexQuery(api.identity.findCurrent, {}));
@@ -42,22 +43,27 @@ function ProtectedPage() {
           <Item variant="outline">
             <ItemContent>
               <ItemTitle>Convex</ItemTitle>
-              <ItemDescription>{convexUser && <span data-testid="convex-authenticated">{convexUser.subject}</span>}</ItemDescription>
+              <ItemDescription>
+                {convexUser === undefined && m.fresh_kind_moth_wait()}
+                {convexUser === null && m.mild_teal_fox_rest()}
+                {convexUser !== undefined && convexUser !== null && (
+                  <span data-testid="convex-authenticated">{convexUser.subject}</span>
+                )}
+              </ItemDescription>
             </ItemContent>
           </Item>
-          {workosUser === null ? (
-            <Alert variant="destructive">
-              <AlertTitle>WorkOS</AlertTitle>
-              <AlertDescription>{m.brave_noisy_deer_treasure()}</AlertDescription>
-            </Alert>
-          ) : (
-            <Item variant="outline">
-              <ItemContent>
-                <ItemTitle>WorkOS</ItemTitle>
-                <ItemDescription>{workosUser && <span data-testid="workos-user-synchronized">{workosUser.email}</span>}</ItemDescription>
-              </ItemContent>
-            </Item>
-          )}
+          <Item variant="outline">
+            <ItemContent>
+              <ItemTitle>WorkOS</ItemTitle>
+              <ItemDescription>
+                {workosUser === undefined && m.swift_amber_heron_wait()}
+                {workosUser === null && m.brave_noisy_deer_treasure()}
+                {workosUser !== undefined && workosUser !== null && (
+                  <span data-testid="workos-user-synchronized">{workosUser.email}</span>
+                )}
+              </ItemDescription>
+            </ItemContent>
+          </Item>
         </CardContent>
       </Card>
     </div>
