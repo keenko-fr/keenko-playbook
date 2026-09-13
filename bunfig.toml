@@ -1,2 +1,2 @@
 [test]
-pathIgnorePatterns = [".tmp/**", ".claude/worktrees/**"]
+pathIgnorePatterns = ["tmp/**", ".tmp/**", ".claude/worktrees/**"]
