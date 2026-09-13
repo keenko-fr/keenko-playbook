@@ -8,8 +8,8 @@
     }
   },
   "scripts": {
-    "codegen": "WORKOS_CLIENT_ID=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" WORKOS_API_KEY=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" WORKOS_WEBHOOK_SECRET=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" confect codegen",
-    "dev": "WORKOS_CLIENT_ID=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" WORKOS_API_KEY=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" WORKOS_WEBHOOK_SECRET=\"$(bun --eval 'process.stdout.write(crypto.randomUUID())')\" confect dev"
+    "codegen": "confect codegen",
+    "dev": "confect dev"
   },
   "nx": {
     "tags": ["type:package", "scope:backend"],

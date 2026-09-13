@@ -329,7 +329,19 @@ const product = E.gen(function* () {
   yield* command(workspace, bootstrapEnv, "bun", ["install", "--frozen-lockfile"]);
   const reinstalledPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPackagePath));
   yield* assert(reinstalledPackage.version === packageVersion, `The clean consumer did not reinstall Keenko ${packageVersion}`);
-  const checkOutput = yield* command(workspace, env, "env", ["-u", "CI", "bun", "run", "check"]);
+  const checkOutput = yield* command(workspace, env, "env", [
+    "-u",
+    "CI",
+    "-u",
+    "WORKOS_API_KEY",
+    "-u",
+    "WORKOS_CLIENT_ID",
+    "-u",
+    "WORKOS_WEBHOOK_SECRET",
+    "bun",
+    "run",
+    "check",
+  ]);
   yield* assert(!checkOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Fresh check emitted a module-typeless package warning");
   yield* completePhase("clean frozen install and generated consumer canonical verification", verificationStartedAt);
 

@@ -642,7 +642,7 @@ describe("keenko preset", () => {
           "packages/backend/confect/identity.spec.ts",
           "packages/backend/confect/identity.impl.ts",
           "packages/backend/confect/http.ts",
-          "packages/backend/confect/workos-client.ts",
+          "packages/backend/confect/workos.ts",
           "packages/backend/confect/workos.spec.ts",
           "packages/backend/confect/workos.impl.ts",
           "packages/backend/convex/_generated/api.d.ts",
@@ -658,7 +658,7 @@ describe("keenko preset", () => {
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(convexConfig).toContain('"@convex-dev/workos-authkit/convex.config"');
-        const workOSClient = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/workos-client.ts", "utf-8")));
+        const workOSClient = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/workos.ts", "utf-8")));
         const workOSSpec = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/workos.spec.ts", "utf-8")));
         expect(workOSClient).toContain('"@convex-dev/workos-authkit"');
         expect(workOSClient).toContain("makeAuthKit().utils().backfillUsers");
@@ -709,8 +709,8 @@ describe("keenko preset", () => {
         expect(tree.read(".env.example", "utf-8")).not.toContain("WORKOS_WEBHOOK_SECRET=");
         expect(tree.read(".env.example", "utf-8")).not.toContain("AUTH_E2E_EMAIL_DOMAIN=");
         expect(tree.read(".env.example", "utf-8")).not.toMatch(/(?:client_|sk_|whsec_)[A-Za-z0-9]/u);
-        expect(backendPackageJson.scripts?.codegen).not.toMatch(/WORKOS_(?:CLIENT_ID|API_KEY|WEBHOOK_SECRET)=[A-Za-z0-9_-]+/u);
-        expect(backendPackageJson.scripts?.dev).not.toMatch(/WORKOS_(?:CLIENT_ID|API_KEY|WEBHOOK_SECRET)=[A-Za-z0-9_-]+/u);
+        expect(backendPackageJson.scripts?.codegen).toBe("confect codegen");
+        expect(backendPackageJson.scripts?.dev).toBe("confect dev");
         expect(tree.exists(".env.local")).toBe(false);
         expect(tree.read(".gitignore", "utf-8")).toContain("/.env.local");
       })

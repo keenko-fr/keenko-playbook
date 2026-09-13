@@ -58,7 +58,7 @@ const installModuleFakes = () => {
 const loadHttp = () => import("./http");
 const loadIdentity = () => import("./identity.impl");
 const loadServices = () => import("./_generated/services");
-const loadWorkOSClient = () => import("./workos-client");
+const loadWorkOSClient = () => import("./workos");
 
 const resetLifecycle = () => {
   vi.resetModules();

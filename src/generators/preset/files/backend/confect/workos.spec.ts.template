@@ -1,6 +1,6 @@
 import { FunctionSpec, GroupSpec } from "@confect/core";
 
-import type { backfillUsers } from "./workos-client";
+import type { backfillUsers } from "./workos";
 
 // SPEC ------------------------------------------------------------------------------------------------------------------------------------
 export default GroupSpec.make()

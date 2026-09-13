@@ -1,9 +1,21 @@
+import { ConvexConfigProvider } from "@confect/server";
 import { httpRouter } from "convex/server";
+import { Config as CFG, Effect as E, Option as O } from "effect";
 
-import { isWorkOSWebhookConfigured, makeAuthKit } from "./workos-client";
+import { makeAuthKit } from "./workos";
+
+const workOSConfig = E.runSync(
+  CFG.all({
+    apiKey: CFG.String("WORKOS_API_KEY"),
+    clientId: CFG.String("WORKOS_CLIENT_ID"),
+    webhookSecret: CFG.option(CFG.String("WORKOS_WEBHOOK_SECRET")),
+  }).parse(ConvexConfigProvider.make())
+);
 
 const http = httpRouter();
 
-if (isWorkOSWebhookConfigured()) makeAuthKit().registerRoutes(http);
+O.forEach(workOSConfig.webhookSecret, (webhookSecret) => {
+  makeAuthKit({ apiKey: workOSConfig.apiKey, clientId: workOSConfig.clientId, webhookSecret }).registerRoutes(http);
+});
 
 export default http;
