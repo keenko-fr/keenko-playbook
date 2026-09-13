@@ -9,7 +9,7 @@
   },
   "iconLibrary": "lucide",
   "rsc": false,
-  "style": "base-nova",
+  "style": "base-vega",
   "tailwind": {
     "baseColor": "neutral",
     "config": "",

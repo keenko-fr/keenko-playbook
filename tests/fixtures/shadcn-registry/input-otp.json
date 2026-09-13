@@ -1,0 +1,13 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "input-otp",
+  "type": "registry:ui",
+  "dependencies": ["keenko-shadcn-fixture@0.0.0-fixture"],
+  "files": [
+    {
+      "path": "ui/input-otp.tsx",
+      "content": "export { marker as InputOTP } from \"keenko-shadcn-fixture\";\n",
+      "type": "registry:ui"
+    }
+  ]
+}

@@ -46,7 +46,7 @@ export const scripts = {
   build: "nx run-many -t build",
   check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
   codegen: "nx run-many -t codegen",
-  dev: 'convex dev --start "nx run-many -t dev"',
+  dev: 'NX_TUI=false convex dev --start "nx run-many -t dev"',
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
   lint: "oxlint .",

@@ -8,6 +8,7 @@ import { packageVersions } from "../../versions.js";
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
 const dependencies = Struct.pick(packageVersions, [
   "@base-ui/react",
+  "@fontsource-variable/inter",
   "class-variance-authority",
   "cn",
   "lucide-react",

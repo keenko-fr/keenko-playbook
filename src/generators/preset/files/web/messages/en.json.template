@@ -1,9 +1,17 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-  "calm_green_otter": "Welcome to Keenko",
-  "bright_amber_falcon": "Sign in",
-  "gentle_indigo_fox": "Sign out",
-  "quiet_silver_lynx": "Protected authentication example",
-  "swift_coral_panda": "Authenticated with Convex",
-  "warm_violet_whale": "WorkOS user synchronized"
+  "bland_weak_osprey_nudge": "Toggle theme",
+  "brave_noisy_deer_treasure": "WorkOS identity is not synchronized yet.",
+  "calm_green_otter": "Keenko",
+  "fresh_kind_moth_wait": "Loading Convex identity…",
+  "great_zany_tapir_gaze": "Identity",
+  "mild_teal_fox_rest": "Convex identity is not available.",
+  "nimble_gross_lionfish_gulp": "Sign out",
+  "plain_dark_angelfish_scoop": "Page unknown",
+  "quiet_silver_lynx": "My workspace",
+  "solid_busy_zebra_flow": "Light",
+  "sound_yummy_boar_endure": "Dark",
+  "swift_amber_heron_wait": "Loading WorkOS identity…",
+  "that_brave_falcon_twirl": "Sign in",
+  "upper_plain_vole_borrow": "System"
 }

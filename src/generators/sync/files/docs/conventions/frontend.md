@@ -45,6 +45,8 @@ For finite values, use exhaustive typed maps, normally named concisely such as `
 
 Keep user meaning separate from visual representation. `DISPLAY` owns meaning. The renderer/UI stack owns the implementation of visual styles.
 
+Locale-sensitive display values must be resolved inside the active request or render locale context. When locale is request-scoped, module-level structures must retain message functions, message keys, or locale-independent metadata rather than already-resolved translated strings.
+
 ## Semantic structure and accessibility
 
 Use semantic structure that expresses the content and interaction correctly. Prefer native semantics and accessibility-capable primitives before recreating established interaction behavior.

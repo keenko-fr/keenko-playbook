@@ -1,0 +1,24 @@
+import { fileURLToPath } from "node:url";
+
+import { defineConfig } from "vitest/config";
+
+const mocks = fileURLToPath(new URL("./mocks.tsx", import.meta.url));
+
+export default defineConfig({
+  esbuild: { jsx: "automatic" },
+  resolve: {
+    alias: [
+      { find: /^@test\/backend\/convex\/_generated\/api$/u, replacement: mocks },
+      { find: /^@test\/ui\/components\/(?:button|card|item)$/u, replacement: mocks },
+      { find: /^@convex-dev\/react-query$/u, replacement: mocks },
+      { find: /^@tanstack\/react-query$/u, replacement: mocks },
+      { find: /^@tanstack\/react-router$/u, replacement: mocks },
+      { find: /^@workos\/authkit-tanstack-react-start(?:\/client)?$/u, replacement: mocks },
+      { find: /^convex\/react$/u, replacement: mocks },
+      { find: /^lucide-react$/u, replacement: mocks },
+      { find: /^#\/infra\/theme\/toggle$/u, replacement: mocks },
+      { find: /^#\/paraglide\/messages$/u, replacement: mocks },
+    ],
+  },
+  test: { environment: "jsdom" },
+});

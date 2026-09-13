@@ -35,7 +35,7 @@ Add a wrapper only when it represents meaningful composition, domain behavior, o
 
 ## STYLES
 
-Component-owned styles live in an uppercase CVA object named for the main rendered unit. Keep meaningful or repeated styling out of JSX. Trivial one-off structural classes may remain inline when extraction would add noise.
+Component-owned styles should preferably live in an uppercase CVA object named for the main rendered unit. Preserve established component-library naming when changing it would add noise without improving the component contract. Keep meaningful or repeated styling out of JSX. Trivial one-off structural classes may remain inline when extraction would add noise.
 
 When state already exists, expose it through canonical semantic attributes such as `data-status`, `data-active`, `data-invalid`, `data-selected`, or `data-orientation` and style from that state. Use canonical English programmatic values in attributes. Do not create a CVA variant merely to mirror existing state.
 

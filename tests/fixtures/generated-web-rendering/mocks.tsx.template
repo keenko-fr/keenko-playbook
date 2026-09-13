@@ -1,0 +1,61 @@
+import type { ComponentProps, PropsWithChildren } from "react";
+
+let locale: "en" | "fr" = "fr";
+let queryResults: unknown[] = [];
+
+export const setLocale = (nextLocale: "en" | "fr") => {
+  locale = nextLocale;
+};
+
+export const setQueryResults = (...results: unknown[]) => {
+  queryResults = results;
+};
+
+export const api = { identity: { findCurrent: "findCurrent", findSynchronized: "findSynchronized" } };
+export const convexQuery = (query: unknown) => query;
+export const useQuery = () => ({ data: queryResults.shift() });
+export const getAuth = () => Promise.resolve({ user: null });
+export const redirect = (options: unknown) => options;
+export const useAuth = () => ({ signOut: () => Promise.resolve() });
+export const linkOptions = <Options,>(options: Options) => options;
+
+const route = {
+  options: {} as { component: () => React.ReactNode },
+  useLoaderData: () => ({ user: { email: "person@example.com" } }),
+};
+
+export const createFileRoute = () => (options: { component: () => React.ReactNode }) => {
+  route.options = options;
+  return route;
+};
+
+export const Link = ({ activeProps: _activeProps, reloadDocument: _reloadDocument, to, ...props }: ComponentProps<"a"> & { activeProps?: unknown; reloadDocument?: boolean; to: string }) => (
+  <a href={to} {...props} />
+);
+export const Button = ({ variant: _variant, size: _size, ...props }: ComponentProps<"button"> & { size?: string; variant?: string }) => <button {...props} />;
+export const buttonVariants = () => "button";
+export const Authenticated = ({ children }: PropsWithChildren) => children;
+export const Unauthenticated = ({ children }: PropsWithChildren) => children;
+export const Card = ({ children }: PropsWithChildren) => <section>{children}</section>;
+export const CardContent = ({ children }: PropsWithChildren) => <div>{children}</div>;
+export const CardHeader = ({ children }: PropsWithChildren) => <header>{children}</header>;
+export const CardTitle = ({ children }: PropsWithChildren) => <h2>{children}</h2>;
+export const Item = ({ children }: PropsWithChildren<{ variant?: string }>) => <div>{children}</div>;
+export const ItemContent = ({ children }: PropsWithChildren) => <div>{children}</div>;
+export const ItemDescription = ({ children }: PropsWithChildren) => <div>{children}</div>;
+export const ItemTitle = ({ children }: PropsWithChildren) => <h3>{children}</h3>;
+export const LogInIcon = () => <span />;
+export const LogOutIcon = () => <span />;
+export const ThemeToggle = () => <button type="button">Theme</button>;
+
+const translated = (english: string, french: string) => () => (locale === "en" ? english : french);
+
+export const calm_green_otter = translated("Keenko", "Keenko");
+export const quiet_silver_lynx = translated("My workspace", "Mon espace");
+export const that_brave_falcon_twirl = translated("Sign in", "Me connecter");
+export const nimble_gross_lionfish_gulp = translated("Sign out", "Me déconnecter");
+export const great_zany_tapir_gaze = translated("Identity", "Identité");
+export const fresh_kind_moth_wait = translated("Loading Convex identity…", "Chargement de l’identité Convex…");
+export const mild_teal_fox_rest = translated("Convex identity is not available.", "L’identité Convex n’est pas disponible.");
+export const swift_amber_heron_wait = translated("Loading WorkOS identity…", "Chargement de l’identité WorkOS…");
+export const brave_noisy_deer_treasure = translated("WorkOS identity is not synchronized yet.", "L’identité WorkOS n’est pas encore synchronisée.");
