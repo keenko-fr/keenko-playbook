@@ -23,10 +23,6 @@ const expectedWorkspaces = ["apps/*", "packages/*"];
 
 const exactPackageVersion = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 
-const expectedBackendSentinels = `WORKOS_CLIENT_ID="$(bun --eval 'process.stdout.write(crypto.randomUUID())')" WORKOS_API_KEY="$(bun --eval 'process.stdout.write(crypto.randomUUID())')" WORKOS_WEBHOOK_SECRET="$(bun --eval 'process.stdout.write(crypto.randomUUID())')"`;
-const expectedBackendCodegen = `${expectedBackendSentinels} confect codegen`;
-const expectedBackendDev = `${expectedBackendSentinels} confect dev`;
-
 const expectedScripts = {
   build: "nx run-many -t build",
   check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
@@ -406,7 +402,7 @@ describe("keenko preset", () => {
         for (const rootCode of tree.children("").filter((entry) => /\.(?:c|m)?(?:j|t)sx?$/u.test(entry)))
           expect(tree.read(rootCode, "utf-8")).not.toContain("@tanstack/react-start");
 
-        expect(backendPackageJson.scripts).toEqual({ codegen: expectedBackendCodegen, dev: expectedBackendDev });
+        expect(backendPackageJson.scripts).toEqual({ codegen: "confect codegen", dev: "confect dev" });
 
         expect(readJson(tree, "convex.json")).toEqual({
           $schema: "./node_modules/convex/schemas/convex.schema.json",
