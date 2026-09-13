@@ -8,7 +8,6 @@ export default defineConfig({
     ".agents/skills/**",
     ".claude/skills/**",
     ".keenko/**",
-    ".tmp/**",
     "**/*.template",
     "**/.output/**",
     "**/build/**",

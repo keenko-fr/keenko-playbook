@@ -15,8 +15,8 @@ const materializeRoute = async (name: string) => {
 };
 
 const materialize = async () => {
-  await mkdir(path.join(repository, ".tmp"), { recursive: true });
-  fixtureRoot = await mkdtemp(path.join(repository, ".tmp", "generated-web-rendering-"));
+  await mkdir(path.join(repository, "tmp"), { recursive: true });
+  fixtureRoot = await mkdtemp(path.join(repository, "tmp", "generated-web-rendering-"));
   await mkdir(path.join(fixtureRoot, "routes"), { recursive: true });
 
   await Promise.all([
