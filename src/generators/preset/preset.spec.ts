@@ -602,6 +602,7 @@ describe("keenko preset", () => {
         const rootPackageJson = readJson<PackageJson>(tree, "package.json");
         const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
         const backendPackageJson = readJson<PackageJson>(tree, "packages/backend/package.json");
+        const authSmoke = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")));
 
         expect(webPackageJson.dependencies).toMatchObject({
           "@acme/backend": "workspace:*",
@@ -610,9 +611,14 @@ describe("keenko preset", () => {
         });
         expect(webPackageJson.dependencies).not.toHaveProperty("@confect/react");
         expect(webPackageJson.devDependencies?.["@playwright/test"]).toBe(packageVersions["@playwright/test"]);
-        expect(webPackageJson.devDependencies?.["@workos-inc/node"]).toBe(packageVersions["@workos-inc/node"]);
+        expect(webPackageJson.devDependencies).not.toHaveProperty("@workos-inc/node");
         expect(webPackageJson.scripts?.["test:auth:e2e"]).toBe("playwright test --config playwright.config.ts --headed --workers=1");
         expect(rootPackageJson.scripts?.["test:auth:e2e"]).toBe("bun --env-file=../../.env.local run --cwd apps/web test:auth:e2e");
+        expect(authSmoke).toContain("request.isNavigationRequest()");
+        expect(authSmoke).toContain("await page.pause()");
+        expect(authSmoke).toContain('page.getByTestId("convex-authenticated")');
+        expect(authSmoke).toContain('page.getByTestId("workos-user-synchronized")');
+        expect(authSmoke).not.toMatch(/AUTH_E2E_EMAIL_DOMAIN|createUser|deleteUser|Password|Continue with email/u);
         expect(backendPackageJson.dependencies).toMatchObject(
           Struct.pick(packageVersions, ["@convex-dev/workos-authkit", "@workos-inc/authkit-react", "@workos-inc/node"])
         );
@@ -694,7 +700,7 @@ describe("keenko preset", () => {
         for (const rule of ["effect/noAsyncFunction", "effect/noNewError", "effect/noNullish", "effect/noThrowStatement"])
           expect(oxlintConfig).not.toContain(`"${rule}": "off"`);
         expect(tree.read(".env.example", "utf-8")).not.toContain("WORKOS_WEBHOOK_SECRET=");
-        expect(tree.read(".env.example", "utf-8")).toContain("AUTH_E2E_EMAIL_DOMAIN=");
+        expect(tree.read(".env.example", "utf-8")).not.toContain("AUTH_E2E_EMAIL_DOMAIN=");
         expect(tree.read(".env.example", "utf-8")).not.toMatch(/(?:client_|sk_|whsec_)[A-Za-z0-9]/u);
         expect(backendPackageJson.scripts?.codegen).not.toMatch(/WORKOS_(?:CLIENT_ID|API_KEY|WEBHOOK_SECRET)=[A-Za-z0-9_-]+/u);
         expect(backendPackageJson.scripts?.dev).not.toMatch(/WORKOS_(?:CLIENT_ID|API_KEY|WEBHOOK_SECRET)=[A-Za-z0-9_-]+/u);

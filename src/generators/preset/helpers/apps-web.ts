@@ -49,7 +49,6 @@ export const webDevDependencies = Struct.pick(packageVersions, [
   "@types/react",
   "@types/react-dom",
   "@vitejs/plugin-react",
-  "@workos-inc/node",
   "jsdom",
   "typescript",
   "vite",
