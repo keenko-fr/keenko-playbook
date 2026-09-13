@@ -146,6 +146,30 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   yield* command(temporary, env, "tar", ["-czf", testTarball, "-C", repack, "package"]);
   yield* Console.log(`Keenko local product test version: ${packageVersion}`);
 
+  const shadcnFixturePackage = path.join(temporary, "shadcn-fixture-package");
+  yield* fs.makeDirectory(shadcnFixturePackage);
+  yield* fs.writeFileString(
+    path.join(shadcnFixturePackage, "package.json"),
+    yield* S.encodeEffect(sManifest)({
+      exports: "./index.js",
+      name: "keenko-shadcn-fixture",
+      type: "module",
+      version: packageVersion,
+    })
+  );
+  yield* fs.writeFileString(path.join(shadcnFixturePackage, "index.js"), 'export const marker = "installed";\n');
+  yield* command(shadcnFixturePackage, npmEnv, "npm", [
+    "publish",
+    "--registry",
+    registry,
+    "--ignore-scripts",
+    "--access",
+    "public",
+    "--tag",
+    "latest",
+    "--loglevel=error",
+  ]);
+
   yield* command(temporary, npmEnv, "npm", [
     "publish",
     testTarball,
@@ -173,6 +197,19 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     localLicense: O.some(yield* fs.readFileString(path.join(repository, "src/generators/sync/files/skills/grilling/LICENSE"))),
     packageVersion,
   };
+});
+
+const startShadcnFixtureRegistry = E.fn("product.startShadcnFixtureRegistry")(function* (repository: string, fixtureVersion: string) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  yield* spawner.spawn(
+    ChildProcess.make("bun", ["run", "tests/shadcn-registry-fixture.ts"], {
+      cwd: repository,
+      env: { SHADCN_FIXTURE_VERSION: fixtureVersion },
+      extendEnv: true,
+      stderr: "inherit",
+      stdout: "inherit",
+    })
+  );
 });
 
 const product = E.gen(function* () {
@@ -204,6 +241,7 @@ const product = E.gen(function* () {
     env
   );
   yield* completePhase("package preparation and registry setup", preparationStartedAt);
+  if (!shadcnCompatibility && source._tag === "local") yield* startShadcnFixtureRegistry(repository, packageVersion);
 
   const identity = "product-acceptance";
   const createArguments = [
@@ -285,10 +323,51 @@ const product = E.gen(function* () {
     return;
   }
 
-  const verificationStartedAt = yield* startPhase("generated consumer canonical verification");
+  const verificationStartedAt = yield* startPhase("clean frozen install and generated consumer canonical verification");
+  for (const directory of ["", "apps/web", "packages/backend", "packages/ui", "packages/shared"])
+    yield* fs.remove(path.join(workspace, directory, "node_modules"), { force: true, recursive: true });
+  yield* command(workspace, bootstrapEnv, "bun", ["install", "--frozen-lockfile"]);
+  const reinstalledPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPackagePath));
+  yield* assert(reinstalledPackage.version === packageVersion, `The clean consumer did not reinstall Keenko ${packageVersion}`);
   const checkOutput = yield* command(workspace, env, "env", ["-u", "CI", "bun", "run", "check"]);
   yield* assert(!checkOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Fresh check emitted a module-typeless package warning");
-  yield* completePhase("generated consumer canonical verification", verificationStartedAt);
+  yield* completePhase("clean frozen install and generated consumer canonical verification", verificationStartedAt);
+
+  if (source._tag === "published") return;
+
+  const shadcnStartedAt = yield* startPhase("deterministic shadcn compatibility");
+  const uiPackagePath = path.join(workspace, "packages/ui/package.json");
+  const uiPackage = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(uiPackagePath));
+  const shadcnVersion = uiPackage.dependencies.shadcn;
+  yield* assert(exactSemver.test(shadcnVersion), `Generated packages/ui does not pin an exact shadcn version: ${shadcnVersion}`);
+  yield* command(path.join(workspace, "apps/web"), { ...bootstrapEnv, REGISTRY_URL: "http://127.0.0.1:4874/r" }, "bun", [
+    "x",
+    "shadcn",
+    "add",
+    "fixture-button",
+    "input-otp",
+    "--yes",
+  ]);
+  for (const component of ["fixture-button.tsx", "input-otp.tsx"]) {
+    yield* assert(
+      yield* fs.exists(path.join(workspace, "packages/ui/src/components", component)),
+      `shadcn did not route ${component} to packages/ui`
+    );
+    yield* assert(
+      !(yield* fs.exists(path.join(workspace, "apps/web/src/components/ui", component))),
+      `shadcn created an app-local ${component}`
+    );
+  }
+  const updatedUiPackage = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(uiPackagePath));
+  yield* assert(
+    Object.hasOwn(updatedUiPackage.dependencies, "keenko-shadcn-fixture"),
+    "packages/ui does not own the shadcn fixture dependency"
+  );
+  yield* command(path.join(workspace, "packages/ui"), bootstrapEnv, "bun", [
+    "--eval",
+    'import { marker } from "keenko-shadcn-fixture"; if (marker !== "installed") throw new Error("Missing shadcn fixture dependency");',
+  ]);
+  yield* completePhase("deterministic shadcn compatibility", shadcnStartedAt);
 });
 
 NodeRuntime.runMain(product.pipe(E.scoped, E.provide(NodeServices.layer)));

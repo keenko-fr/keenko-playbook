@@ -1,0 +1,12 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "fixture-button",
+  "type": "registry:ui",
+  "files": [
+    {
+      "path": "ui/fixture-button.tsx",
+      "content": "export const Button = () => null;\n",
+      "type": "registry:ui"
+    }
+  ]
+}
