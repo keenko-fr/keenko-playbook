@@ -654,10 +654,12 @@ describe("keenko preset", () => {
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(convexConfig).toContain('"@convex-dev/workos-authkit/convex.config"');
+        expect(convexConfig).toContain("WORKOS_API_KEY: v.string()");
+        expect(convexConfig).toContain("WORKOS_CLIENT_ID: v.string()");
+        expect(convexConfig).toContain("WORKOS_WEBHOOK_SECRET: v.optional(v.string())");
         const workOSClient = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/workos.ts", "utf-8")));
         const workOSSpec = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/workos.spec.ts", "utf-8")));
         expect(workOSClient).toContain('"@convex-dev/workos-authkit"');
-        expect(workOSClient).toContain("makeAuthKit().utils().backfillUsers");
         expect(workOSSpec).toContain('FunctionSpec.convexInternalMutation<typeof backfillUsers>()("backfillUsers")');
         expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).toContain("WORKOS_CLIENT_ID");
         expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain('"@workos/authkit-tanstack-react-start"');

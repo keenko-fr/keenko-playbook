@@ -4,18 +4,16 @@ import { Config as CFG, Effect as E, Option as O } from "effect";
 
 import { makeAuthKit } from "./workos";
 
-const workOSConfig = E.runSync(
-  CFG.all({
-    apiKey: CFG.String("WORKOS_API_KEY"),
-    clientId: CFG.String("WORKOS_CLIENT_ID"),
-    webhookSecret: CFG.option(CFG.String("WORKOS_WEBHOOK_SECRET")),
-  }).parse(ConvexConfigProvider.make())
-);
+const configProvider = ConvexConfigProvider.make();
+const webhookSecretOpt = E.runSync(CFG.option(CFG.String("WORKOS_WEBHOOK_SECRET")).parse(configProvider));
 
 const http = httpRouter();
 
-O.forEach(workOSConfig.webhookSecret, (webhookSecret) => {
-  makeAuthKit({ apiKey: workOSConfig.apiKey, clientId: workOSConfig.clientId, webhookSecret }).registerRoutes(http);
-});
+if (O.isSome(webhookSecretOpt)) {
+  const { apiKey, clientId } = E.runSync(
+    CFG.all({ apiKey: CFG.String("WORKOS_API_KEY"), clientId: CFG.String("WORKOS_CLIENT_ID") }).parse(configProvider)
+  );
+  makeAuthKit({ apiKey, clientId, webhookSecret: webhookSecretOpt.value }).registerRoutes(http);
+}
 
 export default http;

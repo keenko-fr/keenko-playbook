@@ -1,7 +1,7 @@
 import { ConvexConfigProvider } from "@confect/server";
 import { AuthKit } from "@convex-dev/workos-authkit";
 import { internalMutationGeneric, type GenericDataModel } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Config as CFG, Effect as E, Option as O } from "effect";
 
 import { components } from "./_generated/components";
@@ -17,7 +17,9 @@ const webhookSecretOpt = E.runSync(CFG.option(CFG.String("WORKOS_WEBHOOK_SECRET"
 const unavailableBackfillUsers = internalMutationGeneric({
   args: {},
   handler: () => {
-    throw new Error("Configure WORKOS_WEBHOOK_SECRET before running the WorkOS user backfill.");
+    /* oxlint-disable effect/noNewError, effect/noThrowStatement -- This is a native Convex compatibility boundary. Confect requires a registered function during offline analysis, while the official component mutation cannot be obtained before webhook configuration. */
+    throw new ConvexError("Configure WORKOS_WEBHOOK_SECRET before running the WorkOS user backfill.");
+    /* oxlint-enable effect/noNewError, effect/noThrowStatement */
   },
   returns: v.null(),
 });

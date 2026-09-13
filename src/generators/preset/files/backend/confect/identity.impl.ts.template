@@ -1,6 +1,6 @@
 import { FunctionImpl, GroupImpl } from "@confect/server";
 import type { UserIdentity } from "convex/server";
-import { CFG as Config, Effect as E, Layer as L, Option as O } from "effect";
+import { Config as CFG, Effect as E, Layer as L, Option as O } from "effect";
 
 import databaseSchema from "./_generated/schema";
 import { Auth, QueryCtx } from "./_generated/services";

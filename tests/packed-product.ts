@@ -10,6 +10,8 @@ interface Verification {
   readonly source: PackageSource;
 }
 
+const withoutBackendWorkOSEnv = ["-u", "WORKOS_API_KEY", "-u", "WORKOS_CLIENT_ID", "-u", "WORKOS_WEBHOOK_SECRET"];
+
 const exactSemver =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
 
@@ -228,10 +230,7 @@ const product = E.gen(function* () {
     GIT_CONFIG_VALUE_0: "true",
     NX_DAEMON: "false",
     NX_INTERACTIVE: "false",
-    WORKOS_API_KEY: "",
-    WORKOS_CLIENT_ID: "",
     WORKOS_COOKIE_PASSWORD: "",
-    WORKOS_WEBHOOK_SECRET: "",
   };
   const preparationStartedAt = yield* startPhase("package preparation and registry setup");
   const { bootstrapEnv, bootstrapExecutable, localLicense, packageVersion } = yield* preparePackageSource(
@@ -254,7 +253,11 @@ const product = E.gen(function* () {
     "--trustThirdPartyPreset",
   ];
   const creationStartedAt = yield* startPhase("fresh workspace creation");
-  const createOutput = yield* command(temporary, bootstrapEnv, bootstrapExecutable, createArguments);
+  const createOutput = yield* command(temporary, bootstrapEnv, "env", [
+    ...withoutBackendWorkOSEnv,
+    bootstrapExecutable,
+    ...createArguments,
+  ]);
   yield* assert(!createOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Creation emitted a module-typeless package warning");
   yield* completePhase("fresh workspace creation", creationStartedAt);
 
@@ -329,19 +332,7 @@ const product = E.gen(function* () {
   yield* command(workspace, bootstrapEnv, "bun", ["install", "--frozen-lockfile"]);
   const reinstalledPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPackagePath));
   yield* assert(reinstalledPackage.version === packageVersion, `The clean consumer did not reinstall Keenko ${packageVersion}`);
-  const checkOutput = yield* command(workspace, env, "env", [
-    "-u",
-    "CI",
-    "-u",
-    "WORKOS_API_KEY",
-    "-u",
-    "WORKOS_CLIENT_ID",
-    "-u",
-    "WORKOS_WEBHOOK_SECRET",
-    "bun",
-    "run",
-    "check",
-  ]);
+  const checkOutput = yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
   yield* assert(!checkOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Fresh check emitted a module-typeless package warning");
   yield* completePhase("clean frozen install and generated consumer canonical verification", verificationStartedAt);
 
