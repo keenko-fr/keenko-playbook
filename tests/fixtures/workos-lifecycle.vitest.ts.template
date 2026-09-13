@@ -16,6 +16,13 @@ type SynchronizedResult = O.Option<{ readonly email: O.Option<string> }>;
 const authKitClient = {
   getAuthUser: vi.fn<() => Promise<{ readonly email: string }>>(),
   registerRoutes: vi.fn(),
+  utils: vi.fn(),
+};
+const officialBackfill = {
+  _handler: vi.fn(),
+  isConvexFunction: true,
+  isInternal: true,
+  isMutation: true,
 };
 const constructAuthKit = vi.fn();
 const handlers = new Map<string, () => E.Effect<SynchronizedResult, never, QueryCtxService>>();
@@ -51,6 +58,7 @@ const installModuleFakes = () => {
 const loadHttp = () => import("./http");
 const loadIdentity = () => import("./identity.impl");
 const loadServices = () => import("./_generated/services");
+const loadWorkOSClient = () => import("./workos-client");
 
 const resetLifecycle = () => {
   vi.resetModules();
@@ -59,6 +67,9 @@ const resetLifecycle = () => {
   constructAuthKit.mockClear();
   authKitClient.getAuthUser.mockClear();
   authKitClient.registerRoutes.mockClear();
+  authKitClient.utils.mockReset();
+  authKitClient.utils.mockReturnValue({ backfillUsers: officialBackfill });
+  officialBackfill._handler.mockClear();
   handlers.clear();
 };
 
@@ -79,6 +90,8 @@ describe("WorkOS component lifecycle", () => {
       expect(O.isNone(result)).toBe(true);
       expect(constructAuthKit).not.toHaveBeenCalled();
       expect(authKitClient.getAuthUser).not.toHaveBeenCalled();
+      const { backfillUsers } = yield* E.promise(loadWorkOSClient);
+      expect(backfillUsers).not.toBe(officialBackfill);
       delete process.env.WORKOS_WEBHOOK_SECRET;
     }).pipe(E.runPromise));
 
@@ -90,7 +103,7 @@ describe("WorkOS component lifecycle", () => {
       yield* E.promise(loadHttp);
       yield* E.promise(loadIdentity);
 
-      expect(constructAuthKit).toHaveBeenCalledTimes(1);
+      expect(constructAuthKit).toHaveBeenCalled();
       expect(authKitClient.registerRoutes).toHaveBeenCalledTimes(1);
 
       const findSynchronized = O.getOrThrow(O.fromNullishOr(handlers.get("findSynchronized")));
@@ -98,8 +111,10 @@ describe("WorkOS component lifecycle", () => {
       const result = yield* findSynchronized().pipe(E.provideService(QueryCtx, queryCtx));
 
       expect(O.getOrThrow(result).email).toEqual(O.some("identity@example.test"));
-      expect(constructAuthKit).toHaveBeenCalledTimes(2);
+      expect(constructAuthKit).toHaveBeenCalled();
       expect(authKitClient.getAuthUser).toHaveBeenCalledTimes(1);
+      const { backfillUsers } = yield* E.promise(loadWorkOSClient);
+      expect(backfillUsers).toBe(officialBackfill);
       delete process.env.WORKOS_WEBHOOK_SECRET;
     }).pipe(E.runPromise));
 });

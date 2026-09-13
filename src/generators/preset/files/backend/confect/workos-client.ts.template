@@ -1,5 +1,8 @@
 import { AuthKit } from "@convex-dev/workos-authkit";
+import { internalMutationGeneric } from "convex/server";
 import type { GenericDataModel } from "convex/server";
+import { v } from "convex/values";
+import { Effect as E } from "effect";
 
 import { components } from "./_generated/components";
 
@@ -17,3 +20,12 @@ export const isWorkOSWebhookConfigured = () => {
 };
 
 export const makeAuthKit = () => new AuthKit<GenericDataModel>(components.workOSAuthKit);
+
+// RECONCILIATION --------------------------------------------------------------------------------------------------------------------------
+const unavailableBackfill = internalMutationGeneric({
+  args: {},
+  handler: () => E.runPromise(E.die("Configure WORKOS_WEBHOOK_SECRET before running the WorkOS user backfill.")),
+  returns: v.null(),
+});
+
+export const backfillUsers = isWorkOSWebhookConfigured() ? makeAuthKit().utils().backfillUsers : unavailableBackfill;

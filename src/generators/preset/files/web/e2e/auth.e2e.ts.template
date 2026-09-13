@@ -1,38 +1,27 @@
 import { expect, test } from "@playwright/test";
-import { WorkOS } from "@workos-inc/node";
 
 const escapeRegExp = (value: string) => value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-const requireEnvironment = (name: "AUTH_E2E_EMAIL_DOMAIN" | "WORKOS_API_KEY" | "WORKOS_CLIENT_ID") => {
-  const value = process.env[name];
-  if (value === undefined || value.length === 0)
-    throw new Error(`${name} is required for the provisioned authentication smoke.`);
-  return value;
-};
 
-test("email/password auth reaches Convex identity, WorkOS synchronization, and sign-out", async ({ page }) => {
-  const clientId = requireEnvironment("WORKOS_CLIENT_ID");
-  const workos = new WorkOS(requireEnvironment("WORKOS_API_KEY"), { clientId });
-  const suffix = crypto.randomUUID();
-  const email = `keenko-e2e-${suffix}@${requireEnvironment("AUTH_E2E_EMAIL_DOMAIN")}`;
-  const password = `Keenko-e2e-${suffix}!A1`;
-  const user = await workos.userManagement.createUser({ email, emailVerified: true, password });
+test("Google auth reaches Convex identity, WorkOS synchronization, and sign-out", async ({ page }) => {
+  const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
 
-  try {
-    await page.goto("/");
-    await page.getByTestId("auth-sign-in").click();
-    await expect(page).toHaveURL(/(?:authkit|workos)/u);
+  await page.goto("/");
+  const hostedUiDocumentRequest = page.waitForRequest(
+    (request) => request.isNavigationRequest() && /(?:authkit|workos)/u.test(request.url())
+  );
+  await Promise.all([
+    hostedUiDocumentRequest,
+    page.waitForURL(/(?:authkit|workos)/u),
+    page.getByRole("link", { name: "Mon espace" }).click(),
+  ]);
+  await expect(page).toHaveURL(/(?:authkit|workos)/u);
 
-    await page.getByRole("textbox", { name: "Email" }).fill(email);
-    await page.getByRole("button", { name: "Continue with email" }).click();
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(new RegExp(`^${escapeRegExp(process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3000")}`, "u"));
+  // Complete Google authentication in AuthKit Hosted UI, then resume the test in Playwright Inspector.
+  await page.pause();
 
-    await expect(page.getByTestId("convex-authenticated")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("workos-user-synchronized")).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("auth-sign-out").click();
-    await expect(page.getByTestId("auth-sign-in")).toBeVisible();
-  } finally {
-    await workos.userManagement.deleteUser(user.id);
-  }
+  await page.waitForURL(new RegExp(`^${escapeRegExp(baseUrl)}/mon-espace(?:[?#]|$)`, "u"));
+  await expect(page.getByTestId("convex-authenticated")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("workos-user-synchronized")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Me déconnecter" }).click();
+  await expect(page.getByRole("link", { name: "Me connecter" })).toBeVisible();
 });

@@ -1,0 +1,8 @@
+import { FunctionSpec, GroupSpec } from "@confect/core";
+
+import type { backfillUsers } from "./workos-client";
+
+// SPEC ------------------------------------------------------------------------------------------------------------------------------------
+export default GroupSpec.make()
+  // INTERNAL MUTATIONS --------------------------------------------------------------------------------------------------------------------
+  .addFunction(FunctionSpec.convexInternalMutation<typeof backfillUsers>()("backfillUsers"));

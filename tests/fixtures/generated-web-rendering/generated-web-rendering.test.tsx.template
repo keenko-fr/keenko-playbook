@@ -1,0 +1,48 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, test } from "vitest";
+
+import { SiteHeader } from "./routes/-site-header";
+import { Route } from "./routes/mon-espace";
+import { setLocale, setQueryResults } from "./mocks";
+
+afterEach(cleanup);
+
+const ProtectedPage = Route.options.component;
+
+describe("generated SiteHeader", () => {
+  test("resolves navigation labels from the active English render locale", () => {
+    setLocale("en");
+    render(<SiteHeader />);
+
+    expect(screen.getByRole("link", { name: "My workspace" }).getAttribute("href")).toBe("/mon-espace");
+    expect(screen.queryByRole("link", { name: "Mon espace" })).toBeNull();
+  });
+});
+
+describe("generated identity states", () => {
+  test.each([
+    { value: undefined, copy: "Loading Convex identity…", authenticated: false },
+    { value: null, copy: "Convex identity is not available.", authenticated: false },
+    { value: { subject: "convex-subject" }, copy: "convex-subject", authenticated: true },
+  ])("renders the Convex identity state for $value", ({ authenticated, copy, value }) => {
+    setLocale("en");
+    setQueryResults(value, { email: "workos@example.com" });
+    render(<ProtectedPage />);
+
+    expect(screen.getByText(copy)).toBeTruthy();
+    expect(screen.queryByTestId("convex-authenticated") !== null).toBe(authenticated);
+  });
+
+  test.each([
+    { value: undefined, copy: "Loading WorkOS identity…", synchronized: false },
+    { value: null, copy: "WorkOS identity is not synchronized yet.", synchronized: false },
+    { value: { email: "workos@example.com" }, copy: "workos@example.com", synchronized: true },
+  ])("renders the synchronized WorkOS identity state for $value", ({ copy, synchronized, value }) => {
+    setLocale("en");
+    setQueryResults({ subject: "convex-subject" }, value);
+    render(<ProtectedPage />);
+
+    expect(screen.getByText(copy)).toBeTruthy();
+    expect(screen.queryByTestId("workos-user-synchronized") !== null).toBe(synchronized);
+  });
+});

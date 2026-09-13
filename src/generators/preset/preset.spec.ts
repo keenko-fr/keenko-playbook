@@ -31,7 +31,7 @@ const expectedScripts = {
   build: "nx run-many -t build",
   check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
   codegen: "nx run-many -t codegen",
-  dev: 'convex dev --start "nx run-many -t dev"',
+  dev: 'NX_TUI=false convex dev --start "nx run-many -t dev"',
   format: "oxfmt .",
   "format:check": "oxfmt --check .",
   lint: "oxlint .",
@@ -172,6 +172,11 @@ describe("keenko preset", () => {
         expect(web.scripts?.codegen).toBe(
           "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy url baseLocale --no-emit-readme && tsr generate"
         );
+        expect(web.scripts?.dev).toBe("vite dev");
+        expect(viteConfig).toContain("emitReadme: false");
+        expect(viteConfig).toContain("envDir: '../..'");
+        expect(viteConfig).toContain("port: 3210");
+        expect(viteConfig).toContain("strictPort: true");
         expect(viteConfig).toContain("emitReadme: false");
         expect(web.dependencies).toEqual({
           ...webDependencies,
@@ -394,7 +399,7 @@ describe("keenko preset", () => {
         const backendPackageJson = readJson<PackageJson>(tree, "packages/backend/package.json");
         const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
-        expect(rootPackageJson.scripts?.dev).toBe('convex dev --start "nx run-many -t dev"');
+        expect(rootPackageJson.scripts?.dev).toBe('NX_TUI=false convex dev --start "nx run-many -t dev"');
         expect(rootPackageJson.devDependencies?.convex).toBe(packageVersions.convex);
         expect(rootPackageJson.devDependencies?.["@tanstack/react-start"]).toBe(packageVersions["@tanstack/react-start"]);
         expect(webPackageJson.dependencies?.["@tanstack/react-start"]).toBe(packageVersions["@tanstack/react-start"]);
@@ -408,14 +413,14 @@ describe("keenko preset", () => {
           authKit: {
             dev: {
               configure: {
-                appHomepageUrl: "http://localhost:3000",
-                corsOrigins: ["http://localhost:3000"],
-                redirectUris: ["http://localhost:3000/api/auth/callback"],
+                appHomepageUrl: "http://localhost:3210",
+                corsOrigins: ["http://localhost:3210"],
+                redirectUris: ["http://localhost:3210/api/auth/callback"],
               },
               localEnvVars: {
                 WORKOS_API_KEY: `\${authEnv.WORKOS_API_KEY}`,
                 WORKOS_CLIENT_ID: `\${authEnv.WORKOS_CLIENT_ID}`,
-                WORKOS_REDIRECT_URI: "http://localhost:3000/api/auth/callback",
+                WORKOS_REDIRECT_URI: "http://localhost:3210/api/auth/callback",
               },
             },
           },
@@ -484,7 +489,7 @@ describe("keenko preset", () => {
 
         expect(rootRoute).not.toContain("MyRouterContext");
         expect(rootRoute).toContain("title: m.calm_green_otter()");
-        expect(rootRoute).toContain("notFoundComponent: () => <p>Not Found</p>");
+        expect(rootRoute).toContain(`notFoundComponent: () => <h1 className="text-3xl font-bold">{m.plain_dark_angelfish_scoop()}</h1>`);
         expect(router).toContain("<AuthKitProvider>");
         expect(router).toContain("<ConvexProviderWithAuth client={convexClient} useAuth={useAuthFromWorkOS}>");
         expect(rootRoute).not.toContain("<ConvexProvider");
@@ -520,11 +525,11 @@ describe("keenko preset", () => {
 
         // Replace these with the actual stable Sherlock IDs you chose.
         expect(french).toMatchObject({
-          calm_green_otter: "Bienvenue chez Keenko",
+          calm_green_otter: "Keenko",
         });
 
         expect(english).toMatchObject({
-          calm_green_otter: "Welcome to Keenko",
+          calm_green_otter: "Keenko",
         });
 
         expect(homeRoute).toContain("#/paraglide/messages");
@@ -597,6 +602,7 @@ describe("keenko preset", () => {
         const rootPackageJson = readJson<PackageJson>(tree, "package.json");
         const webPackageJson = readJson<PackageJson>(tree, "apps/web/package.json");
         const backendPackageJson = readJson<PackageJson>(tree, "packages/backend/package.json");
+        const authSmoke = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")));
 
         expect(webPackageJson.dependencies).toMatchObject({
           "@acme/backend": "workspace:*",
@@ -605,9 +611,14 @@ describe("keenko preset", () => {
         });
         expect(webPackageJson.dependencies).not.toHaveProperty("@confect/react");
         expect(webPackageJson.devDependencies?.["@playwright/test"]).toBe(packageVersions["@playwright/test"]);
-        expect(webPackageJson.devDependencies?.["@workos-inc/node"]).toBe(packageVersions["@workos-inc/node"]);
+        expect(webPackageJson.devDependencies).not.toHaveProperty("@workos-inc/node");
         expect(webPackageJson.scripts?.["test:auth:e2e"]).toBe("playwright test --config playwright.config.ts --headed --workers=1");
         expect(rootPackageJson.scripts?.["test:auth:e2e"]).toBe("bun --env-file=../../.env.local run --cwd apps/web test:auth:e2e");
+        expect(authSmoke).toContain("request.isNavigationRequest()");
+        expect(authSmoke).toContain("await page.pause()");
+        expect(authSmoke).toContain('page.getByTestId("convex-authenticated")');
+        expect(authSmoke).toContain('page.getByTestId("workos-user-synchronized")');
+        expect(authSmoke).not.toMatch(/AUTH_E2E_EMAIL_DOMAIN|createUser|deleteUser|Password|Continue with email/u);
         expect(backendPackageJson.dependencies).toMatchObject(
           Struct.pick(packageVersions, ["@convex-dev/workos-authkit", "@workos-inc/authkit-react", "@workos-inc/node"])
         );
@@ -623,7 +634,7 @@ describe("keenko preset", () => {
           "apps/web/src/start.ts",
           "apps/web/src/routes/api/auth/callback.tsx",
           "apps/web/src/routes/api/auth/sign-in.tsx",
-          "apps/web/src/routes/protected.tsx",
+          "apps/web/src/routes/mon-espace.tsx",
           "apps/web/src/server/auth.ts",
           "apps/web/e2e/auth.e2e.ts",
           "apps/web/playwright.config.ts",
@@ -631,7 +642,9 @@ describe("keenko preset", () => {
           "packages/backend/confect/identity.spec.ts",
           "packages/backend/confect/identity.impl.ts",
           "packages/backend/confect/http.ts",
-          "packages/backend/confect/workos.ts",
+          "packages/backend/confect/workos-client.ts",
+          "packages/backend/confect/workos.spec.ts",
+          "packages/backend/confect/workos.impl.ts",
           "packages/backend/convex/_generated/api.d.ts",
           "packages/backend/convex/_generated/api.js",
         ])
@@ -641,14 +654,19 @@ describe("keenko preset", () => {
         const generatedApi = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/convex/_generated/api.d.ts", "utf-8")));
         const identitySpec = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.spec.ts", "utf-8")));
         const identityImpl = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/identity.impl.ts", "utf-8")));
-        const homeRoute = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/src/routes/index.tsx", "utf-8")));
+        const workspaceRoute = O.getOrThrow(O.fromNullishOr(tree.read("apps/web/src/routes/mon-espace.tsx", "utf-8")));
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
 
         expect(convexConfig).toContain('"@convex-dev/workos-authkit/convex.config"');
-        expect(tree.read("packages/backend/confect/workos.ts", "utf-8")).toContain('"@convex-dev/workos-authkit"');
+        const workOSClient = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/workos-client.ts", "utf-8")));
+        const workOSSpec = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/confect/workos.spec.ts", "utf-8")));
+        expect(workOSClient).toContain('"@convex-dev/workos-authkit"');
+        expect(workOSClient).toContain("makeAuthKit().utils().backfillUsers");
+        expect(workOSSpec).toContain('FunctionSpec.convexInternalMutation<typeof backfillUsers>()("backfillUsers")');
         expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).toContain("WORKOS_CLIENT_ID");
         expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain('"@workos/authkit-tanstack-react-start"');
         expect(generatedApi).toContain("identity: typeof");
+        expect(generatedApi).toContain("workos: typeof");
         expect(generatedApi).not.toContain("authentication: typeof");
 
         for (const file of [
@@ -667,9 +685,9 @@ describe("keenko preset", () => {
         expect(identitySpec).toContain("error: () => AuthenticationRequired");
         expect(identitySpec).toContain("returns: () => Schema.OptionFromNullOr(sSynchronizedIdentity)");
 
-        expect(homeRoute).toContain("api.identity.findCurrent");
-        expect(homeRoute).toContain("api.identity.findSynchronized");
-        expect(homeRoute).not.toContain("workOSUserSynchronized");
+        expect(workspaceRoute).toContain("api.identity.findCurrent");
+        expect(workspaceRoute).toContain("api.identity.findSynchronized");
+        expect(workspaceRoute).not.toContain("workOSUserSynchronized");
 
         expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
@@ -689,7 +707,7 @@ describe("keenko preset", () => {
         for (const rule of ["effect/noAsyncFunction", "effect/noNewError", "effect/noNullish", "effect/noThrowStatement"])
           expect(oxlintConfig).not.toContain(`"${rule}": "off"`);
         expect(tree.read(".env.example", "utf-8")).not.toContain("WORKOS_WEBHOOK_SECRET=");
-        expect(tree.read(".env.example", "utf-8")).toContain("AUTH_E2E_EMAIL_DOMAIN=");
+        expect(tree.read(".env.example", "utf-8")).not.toContain("AUTH_E2E_EMAIL_DOMAIN=");
         expect(tree.read(".env.example", "utf-8")).not.toMatch(/(?:client_|sk_|whsec_)[A-Za-z0-9]/u);
         expect(backendPackageJson.scripts?.codegen).not.toMatch(/WORKOS_(?:CLIENT_ID|API_KEY|WEBHOOK_SECRET)=[A-Za-z0-9_-]+/u);
         expect(backendPackageJson.scripts?.dev).not.toMatch(/WORKOS_(?:CLIENT_ID|API_KEY|WEBHOOK_SECRET)=[A-Za-z0-9_-]+/u);
@@ -702,8 +720,6 @@ describe("keenko preset", () => {
     E.runPromise(
       E.gen(function* () {
         const tree = yield* generatePreset("acme");
-
-        expect(tree.read("apps/web/src/styles.css", "utf-8")).toBe('@import "@acme/ui/globals.css";\n');
 
         const packageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
@@ -767,11 +783,9 @@ describe("keenko preset", () => {
 
         const css = tree.read("packages/ui/src/styles/globals.css", "utf-8");
 
-        expect(css).toContain('@import "tailwindcss";');
+        expect(css).toContain('@import "tailwindcss" source(none);');
         expect(css).toContain('@import "tw-animate-css";');
         expect(css).toContain('@import "shadcn/tailwind.css";');
-
-        expect(css).toContain('@source "../**/*.{ts,tsx}";');
 
         expect(css).toContain("@theme inline");
         expect(css).toContain(":root");
@@ -800,7 +814,7 @@ describe("keenko preset", () => {
           },
           iconLibrary: "lucide",
           rsc: false,
-          style: "base-nova",
+          style: "base-vega",
           tailwind: {
             baseColor: "neutral",
             config: "",
@@ -820,7 +834,7 @@ describe("keenko preset", () => {
           },
           iconLibrary: "lucide",
           rsc: false,
-          style: "base-nova",
+          style: "base-vega",
           tailwind: {
             baseColor: "neutral",
             config: "",

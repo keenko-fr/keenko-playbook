@@ -6,8 +6,11 @@ import { HeadContent, Scripts, createRootRouteWithContext } from "@tanstack/reac
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import type { ConvexReactClient } from "convex/react";
 
+import { ThemeProvider } from "#/infra/theme/provider";
 import { getLocale } from "#/paraglide/runtime";
 import * as m from "#/paraglide/messages";
+
+import { SiteHeader } from "./-site-header";
 
 import appCss from "#/styles.css?url";
 
@@ -17,7 +20,7 @@ export const Route = createRootRouteWithContext<RootRouteContext>()({
     links: [{ href: appCss, rel: "stylesheet" }],
     meta: [{ charSet: "utf-8" }, { content: "width=device-width, initial-scale=1", name: "viewport" }, { title: m.calm_green_otter() }],
   }),
-  notFoundComponent: () => <p>Not Found</p>,
+  notFoundComponent: () => <h1 className="text-3xl font-bold">{m.plain_dark_angelfish_scoop()}</h1>,
   shellComponent: RootDocument,
 });
 interface RootRouteContext {
@@ -35,15 +38,17 @@ function RootDocument({ children }: React.PropsWithChildren) {
         <HeadContent />
       </head>
       <body>
-        {children}
-        <TanStackDevtools
-          config={{ position: "bottom-right" }}
-          plugins={[
-            { name: "Tanstack Router", render: <TanStackRouterDevtoolsPanel /> },
-            { name: "Tanstack Query", render: <ReactQueryDevtoolsPanel /> },
-          ]}
-        />
-        <Scripts />
+        <ThemeProvider defaultTheme="system" storageKey="theme">
+          <SiteHeader />
+          <main className="p-4">{children}</main>
+          <TanStackDevtools
+            plugins={[
+              { name: "Tanstack Router", render: <TanStackRouterDevtoolsPanel /> },
+              { name: "Tanstack Query", render: <ReactQueryDevtoolsPanel /> },
+            ]}
+          />
+          <Scripts />
+        </ThemeProvider>
       </body>
     </html>
   );
