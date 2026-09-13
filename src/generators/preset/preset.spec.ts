@@ -172,6 +172,7 @@ describe("keenko preset", () => {
         expect(web.scripts?.codegen).toBe(
           "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy url baseLocale --no-emit-readme && tsr generate"
         );
+        expect(web.scripts?.dev).toBe("vite dev");
         expect(viteConfig).toContain("emitReadme: false");
         expect(viteConfig).toContain("envDir: '../..'");
         expect(viteConfig).toContain("port: 3210");

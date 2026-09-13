@@ -165,6 +165,7 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
       ...packageJson.scripts,
       codegen:
         "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy url baseLocale --no-emit-readme && tsr generate",
+      dev: "vite dev",
       "test:auth:e2e": "playwright test --config playwright.config.ts --headed --workers=1",
     },
   }));
