@@ -1,6 +1,7 @@
 /* oxlint-disable effect/noAsyncFunction, effect/noGlobals, effect/noNewPromise, effect/noNodeBuiltinImport, effect/noTestLifecycleHooks, eslint/no-await-in-loop -- This test orchestrates a disposable native package installation and child Vitest process. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { packageVersions } from "../src/generators/versions.js";
@@ -29,8 +30,7 @@ const materializeTemplates = async (sourceRoot: string, targetRoot: string) => {
 };
 
 const materialize = async () => {
-  await mkdir(path.join(repository, ".tmp"), { recursive: true });
-  fixtureRoot = await mkdtemp(path.join(repository, ".tmp", "workos-lifecycle-"));
+  fixtureRoot = await mkdtemp(path.join(tmpdir(), "keenko-workos-lifecycle-"));
   const confect = path.join(fixtureRoot, "confect");
   await mkdir(path.join(confect, "_generated"), { recursive: true });
   await materializeTemplates(path.join(repository, "src/generators/preset/files/backend/confect"), confect);
@@ -74,7 +74,7 @@ afterAll(() => rm(fixtureRoot, { force: true, recursive: true }));
 
 describe("generated WorkOS lifecycle", () => {
   test("executes the materialized backend lifecycle contract", async () => {
-    const process = Bun.spawn(["bun", "x", "vitest", "run", path.join(fixtureRoot, "confect/workos-lifecycle.test.ts")], {
+    const process = Bun.spawn(["bun", "x", "vitest", "run", "confect/workos-lifecycle.test.ts"], {
       cwd: fixtureRoot,
       stderr: "pipe",
       stdout: "pipe",
