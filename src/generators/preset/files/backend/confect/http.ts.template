@@ -1,6 +1,6 @@
 import { httpRouter } from "convex/server";
 
-import { isWorkOSWebhookConfigured, makeAuthKit } from "./workos";
+import { isWorkOSWebhookConfigured, makeAuthKit } from "./workos-client";
 
 const http = httpRouter();
 

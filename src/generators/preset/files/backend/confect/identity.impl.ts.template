@@ -5,7 +5,7 @@ import { Effect as E, Layer as L, Option as O } from "effect";
 import databaseSchema from "./_generated/schema";
 import { Auth, QueryCtx } from "./_generated/services";
 import spec, { AuthenticationRequired, type CurrentIdentity, type SynchronizedIdentity } from "./identity.spec";
-import { isWorkOSWebhookConfigured, makeAuthKit } from "./workos";
+import { isWorkOSWebhookConfigured, makeAuthKit } from "./workos-client";
 
 // QUERIES ---------------------------------------------------------------------------------------------------------------------------------
 const findCurrent = FunctionImpl.make(databaseSchema, spec, "findCurrent", () =>

@@ -1,0 +1,12 @@
+import { FunctionImpl, GroupImpl } from "@confect/server";
+import { Layer as L } from "effect";
+
+import databaseSchema from "./_generated/schema";
+import { backfillUsers } from "./workos-client";
+import spec from "./workos.spec";
+
+// INTERNAL MUTATIONS ----------------------------------------------------------------------------------------------------------------------
+const backfillUsersImpl = FunctionImpl.make(databaseSchema, spec, "backfillUsers", backfillUsers);
+
+// GROUP -----------------------------------------------------------------------------------------------------------------------------------
+export default GroupImpl.make(databaseSchema, spec).pipe(L.provide(backfillUsersImpl), GroupImpl.finalize);
