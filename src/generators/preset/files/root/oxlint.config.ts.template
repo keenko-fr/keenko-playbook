@@ -76,6 +76,7 @@ export default defineConfig({
         "promise/prefer-await-to-then": "off",
         "typescript/promise-function-async": "off",
         "typescript/return-await": "off",
+        "unicorn/filename-case": "off",
         "unicorn/no-array-method-this-argument": "off",
         "unicorn/throw-new-error": "off",
       },

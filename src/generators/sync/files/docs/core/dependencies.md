@@ -2,7 +2,7 @@
 
 ## Package/runtime policy
 
-- Node 24 is the tooling runtime for Nx and tools that require Node. Bun is the package manager, workspace script entry point, lockfile owner, and application runtime wherever the selected stack supports it.
+- Node `>=24.15 <25` is the tooling runtime for Nx and tools that require Node. Bun is the package manager, workspace script entry point, lockfile owner, and application runtime wherever the selected stack supports it.
 - Keenko supports Bun `>=1.4.0 <2`. Bun `<1.4.0` is unsupported. Bun 2.x is outside the supported range; supporting a new Bun major requires an explicit compatibility decision and verification.
 - Generated workspaces pin Keenko's current reference Bun version in the root `packageManager` field. The reference version may advance independently of the minimum supported version and does not narrow the supported Bun range.
 - Current reference runtime versions are implementation data, not documentation. Keep them in the canonical runtime compatibility configuration rather than duplicating them in prose.

@@ -40,7 +40,7 @@ Run `bun run check` before merging the result.
 
 ## Runtime support
 
-Keenko supports Node 24 and Bun `>=1.4.0 <2`; the current reference Bun version is `1.4.2`. Exact dependency compatibility pins are owned by the package source and generated canonical state.
+Keenko supports Node `>=24.15 <25` and Bun `>=1.4.0 <2`; the current reference Bun version is `1.4.2`. Exact dependency compatibility pins are owned by the package source and generated canonical state.
 
 ## Repository development
 
