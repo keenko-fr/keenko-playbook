@@ -8,7 +8,7 @@
     }
   },
   "scripts": {
-    "codegen": "confect codegen",
+    "codegen": "confect codegen && convex codegen",
     "dev": "confect dev"
   },
   "nx": {

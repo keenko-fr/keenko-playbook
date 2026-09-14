@@ -1,4 +1,9 @@
+/* oxlint-disable effect/noNodeBuiltinImport -- Node platform adapters support the disposable generated command fixture. */
 import { describe, expect, test } from "bun:test";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import nodePath from "node:path";
+/* oxlint-enable effect/noNodeBuiltinImport */
 
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { readJson, type Tree } from "@nx/devkit";
@@ -402,7 +407,10 @@ describe("keenko preset", () => {
         for (const rootCode of tree.children("").filter((entry) => /\.(?:c|m)?(?:j|t)sx?$/u.test(entry)))
           expect(tree.read(rootCode, "utf-8")).not.toContain("@tanstack/react-start");
 
-        expect(backendPackageJson.scripts).toEqual({ codegen: "confect codegen", dev: "confect dev" });
+        expect(backendPackageJson.scripts).toEqual({
+          codegen: "confect codegen && convex codegen",
+          dev: "confect dev",
+        });
 
         expect(readJson(tree, "convex.json")).toEqual({
           $schema: "./node_modules/convex/schemas/convex.schema.json",
@@ -427,6 +435,40 @@ describe("keenko preset", () => {
         expect(tree.exists("apps/web/convex")).toBe(false);
       })
     ));
+
+  /* oxlint-disable effect/noAsyncFunction, effect/noGlobals, effect/noNewPromise, effect/noTryCatch -- Bun executes the generated package script against disposable fake package binaries. */
+  test("runs both backend generators in ownership order through aggregate codegen", async () => {
+    const tree = await E.runPromise(generatePreset("acme"));
+    const fixture = await mkdtemp(nodePath.join(tmpdir(), "keenko-backend-codegen-"));
+
+    try {
+      const backend = nodePath.join(fixture, "packages/backend");
+      const binaries = nodePath.join(fixture, "node_modules/.bin");
+      await Promise.all([mkdir(backend, { recursive: true }), mkdir(binaries, { recursive: true })]);
+      const backendPackageJson = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/package.json", "utf-8")));
+      await writeFile(nodePath.join(backend, "package.json"), backendPackageJson);
+      await writeFile(
+        nodePath.join(binaries, "confect"),
+        '#!/bin/sh\nmkdir -p confect/_generated\nprintf "confect\\n" >> codegen-order\nprintf "fresh Confect output\\n" > confect/_generated/refs.js\n'
+      );
+      await writeFile(
+        nodePath.join(binaries, "convex"),
+        '#!/bin/sh\ntest -f confect/_generated/refs.js || exit 70\nmkdir -p convex/_generated\nprintf "convex\\n" >> codegen-order\nprintf "fresh Convex API output\\n" > convex/_generated/api.d.ts\nprintf "fresh Convex data model output\\n" > convex/_generated/dataModel.d.ts\n'
+      );
+      await Promise.all([chmod(nodePath.join(binaries, "confect"), 0o755), chmod(nodePath.join(binaries, "convex"), 0o755)]);
+
+      const result = Bun.spawnSync(["bun", "run", "codegen"], { cwd: backend });
+
+      expect(result.exitCode).toBe(0);
+      expect(await readFile(nodePath.join(backend, "codegen-order"), "utf-8")).toBe("confect\nconvex\n");
+      expect(await readFile(nodePath.join(backend, "confect/_generated/refs.js"), "utf-8")).toBe("fresh Confect output\n");
+      expect(await readFile(nodePath.join(backend, "convex/_generated/api.d.ts"), "utf-8")).toBe("fresh Convex API output\n");
+      expect(await readFile(nodePath.join(backend, "convex/_generated/dataModel.d.ts"), "utf-8")).toBe("fresh Convex data model output\n");
+    } finally {
+      await rm(fixture, { force: true, recursive: true });
+    }
+  });
+  /* oxlint-enable effect/noAsyncFunction, effect/noGlobals, effect/noNewPromise, effect/noTryCatch */
 
   test("generates the canonical root tooling configuration", () =>
     E.runPromise(
@@ -707,7 +749,7 @@ describe("keenko preset", () => {
         expect(tree.read(".env.example", "utf-8")).not.toContain("WORKOS_WEBHOOK_SECRET=");
         expect(tree.read(".env.example", "utf-8")).not.toContain("AUTH_E2E_EMAIL_DOMAIN=");
         expect(tree.read(".env.example", "utf-8")).not.toMatch(/(?:client_|sk_|whsec_)[A-Za-z0-9]/u);
-        expect(backendPackageJson.scripts?.codegen).toBe("confect codegen");
+        expect(backendPackageJson.scripts?.codegen).toBe("confect codegen && convex codegen");
         expect(backendPackageJson.scripts?.dev).toBe("confect dev");
         expect(tree.exists(".env.local")).toBe(false);
         expect(tree.read(".gitignore", "utf-8")).toContain("/.env.local");
