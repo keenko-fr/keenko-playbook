@@ -1,0 +1,11 @@
+import { Schema as S, SchemaGetter as SG } from "effect";
+
+// VOID ---------------------------------------------------------------------------------------------------------------------------------
+export const sVoid = S.Null.pipe(
+  S.decodeTo(S.Void, {
+    // oxlint-disable-next-line unicorn/no-useless-undefined effect/noNullish
+    decode: SG.transform(() => undefined),
+    // oxlint-disable-next-line effect/noNullish
+    encode: SG.transform(() => null),
+  })
+);

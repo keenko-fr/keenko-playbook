@@ -32,7 +32,7 @@ const fixture = E.fn("test.deps.fixture")(function* () {
   yield* fs.makeDirectory(path.join(root, "docs"), { recursive: true });
   yield* fs.writeFileString(
     path.join(versionsDirectory, "versions.ts"),
-    `export const packageVersions = {\n  "@nx/devkit": "23.2.0",\n  "@nx/oxlint": "23.2.0",\n  effect: "4.0.0-rc.1",\n  nx: "23.2.0",\n} satisfies Record<string, string>;\n\nexport const runtimeVersions = {\n  bun: "1.4.2",\n  nodeRange: ">=24 <25",\n} satisfies Record<string, string>;\n`
+    `export const packageVersions = {\n  "@nx/devkit": "23.2.0",\n  "@nx/oxlint": "23.2.0",\n  effect: "4.0.0-rc.1",\n  nx: "23.2.0",\n} satisfies Record<string, string>;\n\nexport const runtimeVersions = {\n  bun: "1.4.2",\n  nodeRange: ">=24.15 <25",\n} satisfies Record<string, string>;\n`
   );
   yield* fs.writeFileString(
     path.join(root, "package.json"),

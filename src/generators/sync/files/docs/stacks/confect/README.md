@@ -21,6 +21,20 @@ Do not extract a schema solely to name a one-use endpoint field. Prefer Effect S
 
 Generated Confect services/context are used directly; do not wrap them merely to rename or re-expose them.
 
+### No-value returns
+
+For a Confect function that semantically returns no value, use the shared `sVoid` schema as the function's `returns` schema.
+
+`sVoid` represents `void` in application code and encodes it as `null` at the Convex boundary. Implementations therefore return `void`; Confect encodes that result to `null` before returning it to Convex.
+
+Do not use raw `S.Void` as a Confect return schema. Its encoded representation is not a valid Convex value. Do not make implementations return `null` merely to satisfy Convex either; `null` is the wire representation, while `void` is the application representation.
+
+```ts
+returns: () => sVoid;
+```
+
+Effect/Confect callers decode the result as `void`. Callers using the generated native Convex API observe the encoded `null` value.
+
 ## Persisted document system fields
 
 Persisted resource schema modules start from application-controlled `sFooFields` and derive the complete `sFooDoc` with Confect's installed system-field facility. Do not manually recreate Convex `_id` or `_creationTime`.
