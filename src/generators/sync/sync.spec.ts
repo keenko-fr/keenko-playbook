@@ -224,6 +224,11 @@ describe("keenko sync", () => {
 
         expect(tree.read("AGENTS.md", "utf-8")).toBe(expectedRoutingFile(agents));
         expect(tree.read("CLAUDE.md", "utf-8")).toBe(expectedRoutingFile(claude));
+        for (const path of ["AGENTS.md", "CLAUDE.md"]) {
+          const routing = tree.read(path, "utf-8");
+          expect(routing).toContain("bun node_modules/@tanstack/intent/dist/cli.mjs list");
+          expect(routing).toContain("Context7 only as optional documentation retrieval");
+        }
       })
     ));
 

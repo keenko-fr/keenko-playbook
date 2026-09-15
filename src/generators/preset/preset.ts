@@ -27,6 +27,7 @@ export const devDependencies = Struct.pick(packageVersions, [
   "@effect/tsgo",
   "@nx/oxlint",
   "@nx/vitest",
+  "@tanstack/intent",
   "@tanstack/react-start",
   "@typescript/native",
   "convex",
@@ -118,6 +119,7 @@ const configureRootPackageJson = (tree: Tree, workspace: string) => {
   updateJson<PackageJson>(tree, "package.json", (packageJson) => ({
     ...packageJson,
     engines: { ...packageJson.engines, bun: runtimeVersions.bunRange, node: runtimeVersions.nodeRange },
+    intent: { skills: ["@tanstack/*"] },
     name: workspace,
     nx: { ...packageJson.nx, includedScripts: [] },
     packageManager: `bun@${runtimeVersions.bun}`,

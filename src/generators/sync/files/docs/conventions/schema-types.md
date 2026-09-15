@@ -68,7 +68,7 @@ packages/backend/
     tvmaze.ts
 ```
 
-Here `schemas/shows.ts` owns the shared application `Show` representations, `schemas/tvmaze/shows.ts` owns TVMaze wire representations, and `infra/tvmaze.ts` owns the adapter capability and provider-to-application conversion.
+Here `schemas/shows.ts` owns the shared application `Show` representations, `schemas/tvmaze/shows.ts` owns TVMaze wire representations, and `infra/tvmaze.ts` owns the adapter capability. Provider-to-application decoding lives with the schema representation when that boundary is its genuine owner; otherwise a private infra helper owns the conversion.
 
 Do not add `schemas/providers/`. Do not default to a flat `schemas/tvmaze.ts` when the provider contract has a meaningful resource/domain filename. Create provider-wide primitive/common files only after genuine reuse appears; do not speculate `common.ts` or `shared.ts`.
 
@@ -216,11 +216,13 @@ Do not encode the source representation in the function name and do not create t
 Ownership follows the target/boundary semantics:
 
 - shared `Doc -> Foo` projection lives beside the canonical `Foo` representation;
-- provider `ApiDto -> Foo` conversion lives in infra because it crosses provider/application owners;
+- provider `ApiDto -> Foo` decoding may live beside the provider schema when a schema transformation genuinely owns that representation boundary; otherwise a private infra helper owns the conversion;
 - persistence-only conversion lives in data;
 - workflow/business transition lives in the feature.
 
-Use declarative Effect Schema transformation only when the relationship is honestly an encoded/decoded representation with appropriate reversible semantics. Use a plain deterministic TypeScript helper for information-losing projection, metadata dropping, one-way normalization, or other non-reversible mapping.
+Effect Schema transformations may model one-way, information-losing decoding across a real representation or trust boundary. This is appropriate when the external representation has an authored schema, the decoded application representation has meaningful owned semantics, and omission, renaming, nullable normalization, image selection, nested normalization, defaults, or similar conversion naturally belongs to decoding. In that case, the transformation's encoded side is the faithful provider representation, its decoded side is the canonical application representation, and encoding must be forbidden when the normalization cannot honestly be reversed.
+
+Do not force every mapper into Schema. Use a plain deterministic TypeScript function for business or workflow transitions, arbitrary internal computation, mappings outside a schema/trust boundary, or cases where a schema transformation would obscure ownership.
 
 For example, if `Foo === Fields` and `FooDoc` differs only by system fields:
 

@@ -8,6 +8,6 @@ Project-specific architecture belongs under `docs/project/`. Project-specific vi
 
 Skills are generated into `.agents/skills/`. For version-sensitive library APIs, inspect installed source/types and current first-party guidance before relying on memory.
 
-For substantial version-sensitive TanStack work, use TanStack Intent and current installed-package guidance before relying on memory.
+For substantial TanStack work, run `bun node_modules/@tanstack/intent/dist/cli.mjs list` from the workspace root and load a matching installed package skill when available. This uses the pinned local CLI without network resolution. Otherwise inspect installed TanStack source/types and current first-party documentation. Use Context7 only as optional documentation retrieval after those authorities; it is not architectural authority or a prerequisite.
 
 Run focused verification during implementation, the complete project verification before merge-ready review, and report exactly what ran. Merge and consequential external/destructive actions remain human-authorized.
