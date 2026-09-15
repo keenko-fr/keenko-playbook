@@ -15,7 +15,9 @@ const dependencies = Struct.pick(packageVersions, [
 ]);
 const devDependencies = Struct.pick(packageVersions, [
   "@confect/cli",
+  "@confect/test",
   "@edge-runtime/vm",
+  "@effect/vitest",
   "@typescript/native",
   "convex-test",
   "typescript",

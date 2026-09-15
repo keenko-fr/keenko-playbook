@@ -8,7 +8,7 @@ export default defineConfig({
         extends: true,
         test: {
           environment: "node",
-          exclude: ["convex/**"],
+          exclude: ["convex/**", "test/**"],
           include: ["**/*.test.{ts,tsx,js,jsx}"],
           name: "node",
           passWithNoTests: true,
@@ -18,8 +18,8 @@ export default defineConfig({
         extends: true,
         test: {
           environment: "edge-runtime",
-          include: ["convex/**/*.test.{ts,js}"],
-          name: "convex",
+          include: ["test/**/*.test.{ts,js}"],
+          name: "integration",
           passWithNoTests: true,
         },
       },
