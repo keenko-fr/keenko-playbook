@@ -134,12 +134,12 @@ TYPES
 - `CONSTANTS` owns capability/adapter constants when needed.
 - `ERRORS` owns capability Issue schemas, their immediately adjacent derived types, and Schema-tagged Failure classes.
 - `SERVICE` owns service construction, `make`, implementation operations, the service class, the primary layer, and genuine layer variants.
-- `INTERNALS` owns private deterministic helpers, including provider-to-application conversion.
+- `INTERNALS` owns private deterministic helpers and private foreign-to-application boundary schemas such as `sFooFromDto`.
 - `TYPES` is last and contains only genuine standalone non-schema-derived types.
 
 Empty sections are omitted.
 
-Do not add a normal infra `SCHEMAS` section. Provider `*ApiDto` schemas live under `schemas/<provider>/<resource>.ts`. Do not create per-exported-function sections for service operations or expose parallel direct functions beside the capability service.
+Do not add a normal infra `SCHEMAS` section. Foreign `*Dto` schemas live under `schemas/<provider>/<resource>.ts`; an adapter-local `sFooFromDto` composes that foreign schema with canonical `sFoo` under `INTERNALS`. Do not create per-exported-function sections for service operations or expose parallel direct functions beside the capability service.
 
 ## Data files
 
