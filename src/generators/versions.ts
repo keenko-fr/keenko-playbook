@@ -17,6 +17,7 @@ export const packageVersions = {
   "@tailwindcss/vite": "4.3.3",
   "@tanstack/create": "0.70.0",
   "@tanstack/devtools-vite": "0.8.5",
+  "@tanstack/intent": "0.4.0",
   "@tanstack/react-devtools": "0.10.12",
   "@tanstack/react-form": "1.33.5",
   "@tanstack/react-query": "5.102.8",

@@ -90,7 +90,9 @@ When an internal provider Failure becomes a public feature Failure, strip the ra
 
 ## Cross-layer Issue translation
 
-Each layer owns its Issue vocabulary. Translate provider semantics into feature/application semantics at the Issue boundary, even when the current string values happen to align.
+A feature may propagate an infra capability's typed Failure directly when its stable vocabulary already accurately represents the feature's caller-visible semantics. Do not create an equivalent feature Failure solely to rename stable literals or preserve layer symmetry.
+
+Create or translate to a feature-owned Failure when the feature adds policy: it combines lower-level failure domains, changes Issue semantics, hides unstable or provider-specific details, removes diagnostics that cannot cross the public boundary, collapses cases, adds feature-specific cases, or otherwise creates a materially different caller contract.
 
 Use a named pure mapper such as:
 
@@ -112,7 +114,7 @@ providerOperation(...).pipe(
 );
 ```
 
-Do not cast/pass a provider Issue through as if it were the feature Issue. Do not branch on diagnostic `cause`, and do not copy the provider cause into the public feature Failure.
+When translation is required, do not cast/pass a provider Issue through as if it were the feature Issue. Do not branch on diagnostic `cause`, and do not copy the provider cause into the public feature Failure.
 
 For a reusable mapping over a known finite union, prefer the installed Effect `Match` API and make the mapping exhaustive. See the Effect stack guidance for exact version-aware matcher syntax and `E.mapError` versus recovery.
 

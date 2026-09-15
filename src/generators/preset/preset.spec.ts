@@ -333,7 +333,7 @@ describe("keenko preset", () => {
     E.runPromise(
       E.gen(function* () {
         const tree = yield* generatePreset();
-        const packageJson = readJson<PackageJson>(tree, "package.json");
+        const packageJson = readJson<PackageJson & { intent: { skills: string[] } }>(tree, "package.json");
 
         expect(packageJson.scripts).toMatchObject(expectedScripts);
         expect(packageJson.scripts).not.toHaveProperty("codegen:check");
@@ -348,6 +348,8 @@ describe("keenko preset", () => {
           "bun run build",
         ]);
         expect(packageJson.devDependencies).toMatchObject(expectedDevDependencies);
+        expect(packageJson.devDependencies?.["@tanstack/intent"]).toBe(packageVersions["@tanstack/intent"]);
+        expect(packageJson.intent).toEqual({ skills: ["@tanstack/*"] });
 
         expect(packageJson).toMatchObject({
           engines: {

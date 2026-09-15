@@ -8,12 +8,12 @@ For a persisted resource `Foo`:
 
 - `sFooFields` / `FooFields`: application-owned persisted fields, excluding Convex `_id` and `_creationTime`;
 - `sFooDoc` / `FooDoc`: complete decoded persistence document including system fields;
-- `sFoo` / `Foo`: canonical application/transport representation;
+- `sFoo` / `Foo`: canonical application-owned representation;
 - `sFooInsert` / `FooInsert`: application-controlled creation payload required to create `Foo`;
 - focused Patch contracts: operation-scoped update payloads when the operation owns meaningful invariants;
-- `sFooApiDto` / `FooApiDto`: genuine external provider/API-owned representation only.
+- `sFooDto` / `FooDto`: faithful foreign-system-owned representation crossing an integration boundary.
 
-Every persisted resource exposes `Fields`, `Doc`, and `Foo`. `Insert`, Patch contracts, `ApiDto`, and other representations exist when meaningful. Do not introduce `Entity`, generic `Dto`, `Entry`, `View`, or `ViewModel` synonyms. `ENTITY` below is a section heading, not another representation name.
+Every persisted resource exposes `Fields`, `Doc`, and `Foo`. `Insert`, Patch contracts, foreign `Dto`, and other representations exist when meaningful. `Dto` is not a generic synonym for an object that transports data: do not use it for Keenko-owned application models, feature inputs, forms, command payloads, Confect inputs, persistence documents, inserts, patches, view models, arbitrary response objects, or internal intermediates. Do not introduce `Entity`, `Entry`, or `ViewModel` synonyms. `ENTITY` below is a section heading, not another representation name.
 
 Effect Schema values use the `s` prefix exclusively. An `s...` value is an Effect Schema, never a Standard Schema adapter.
 
@@ -47,7 +47,7 @@ Keep every schema at the narrowest layer that genuinely owns its semantics. Do n
 - Endpoint-only Confect input/output details stay with the endpoint/spec; simple one-use schemas normally stay inline.
 - Feature-local application schemas and issue vocabularies stay with the feature.
 - Application representations genuinely shared across multiple backend layers belong in `packages/backend/schemas/<resource>.ts`.
-- Provider-owned wire/API representations belong in `packages/backend/schemas/<provider>/<resource>.ts` from the first real provider schema.
+- Foreign-system-owned wire/data representations belong in `packages/backend/schemas/<provider>/<resource>.ts` from the first real provider schema.
 - Persistence-only schemas, including focused patches used only by data, stay with the narrowest persistence/data owner.
 - Infra `Issue` / `Failure` schemas stay with the infra capability because they describe our adapter contract rather than the provider wire format.
 - Move/expose an application schema through `packages/shared/schemas` only when a real second workspace/runtime consumes the same representation; do not create `packages/shared` in anticipation of that consumer.
@@ -68,7 +68,7 @@ packages/backend/
     tvmaze.ts
 ```
 
-Here `schemas/shows.ts` owns the shared application `Show` representations, `schemas/tvmaze/shows.ts` owns TVMaze wire representations, and `infra/tvmaze.ts` owns the adapter capability and provider-to-application conversion.
+Here `schemas/shows.ts` owns the provider-independent application `Show` representations, `schemas/tvmaze/shows.ts` owns faithful TVMaze DTO representations, and `infra/tvmaze.ts` owns the adapter capability and the boundary composition that knows both sides. When a decoder composes a foreign-owned DTO schema and an application-owned canonical schema, the adapter/infra boundary owns that composition unless a narrower genuine boundary owner exists. Do not make the foreign schema module depend on the application representation or make the canonical application schema aware of a foreign source.
 
 Do not add `schemas/providers/`. Do not default to a flat `schemas/tvmaze.ts` when the provider contract has a meaningful resource/domain filename. Create provider-wide primitive/common files only after genuine reuse appears; do not speculate `common.ts` or `shared.ts`.
 
@@ -209,18 +209,21 @@ Name transforms by the representation they produce:
 
 - `fooFrom(...)` produces `Foo`;
 - `fooDocFrom(...)` produces `FooDoc` when a reverse conversion genuinely exists;
-- `fooApiDtoFrom(...)` produces `FooApiDto` when needed.
 
-Do not encode the source representation in the function name and do not create transforms for symmetry.
+Do not encode the source representation in ordinary value-producing function names and do not create transforms for symmetry. A schema describing a boundary relationship is different: `sFooFromDto` intentionally identifies its foreign source so it cannot be confused with canonical `sFoo`.
 
 Ownership follows the target/boundary semantics:
 
 - shared `Doc -> Foo` projection lives beside the canonical `Foo` representation;
-- provider `ApiDto -> Foo` conversion lives in infra because it crosses provider/application owners;
+- foreign `Dto -> Foo` schema composition lives in the adapter/infra boundary that knows both representations unless a narrower genuine boundary owner exists;
 - persistence-only conversion lives in data;
 - workflow/business transition lives in the feature.
 
-Use declarative Effect Schema transformation only when the relationship is honestly an encoded/decoded representation with appropriate reversible semantics. Use a plain deterministic TypeScript helper for information-losing projection, metadata dropping, one-way normalization, or other non-reversible mapping.
+Effect Schema transformations may model one-way, information-losing decoding across a real representation or trust boundary. This is appropriate when the foreign representation has an authored DTO schema, the decoded application representation has meaningful owned semantics, and omission, renaming, nullable normalization, image selection, flattening, nested normalization, defaults, or similar conversion naturally belongs to decoding. Name that relationship schema `sFooFromDto`. Its encoded side is the faithful foreign `FooDto`, its decoded side is canonical `Foo`, and encoding must be forbidden when the normalization cannot honestly be reversed. The relationship schema does not introduce another domain representation, so normally do not add a `FooFromDto` type.
+
+Inside provider-specific adapter code such as `infra/tvmaze.ts`, prefer `sShowFromDto`; module topology already supplies provider ownership. When multiple foreign DTO sources coexist in one lexical scope, qualify the relationship as needed, for example `sShowFromTvMazeDto` and `sShowFromTmdbDto`. Do not require provider qualification everywhere.
+
+Do not force every mapper into Schema. Use a plain deterministic TypeScript function for business or workflow transitions, arbitrary internal computation, mappings outside a schema/trust boundary, or cases where a schema transformation would obscure ownership.
 
 For example, if `Foo === Fields` and `FooDoc` differs only by system fields:
 
@@ -232,24 +235,56 @@ export function fooFrom(doc: FooDoc): Foo {
 
 Prefer value-level structural projection over manually maintaining another field object when that is the actual operation. Do not re-decode a trusted `FooDoc` solely to project it.
 
-## Provider API representations
+## Foreign DTO representations
 
-`ApiDto` models a provider's real accepted/returned representation faithfully. Decode provider data at the provider boundary, then normalize it to application representations before it leaves the adapter.
+`Dto` has a deliberately narrow Keenko meaning: a representation whose shape is owned by a foreign system crossing an integration boundary. This includes third-party HTTP API payloads, provider SDK payloads, webhook payloads, imported external formats, and other foreign-system-owned wire/data representations. The purpose of `Dto` is to make `Api` unnecessary, not to broaden the DTO concept.
+
+A foreign DTO schema models its owner's real accepted/returned representation faithfully. Preserve relevant foreign field names, nesting, nullability, optionality, and other wire semantics rather than redesigning the DTO to resemble the application representation. Decode foreign data at the owning boundary, then normalize it to application representations before it leaves the adapter.
 
 A provider schema file follows schema/type adjacency and derivation rules but does not inherit persisted-only headings such as `FIELDS`, `INSERT`, or `PATCH` unless those concepts genuinely apply.
 
 The TVMaze validation case therefore uses `schemas/tvmaze/shows.ts` for provider schemas such as:
 
 ```text
-sImageApiDto / ImageApiDto
-sShowApiDto / ShowApiDto
-sSearchResultApiDto / SearchResultApiDto
-sSearchResponseApiDto / SearchResponseApiDto
+sImageDto / ImageDto
+sShowDto / ShowDto
+sSearchResultDto / SearchResultDto
+sSearchResponseDto / SearchResponseDto
 ```
 
-`SearchResponseApiDto` is the clear name for that validation case; it is not a universal requirement for every provider response.
+`SearchResponseDto` is the clear name for that validation case; it is not a universal requirement for every provider response. Provider ownership normally comes from module/package topology. If DTOs from multiple providers enter one lexical scope, disambiguate at the import or use site rather than permanently burdening every foreign type with `Api` or a provider prefix.
 
-Provider-to-application conversion remains in infra. A helper such as `showFrom(show: ShowApiDto): Show` is a private deterministic helper under the adapter's `INTERNALS`; do not move it into the provider schema file and make that owner depend on the application representation.
+The foreign schema stays faithful to that provider:
+
+```ts
+// schemas/tvmaze/shows.ts
+export const sShowDto = S.Struct({ id: S.Int, name: S.String });
+export type ShowDto = typeof sShowDto.Type;
+```
+
+The application schema remains independent of every provider:
+
+```ts
+// schemas/shows.ts
+export const sShow = S.Struct({ apiId: S.Int, title: S.String });
+export type Show = typeof sShow.Type;
+```
+
+The adapter composes that schema with the faithful foreign schema:
+
+```ts
+// infra/tvmaze.ts
+import { Schema as S, SchemaGetter as SG } from "effect";
+
+const sShowFromDto = sShowDto.pipe(
+  S.decodeTo(sShow, {
+    decode: SG.transform(({ id, name }) => ({ apiId: id, title: name })),
+    encode: SG.forbidden(() => "Forbidden."),
+  })
+);
+```
+
+This syntax is valid for the repository's pinned Effect version; inspect the installed API before copying it to another version. Keep a plain helper instead for workflow/business transitions, arbitrary internal computation, application-to-application mappings, mappings outside a schema/trust boundary, or cases where Schema transformation would obscure ownership.
 
 ## Type vs encoded representation
 
@@ -257,7 +292,7 @@ Use `typeof sFoo.Type` for the normal decoded TypeScript type. Use `.Encoded` on
 
 `FooFields` and `FooDoc` are backend/persistence decoded representations and may use useful Effect-native values such as `Option` when the schema encodes them to Convex-compatible primitives.
 
-`Foo` is different: `sFoo.Type` itself must be transport-safe/plain. Do not put `Option`, `Either`, `Date`, Effect classes, fibers, causes, services, or other runtime-specific values in a server/client application contract and rely on callers to remember to encode them.
+`Foo` is different: `sFoo.Type` itself must be transport-safe/plain. Its semantic identity must not depend on a particular foreign provider, and canonical `sFoo` must not universally encode a provider DTO. Do not put `Option`, `Either`, `Date`, Effect classes, fibers, causes, services, or other runtime-specific values in a server/client application contract and rely on callers to remember to encode them.
 
 ## Timestamps
 

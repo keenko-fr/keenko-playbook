@@ -506,7 +506,7 @@ Use `Match.value(value)` for an immediate concrete value when appropriate.
 
 Use tag-specific Match APIs only when `_tag` is genuinely the discriminator. A plain `issue` string vocabulary is not a tagged union.
 
-Cross-layer provider failure to feature failure translation uses the pure issue mapper plus `E.mapError`, not catch/recovery:
+When a feature adds a materially different failure policy, cross-layer provider failure to feature failure translation uses the pure issue mapper plus `E.mapError`, not catch/recovery:
 
 ```ts
 providerOperation(...).pipe(
@@ -520,6 +520,8 @@ providerOperation(...).pipe(
 ```
 
 Do not copy an internal diagnostic cause into the public feature failure.
+
+When an infra capability already exposes a stable typed Failure that exactly represents the feature's caller-visible semantics, propagate it directly. Do not manufacture an equivalent feature Failure merely for layer symmetry.
 
 ## Option and transport
 

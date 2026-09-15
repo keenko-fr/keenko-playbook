@@ -332,6 +332,11 @@ const product = E.gen(function* () {
   yield* command(workspace, bootstrapEnv, "bun", ["install", "--frozen-lockfile"]);
   const reinstalledPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPackagePath));
   yield* assert(reinstalledPackage.version === packageVersion, `The clean consumer did not reinstall Keenko ${packageVersion}`);
+  const intentOutput = yield* command(workspace, env, "bun", ["node_modules/@tanstack/intent/dist/cli.mjs", "list", "--json"]);
+  yield* assert(
+    intentOutput.includes("@tanstack/react-table"),
+    "TanStack Intent did not discover the skill-bearing installed Table package"
+  );
   const checkOutput = yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
   yield* assert(!checkOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Fresh check emitted a module-typeless package warning");
   yield* completePhase("clean frozen install and generated consumer canonical verification", verificationStartedAt);

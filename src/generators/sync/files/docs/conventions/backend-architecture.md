@@ -94,11 +94,11 @@ Creation operations accept the semantic `FooInsert` contract, not `FooFields` or
 
 `infra/` owns provider adapters and reusable technical capabilities. Business policy remains with the owning feature. A rate-limiter adapter may live in infra; rate names, windows, quotas, and consequences belong to the feature.
 
-Provider wire/API schemas do not live in the infra file. They live under `schemas/<provider>/<resource>.ts`. Provider-to-application conversion stays in infra because it crosses representation owners.
+Foreign/provider DTO schemas do not live in the infra file. They live under `schemas/<provider>/<resource>.ts`. The canonical application schema remains provider-independent. A boundary schema such as `sFooFromDto` normally stays in infra because the adapter composes the foreign DTO schema with the application schema across representation owners.
 
 A real external or meaningfully substitutable technical capability is an Effect service from its first real consumer, even when it initially exposes only one operation. Examples include provider APIs, email delivery, payment gateways, object storage, and external AI providers.
 
-This service threshold applies to capabilities, not deterministic implementation helpers. Helpers such as `showFrom(...)`, normalization, or provider-key construction remain plain TypeScript.
+This service threshold applies to capabilities, not deterministic implementation details. Provider-key construction and non-boundary computation remain plain TypeScript. A real authored foreign DTO schema may instead compose with an authored application schema as a one-way Effect Schema decoder such as `sFooFromDto`; do not convert workflow or arbitrary internal mappings into Schema transformations.
 
 Once a capability is a service, expose one public capability API. Consumers depend on the service. Do not retain a parallel direct function for the same operation, create a second service merely to wrap it, or add a custom callback seam that duplicates an existing lower-level Effect service.
 

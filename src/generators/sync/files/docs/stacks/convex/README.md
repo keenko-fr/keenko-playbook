@@ -1,5 +1,7 @@
 # Convex
 
+Use [`application-authority.md`](../../conventions/application-authority.md) to place application authority and web-runtime responsibilities.
+
 ## Workspace integration and development lifecycle
 
 - Convex integration configuration belongs at the repository root because it coordinates the backend and web Nx projects. Root `convex.json` points to `packages/backend/convex`.

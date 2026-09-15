@@ -2,6 +2,7 @@
 
 Canonical reusable conventions that cut across stack modules:
 
+- `application-authority.md`: the single authoritative application backend and the operational placement test for Convex/application code versus TanStack Start server;
 - `backend-architecture.md`: backend layers, representation/package ownership, external capability boundaries, deep modules, package boundaries;
 - `backend-file-topology.md`: canonical backend and Confect file section grammar and schema/type adjacency routing;
 - `schema-types.md`: Effect Schema representation/persistence/provider vocabulary, persisted-resource grammar, derivation, Patch/transform ownership;

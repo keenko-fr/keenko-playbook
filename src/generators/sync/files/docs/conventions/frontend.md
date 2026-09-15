@@ -2,6 +2,36 @@
 
 This convention owns renderer-neutral frontend and UI quality rules. Renderer-specific programming and styling rules belong in the corresponding stack guidance.
 
+## Capability selection
+
+Choose one owner before implementing frontend state or interaction:
+
+```text
+editing/form state
+-> TanStack Form
+
+remote/server state
+-> TanStack Query
+
+navigation and URL/shareable state
+-> TanStack Router
+
+operational structured/tabular data with meaningful sorting, filtering,
+pagination, selection, column behavior, or alternate rendering
+-> TanStack Table
+
+reusable or interactive UI behavior
+-> existing project component
+-> shadcn/ui
+-> Base UI primitive
+-> custom interaction behavior
+
+ordinary ephemeral component-local state
+-> React/local state
+```
+
+Do not introduce duplicate state owners. Tiny static or primarily visual collections do not require Table. An isolated native input without a meaningful editing-state problem does not require Form. Semantic HTML remains valid; the component precedence applies to reusable or interactive behavior, not to replacing every HTML element with an abstraction.
+
 ## Component ownership
 
 Use this ownership ladder:

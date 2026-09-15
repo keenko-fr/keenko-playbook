@@ -51,6 +51,10 @@ For TypeScript implementation work, use the repository's canonical tooling rathe
 
 For fast-moving libraries such as Effect, Confect, Convex, TanStack, Paraglide, provider SDKs, and the formatting/linting toolchain, inspect the installed version and current primary source/types/docs before making a behavior-dependent change. Model memory is a hypothesis, not evidence.
 
+For substantial TanStack work, run `bun node_modules/@tanstack/intent/dist/cli.mjs list` from the workspace root and load a matching installed package skill with `bun node_modules/@tanstack/intent/dist/cli.mjs load <package>#<skill>` when one is available. The explicit installed CLI path avoids ambiguous package binaries and requires no network resolution. TanStack package skills version with their installed packages. If the relevant installed package does not ship a matching skill, continue with its installed source/types and current first-party documentation.
+
+When the active harness provides Context7, it may retrieve current library documentation after installed source/types and first-party package guidance have been checked. Context7 is optional retrieval support, not project authority or a prerequisite.
+
 ## Knowledge
 
 Hidden model/session state is never canonical project knowledge. Durable information belongs in the appropriate source:
