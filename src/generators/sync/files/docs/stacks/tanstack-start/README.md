@@ -6,6 +6,8 @@ TanStack Create owns framework creation and its framework contracts. Keenko uses
 
 After creation, generated application source is project-owned. Keenko synchronization does not continuously manage it. After the first supported compatibility baseline, a future project migration may touch project source only for a real semantic transition under the normal preservation and conflict rules.
 
+Use [`application-authority.md`](../../conventions/application-authority.md) when placing ServerFn, loader, callback, and cross-backend orchestration responsibilities.
+
 Server functions are real server trust boundaries. Validate/normalize input there even when the browser already validated it.
 
 Keep values crossing SSR/server-function serialization transport-safe and explicit; do not leak Effect runtime values or `Date` hydration for internal symmetry.
