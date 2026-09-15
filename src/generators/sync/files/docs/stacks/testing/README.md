@@ -4,7 +4,8 @@ Vitest is the canonical general test runner. Keenko registers `@nx/vitest` so ea
 
 - `apps/web` and `packages/ui` use the `jsdom` environment with Testing Library's DOM and React utilities for ordinary component and behavior tests. Browser automation, Playwright, browser downloads, and Vitest Browser Mode are feature-driven additions, not baseline dependencies.
 - `packages/shared` uses the ordinary Node Vitest environment without React or browser assumptions.
-- `packages/backend` uses the Node environment for ordinary application tests. Tests under `convex/**/*.test.{ts,js}` use the Edge Runtime environment and the official `convex-test` integration. A Convex simulation is not the default for the rest of the backend, and real-provider or staging verification remains separate when runtime fidelity materially matters.
+- `packages/backend` uses the Node environment for ordinary tests colocated with their authored owners. Assembled backend integration tests live under `packages/backend/test/` and use the Edge Runtime environment; author `test/TestConfect.ts` and `test/*.test.ts` when real behavior requires them. For Confect-owned application functions, prefer generated Confect refs through [`@confect/test`](https://confect.dev/guides/testing); it wraps `convex-test` with Effect-native APIs. The generated `convex/` modules are loaded by the test layer and remain generator-owned rather than becoming an authored test location.
+- Direct `convex-test` usage remains appropriate when a genuinely Convex-native boundary owns the behavior. A Convex simulation is not the default for the rest of the backend, and real-provider or staging verification remains separate when runtime fidelity materially matters.
 
 - Prefer behavior tests through the highest meaningful stable application interface.
 - Direct data-helper tests are reserved for persistence-specific semantics that are not better observed through the feature interface.

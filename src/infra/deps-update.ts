@@ -9,6 +9,7 @@ export const prereleaseChannels = {
   "@confect/cli": "next",
   "@confect/core": "next",
   "@confect/server": "next",
+  "@confect/test": "next",
   "@effect/platform-node": "rc",
   effect: "rc",
 };

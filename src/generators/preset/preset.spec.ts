@@ -223,10 +223,11 @@ describe("keenko preset", () => {
         const backendConfig = tree.read("packages/backend/vitest.config.ts", "utf-8");
         expect(backendConfig).toContain('environment: "node"');
         expect(backendConfig).toContain('environment: "edge-runtime"');
-        expect(backendConfig).toContain('include: ["convex/**/*.test.{ts,js}"]');
+        expect(backendConfig).toContain('exclude: ["convex/**", "test/**"]');
+        expect(backendConfig).toContain('include: ["test/**/*.test.{ts,js}"]');
 
         expect(readJson<PackageJson>(tree, "packages/backend/package.json").devDependencies).toMatchObject(
-          Struct.pick(packageVersions, ["@edge-runtime/vm", "convex-test"])
+          Struct.pick(packageVersions, ["@confect/test", "@edge-runtime/vm", "convex-test"])
         );
         expect(readJson<PackageJson>(tree, "packages/ui/package.json").devDependencies).toMatchObject(
           Struct.pick(packageVersions, ["@testing-library/dom", "@testing-library/react", "jsdom"])
