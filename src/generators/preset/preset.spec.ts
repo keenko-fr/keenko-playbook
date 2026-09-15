@@ -227,7 +227,7 @@ describe("keenko preset", () => {
         expect(backendConfig).toContain('include: ["test/**/*.test.{ts,js}"]');
 
         expect(readJson<PackageJson>(tree, "packages/backend/package.json").devDependencies).toMatchObject(
-          Struct.pick(packageVersions, ["@confect/test", "@edge-runtime/vm", "@effect/vitest", "convex-test"])
+          Struct.pick(packageVersions, ["@confect/test", "@edge-runtime/vm", "convex-test"])
         );
         expect(readJson<PackageJson>(tree, "packages/ui/package.json").devDependencies).toMatchObject(
           Struct.pick(packageVersions, ["@testing-library/dom", "@testing-library/react", "jsdom"])

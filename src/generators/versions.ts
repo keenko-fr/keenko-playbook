@@ -9,7 +9,6 @@ export const packageVersions = {
   "@edge-runtime/vm": "5.0.0",
   "@effect/platform-node": "4.0.0-rc.115",
   "@effect/tsgo": "0.45.0",
-  "@effect/vitest": "4.0.0-rc.115",
   "@fontsource-variable/inter": "5.3.0",
   "@inlang/paraglide-js": "2.25.2",
   "@nx/devkit": "23.2.0",
@@ -61,7 +60,7 @@ export const packageVersions = {
   typescript: "6.0.2",
   ultracite: "7.11.1",
   vite: "8.3.0",
-  vitest: "5.0.1",
+  vitest: "4.0.18",
 } satisfies Record<string, string>;
 
 export const runtimeVersions = {

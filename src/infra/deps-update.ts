@@ -11,7 +11,6 @@ export const prereleaseChannels = {
   "@confect/server": "next",
   "@confect/test": "next",
   "@effect/platform-node": "rc",
-  "@effect/vitest": "rc",
   effect: "rc",
 };
 
