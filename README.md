@@ -16,7 +16,7 @@ These are the initial projects, not a permanent maximum.
 ## Create a project
 
 ```sh
-bunx create-nx-workspace@23.2.0 <project> --preset=keenko --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
+bunx create-nx-workspace@23.2.1 <project> --preset=keenko --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
 ```
 
 From the created project, `bun run check` is the canonical merge-ready verification command.
@@ -40,7 +40,7 @@ Run `bun run check` before merging the result.
 
 ## Runtime support
 
-Keenko supports Node `>=24.15 <25` and Bun `>=1.4.0 <2`; the current reference Bun version is `1.4.2`. Exact dependency compatibility pins are owned by the package source and generated canonical state.
+Keenko supports Node `>=24.15 <25` and Bun `>=1.4.0 <2`. Current reference runtime versions and exact dependency compatibility pins are owned by the package source and generated canonical state.
 
 ## Repository development
 

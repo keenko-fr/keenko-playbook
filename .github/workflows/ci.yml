@@ -16,6 +16,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node.js
@@ -33,6 +34,10 @@ jobs:
 
       - name: Verify repository
         run: bun run check
+
+      - name: Verify release plan
+        if: github.event_name == 'pull_request'
+        run: bun x nx release plan:check --base="${{ github.event.pull_request.base.sha }}" --head="${{ github.event.pull_request.head.sha }}"
 
       - name: Verify packed product
         run: bun run test:product

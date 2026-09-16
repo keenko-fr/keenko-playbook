@@ -9,7 +9,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { readJson, type Tree } from "@nx/devkit";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { YAML } from "bun";
-import { Effect as E, FileSystem, Layer as L, Option as O, Path, Struct } from "effect";
+import { Effect as E, FileSystem, Layer as L, Option as O, Path, Schema as S, Struct } from "effect";
 
 import type { PackageJson } from "../helpers.js";
 import { packageVersions, runtimeVersions } from "../versions.js";
@@ -27,6 +27,17 @@ const managedRoots = ["apps/web", "packages/backend", "packages/shared", "packag
 const expectedWorkspaces = ["apps/*", "packages/*"];
 
 const exactPackageVersion = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+
+const sOxlintJson = S.fromJsonString(
+  S.Struct({
+    diagnostics: S.Array(
+      S.Struct({
+        code: S.String,
+        filename: S.String,
+      })
+    ),
+  })
+);
 
 const expectedScripts = {
   build: "nx run-many -t build",
@@ -124,6 +135,8 @@ describe("keenko preset", () => {
         }
         expect(readme).toContain("bun x nx sync");
         expect(readme).toContain("bun x nx sync:check");
+        expect(readme).toContain("/mon-espace");
+        expect(readme).not.toContain("/protected");
         for (const document of ["CONTEXT.md", "docs/project/architecture.md"]) {
           expect(readme).toContain(`](${document})`);
           expect(tree.exists(document)).toBe(true);
@@ -188,7 +201,7 @@ describe("keenko preset", () => {
         expect(web.devDependencies).toEqual(webDevDependencies);
         for (const specification of [...Object.values(webDependencies), ...Object.values(webDevDependencies)])
           expect(exactPackageVersion.test(specification)).toBe(true);
-        expect(web.devDependencies?.["@types/node"]).toBe("24.13.3");
+        expect(web.devDependencies?.["@types/node"]).toBe(packageVersions["@types/node"]);
         expect(web.nx?.targets?.codegen).toBeUndefined();
         expect(tree.exists("apps/web/project.inlang/settings.json")).toBe(true);
         expect(tree.exists("apps/web/tsr.config.json")).toBe(true);
@@ -484,17 +497,24 @@ describe("keenko preset", () => {
           symlinkSync(nodePath.join(repository, "node_modules"), nodePath.join(workspace, "node_modules"), "dir");
 
           // oxlint-disable-next-line effect/noGlobals -- Bun is the executable process boundary for this generated-tool fixture.
-          const result = Bun.spawnSync([nodePath.join(repository, "node_modules/.bin/oxlint"), integrationTest, unrelatedSource], {
-            cwd: workspace,
-            stderr: "pipe",
-            stdout: "pipe",
-          });
-          const output = `${result.stdout.toString()}${result.stderr.toString()}`;
-          const compatibilityDiagnostics = output.split("\n").filter((line) => line.includes("effecttsgo(any-unknown-in-error-context)"));
+          const result = Bun.spawnSync(
+            [nodePath.join(repository, "node_modules/.bin/oxlint"), "--format=json", integrationTest, unrelatedSource],
+            {
+              cwd: workspace,
+              stderr: "pipe",
+              stdout: "pipe",
+            }
+          );
+          const stdout = result.stdout.toString();
+          const output = yield* S.decodeEffect(sOxlintJson)(stdout.slice(stdout.indexOf('{ "diagnostics"')));
+          const compatibilityDiagnosticFiles = output.diagnostics
+            .filter(({ code }) => code === "effecttsgo(any-unknown-in-error-context)")
+            .map(({ filename }) => nodePath.relative(workspace, nodePath.resolve(workspace, filename)).replaceAll("\\", "/"))
+            .toSorted();
 
-          expect(compatibilityDiagnostics).not.toHaveLength(0);
-          expect(compatibilityDiagnostics.every((line) => line.includes(unrelatedSource))).toBe(true);
-          expect(compatibilityDiagnostics.every((line) => !line.includes(integrationTest))).toBe(true);
+          expect(compatibilityDiagnosticFiles).not.toHaveLength(0);
+          expect(new Set(compatibilityDiagnosticFiles)).toEqual(new Set([unrelatedSource]));
+          expect(compatibilityDiagnosticFiles).not.toContain(integrationTest);
         } finally {
           rmSync(workspace, { force: true, recursive: true });
         }

@@ -74,7 +74,7 @@ WorkOS Actions are not part of the Keenko baseline. `WORKOS_ACTION_SECRET` becom
 
 ## Deterministic verification
 
-`bun run check` intentionally does not start Convex, contact WorkOS, read production secrets, or run provisioned auth E2E. `bun run check` intentionally does not start Convex, contact WorkOS, read deployment secrets, or run the provisioned authentication smoke. Backend codegen and Confect watch mode must succeed without `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, or `WORKOS_WEBHOOK_SECRET` in their local process environment. Convex declares and validates the deployment environment contract: `WORKOS_CLIENT_ID` and `WORKOS_API_KEY` are required for a provisioned deployment, while `WORKOS_WEBHOOK_SECRET` remains optional until component synchronization is configured. Provisioning state changes runtime capability availability; it does not change generated repository topology or codegen output.
+`bun run check` intentionally does not start Convex, contact WorkOS, read deployment secrets, or run the provisioned authentication smoke. Backend codegen and Confect watch mode must succeed without `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, or `WORKOS_WEBHOOK_SECRET` in their local process environment. Convex declares and validates the deployment environment contract: `WORKOS_CLIENT_ID` and `WORKOS_API_KEY` are required for a provisioned deployment, while `WORKOS_WEBHOOK_SECRET` remains optional until component synchronization is configured. Provisioning state changes runtime capability availability; it does not change generated repository topology or codegen output.
 
 From a clean generated repository with no `.env.local`, run:
 

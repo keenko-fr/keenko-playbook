@@ -1,8 +1,8 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from "effect";
+import { Console, Effect as E, FileSystem, Option as O, Path, type PlatformError, Schema as S, type Scope, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { packageVersions } from "../generators/versions.js";
+import { packageVersions, runtimeVersions } from "../generators/versions.js";
 
 // POLICY ---------------------------------------------------------------------------------------------------------------------------------
 export const prereleaseChannels = {
@@ -16,11 +16,13 @@ export const prereleaseChannels = {
 
 // npm latest is incompatible with another member of the fixed tuple. Re-evaluate these holds whenever the named constraint changes.
 export const compatibilityVersionOverrides = {
-  "@nx/devkit": "23.2.0",
-  "@nx/oxlint": "23.2.0",
-  nx: "23.2.0",
+  "@nx/devkit": "23.2.1",
+  "@nx/oxlint": "23.2.1",
+  nx: "23.2.1",
+  // Newer Oxlint releases are incompatible with the current Effect/TSGo integration.
   oxlint: "1.82.0",
   typescript: "6.0.2",
+  vitest: "4.0.18",
 };
 
 const alignedRootPackages = {
@@ -37,22 +39,45 @@ const sDependencyUpdateIssue = S.Literals([
 ]);
 
 export class DependencyUpdateFailure extends S.TaggedError<DependencyUpdateFailure>()("DependencyUpdateFailure", {
-  channel: S.optional(S.String),
+  command: S.optional(S.String),
+  exitCode: S.optional(S.Finite),
+  installerOutput: S.optional(S.String),
   issue: sDependencyUpdateIssue,
   packageName: S.optional(S.String),
+  rollbackError: S.optional(S.String),
+  selector: S.optional(S.String),
   value: S.optional(S.String),
 }) {
   override get message() {
     const target = O.getOrElse(O.fromNullishOr(this.packageName), () => "dependency update");
-    const selector = O.getOrElse(O.fromNullishOr(this.channel), () => "unknown selector");
-    return `${this.issue}: ${target} (${selector})`;
+    const selector = O.getOrElse(O.fromNullishOr(this.selector), () => "unknown selector");
+    const command = O.match(O.fromNullishOr(this.command), { onNone: () => "", onSome: (value) => `\ncommand: ${value}` });
+    const exitCode = O.match(O.fromNullishOr(this.exitCode), { onNone: () => "", onSome: (value) => `\nexit code: ${value}` });
+    const output = O.match(O.fromNullishOr(this.installerOutput), {
+      onNone: () => "",
+      onSome: (value) => `\ninstaller output:\n${value}`,
+    });
+    const rollback = O.match(O.fromNullishOr(this.rollbackError), {
+      onNone: () => "",
+      onSome: (value) => `\nrollback error: ${value}`,
+    });
+    return `${this.issue}: ${target} (${selector})${command}${exitCode}${output}${rollback}`;
   }
 }
 
 export type RegistryResolver = (
   packageName: string,
-  channel: string
+  selector: string
 ) => E.Effect<string, DependencyUpdateFailure, ChildProcessSpawner.ChildProcessSpawner>;
+
+export interface LockfileRefreshResult {
+  readonly exitCode: number;
+  readonly output: string;
+}
+
+export type LockfileRefresher = (
+  workspace: string
+) => E.Effect<LockfileRefreshResult, DependencyUpdateFailure | PlatformError.PlatformError, NodeServices.NodeServices | Scope.Scope>;
 
 const semverPattern =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
@@ -77,34 +102,49 @@ const parseAlias = (value: string) => {
 };
 
 // REGISTRY -------------------------------------------------------------------------------------------------------------------------------
-const sDistTags = S.fromJsonString(S.Record(S.String, S.String));
+const sRegistryVersion = S.fromJsonString(S.String);
 
-export const resolveRegistryVersion: RegistryResolver = E.fn("keenko.deps.resolveRegistryVersion")(function* (packageName, channel) {
+export const resolveRegistryVersion: RegistryResolver = E.fn("keenko.deps.resolveRegistryVersion")(function* (packageName, selector) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const output = yield* spawner
-    .string(ChildProcess.make("bun", ["pm", "view", packageName, "dist-tags", "--json"]), { includeStderr: true })
-    .pipe(E.mapError(() => new DependencyUpdateFailure({ channel, issue: "registry_resolution_failed", packageName })));
+    .string(ChildProcess.make("bun", ["pm", "view", `${packageName}@${selector}`, "version", "--json"]), {
+      includeStderr: true,
+    })
+    .pipe(E.mapError(() => new DependencyUpdateFailure({ issue: "registry_resolution_failed", packageName, selector })));
 
-  const distTags = yield* S.decodeEffect(sDistTags)(output).pipe(
-    E.mapError(() => new DependencyUpdateFailure({ channel, issue: "registry_resolution_failed", packageName }))
-  );
-
-  const version = yield* E.fromOption(
-    O.fromNullishOr(distTags[channel]),
-    () => new DependencyUpdateFailure({ channel, issue: "registry_resolution_failed", packageName })
+  const version = yield* S.decodeEffect(sRegistryVersion)(output).pipe(
+    E.mapError(() => new DependencyUpdateFailure({ issue: "registry_resolution_failed", packageName, selector }))
   );
 
   if (!semverPattern.test(version))
-    return yield* new DependencyUpdateFailure({ channel, issue: "invalid_version", packageName, value: version });
+    return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName, selector, value: version });
 
   return version;
 });
+
+const nodeMajorFromRange = (nodeRange: string) => {
+  const match = /^>=(?<major>[1-9]\d*)\.\d+(?:\.\d+)? <(?<upper>[1-9]\d*)$/u.exec(nodeRange);
+  const major = Number(match?.groups?.major);
+  const upper = Number(match?.groups?.upper);
+
+  return Number.isSafeInteger(major) && upper === major + 1
+    ? E.succeed(String(major))
+    : E.fail(
+        new DependencyUpdateFailure({
+          issue: "invalid_version",
+          packageName: "@types/node",
+          selector: "runtimeVersions.nodeRange",
+          value: nodeRange,
+        })
+      );
+};
 
 // UPDATE ---------------------------------------------------------------------------------------------------------------------------------
 export const updateDependencySources = E.fn("keenko.deps.updateSources")(function* (
   workspace: string,
   currentVersions: Readonly<Record<string, string>>,
-  resolveVersion: RegistryResolver
+  resolveVersion: RegistryResolver,
+  currentRuntimeVersions: Readonly<Record<string, string>> = runtimeVersions
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -119,12 +159,18 @@ export const updateDependencySources = E.fn("keenko.deps.updateSources")(functio
       O.map(alias, ({ packageName: name }) => name),
       () => packageName
     );
-    const channel = O.getOrElse(findConfiguredValue(prereleaseChannels, packageName), () => "latest");
+    const selector =
+      packageName === "@types/node"
+        ? yield* nodeMajorFromRange(currentRuntimeVersions.nodeRange ?? "")
+        : O.getOrElse(findConfiguredValue(prereleaseChannels, packageName), () => "latest");
     const override = findConfiguredValue(compatibilityVersionOverrides, packageName);
-    const version = O.isSome(override) ? override.value : yield* resolveVersion(registryPackage, channel);
+    const version = O.isSome(override) ? override.value : yield* resolveVersion(registryPackage, selector);
 
     if (!semverPattern.test(version))
-      return yield* new DependencyUpdateFailure({ channel, issue: "invalid_version", packageName: registryPackage, value: version });
+      return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName: registryPackage, selector, value: version });
+
+    if (packageName === "@types/node" && !version.startsWith(`${selector}.`))
+      return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName, selector, value: version });
 
     updates[packageName] = O.isNone(alias) ? version : `npm:${registryPackage}@${version}`;
   }
@@ -141,15 +187,122 @@ export const updateDependencySources = E.fn("keenko.deps.updateSources")(functio
   return updates;
 });
 
-export const updateDependencies = E.fn("keenko.deps.update")(function* (workspace: string) {
+const refreshLockfile: LockfileRefresher = E.fn("keenko.deps.refreshLockfile")(function* (workspace) {
   const path = yield* Path.Path;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const updates = yield* updateDependencySources(workspace, packageVersions, resolveRegistryVersion);
-  const exitCode = yield* spawner
-    .exitCode(ChildProcess.make("bun", ["install"], { cwd: path.resolve(workspace) }))
-    .pipe(E.mapError(() => new DependencyUpdateFailure({ issue: "lockfile_refresh_failed" })));
+  const handle = yield* spawner.spawn(ChildProcess.make("bun", ["install"], { cwd: path.resolve(workspace) })).pipe(
+    E.mapError(
+      (error) =>
+        new DependencyUpdateFailure({
+          command: "bun install",
+          installerOutput: String(error),
+          issue: "lockfile_refresh_failed",
+        })
+    )
+  );
+  const [output, exitCode] = yield* E.all([Stream.mkString(Stream.decodeText(handle.all)), handle.exitCode], {
+    concurrency: "unbounded",
+  }).pipe(
+    E.mapError(
+      (error) =>
+        new DependencyUpdateFailure({
+          command: "bun install",
+          installerOutput: String(error),
+          issue: "lockfile_refresh_failed",
+        })
+    )
+  );
 
-  if (exitCode !== 0) return yield* new DependencyUpdateFailure({ issue: "lockfile_refresh_failed", value: String(exitCode) });
+  return { exitCode, output };
+});
+
+interface FileSnapshot {
+  readonly contents: O.Option<string>;
+  readonly exists: boolean;
+  readonly path: string;
+}
+
+const snapshotFiles = E.fn("keenko.deps.snapshotFiles")(function* (paths: readonly string[]) {
+  const fs = yield* FileSystem.FileSystem;
+  const snapshots: FileSnapshot[] = [];
+
+  for (const path of paths) {
+    const exists = yield* fs.exists(path);
+    snapshots.push({ contents: exists ? O.some(yield* fs.readFileString(path)) : O.none(), exists, path });
+  }
+
+  return snapshots;
+});
+
+const restoreFiles = E.fn("keenko.deps.restoreFiles")(function* (snapshots: readonly FileSnapshot[]) {
+  const fs = yield* FileSystem.FileSystem;
+
+  for (const snapshot of snapshots)
+    if (snapshot.exists)
+      yield* fs.writeFileString(
+        snapshot.path,
+        O.getOrElse(snapshot.contents, () => "")
+      );
+    else if (yield* fs.exists(snapshot.path)) yield* fs.remove(snapshot.path);
+});
+
+const rollbackInstallFailure = E.fn("keenko.deps.rollbackInstallFailure")(function* (
+  snapshots: readonly FileSnapshot[],
+  failure: DependencyUpdateFailure
+) {
+  const rollbackError = yield* restoreFiles(snapshots).pipe(
+    E.as(O.none<string>()),
+    E.catch((error) => E.succeedSome(String(error)))
+  );
+
+  return yield* new DependencyUpdateFailure({
+    command: failure.command,
+    exitCode: failure.exitCode,
+    installerOutput: failure.installerOutput,
+    issue: failure.issue,
+    packageName: failure.packageName,
+    rollbackError: O.getOrUndefined(rollbackError),
+    selector: failure.selector,
+    value: failure.value,
+  });
+});
+
+const normalizeInstallFailure = (error: DependencyUpdateFailure | PlatformError.PlatformError) =>
+  S.is(DependencyUpdateFailure)(error)
+    ? error
+    : new DependencyUpdateFailure({
+        command: "bun install",
+        installerOutput: String(error),
+        issue: "lockfile_refresh_failed",
+      });
+
+export const updateDependencies = E.fn("keenko.deps.update")(function* (
+  workspace: string,
+  resolveVersion: RegistryResolver = resolveRegistryVersion,
+  refresh: LockfileRefresher = refreshLockfile,
+  currentVersions: Readonly<Record<string, string>> = packageVersions,
+  currentRuntimeVersions: Readonly<Record<string, string>> = runtimeVersions
+) {
+  const path = yield* Path.Path;
+  const root = path.resolve(workspace);
+  const snapshots = yield* snapshotFiles([
+    path.join(root, "src/generators/versions.ts"),
+    path.join(root, "package.json"),
+    path.join(root, "bun.lock"),
+  ]);
+  const updates = yield* updateDependencySources(root, currentVersions, resolveVersion, currentRuntimeVersions);
+  const result = yield* E.scoped(refresh(root)).pipe(E.catch((error) => rollbackInstallFailure(snapshots, normalizeInstallFailure(error))));
+
+  if (result.exitCode !== 0)
+    return yield* rollbackInstallFailure(
+      snapshots,
+      new DependencyUpdateFailure({
+        command: "bun install",
+        exitCode: result.exitCode,
+        installerOutput: result.output,
+        issue: "lockfile_refresh_failed",
+      })
+    );
 
   return updates;
 });
