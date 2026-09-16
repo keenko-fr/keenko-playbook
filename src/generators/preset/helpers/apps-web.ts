@@ -6,13 +6,6 @@ import { TanStackCreateFailure } from "../../errors.js";
 import { replaceExpected, type PackageJson } from "../../helpers.js";
 import { packageVersions } from "../../versions.js";
 
-// TYPES -----------------------------------------------------------------------------------------------------------------------------------
-interface WebTsconfig {
-  readonly compilerOptions?: {
-    readonly exactOptionalPropertyTypes?: boolean;
-  };
-}
-
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
 export const START_ROUTE_TREE_FOOTER = `import type { getRouter } from './router.tsx'
 import type { startInstance } from './start.ts'
@@ -137,14 +130,6 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
     "apps/web/vitest.config.ts",
     'import { defineConfig } from "vitest/config";\n\nexport default defineConfig({ test: { environment: "jsdom", passWithNoTests: true } });\n'
   );
-
-  updateJson<WebTsconfig>(tree, "apps/web/tsconfig.json", (tsconfig) => ({
-    ...tsconfig,
-    compilerOptions: {
-      ...tsconfig.compilerOptions,
-      exactOptionalPropertyTypes: true,
-    },
-  }));
 
   updateJson<PackageJson>(tree, "apps/web/package.json", (packageJson) => ({
     ...packageJson,

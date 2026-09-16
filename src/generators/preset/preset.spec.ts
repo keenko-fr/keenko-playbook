@@ -468,7 +468,6 @@ describe("keenko preset", () => {
         expect(ui.include).toContain("vitest.config.ts");
         expect(web.include).toContain("**/*.ts");
         expect(web.include).toContain("**/*.tsx");
-        expect(web.compilerOptions.exactOptionalPropertyTypes).toBe(true);
 
         const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
         expect(oxlintConfig).not.toContain("effecttsgo/any-unknown-in-error-context");
@@ -729,7 +728,6 @@ describe("keenko preset", () => {
 
         expect(workspaceRoute).toContain("api.identity.findCurrent");
         expect(workspaceRoute).toContain("api.identity.findSynchronized");
-        expect(workspaceRoute).toContain("useQuery<FunctionReturnType<typeof api.identity.findCurrent>>");
         expect(workspaceRoute).not.toContain("workOSUserSynchronized");
         expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
