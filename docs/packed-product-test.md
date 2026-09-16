@@ -45,7 +45,13 @@ The executable procedures live in `tests/packed-product.ts`. Effect scope stops 
 
 ## Release workflow and recovery
 
-The release workflow installs from the lockfile, runs `bun run check` (which includes `pack:check`), validates version plans, and runs `bun run test:product` before invoking `bun x nx release --yes`. Nx remains the sole versioning, changelog, tag, push, and npm publication authority. After Nx succeeds, the workflow reads the version Nx wrote to the root `package.json`; it does not calculate a version independently.
+Every releasable pull request carries an Nx version plan. Pull-request CI fetches the comparison history and runs `bun x nx release plan:check` with the event's exact base and head SHAs, so a required plan is enforced before merge. The manually triggered release workflow repeats version-plan validation as a final defense.
+
+The release workflow has one required `mode` choice: `rc` or `stable`. Both modes install from the lockfile, run `bun run check` (which includes `pack:check`), validate version plans, and run `bun run test:product` before invoking the same Nx Release architecture. RC mode runs `bun x nx release --yes --preid rc`; the active KEE-42 `premajor` plan therefore resolves `0.9.0` to `1.0.0-rc.0`. A later RC requires a normal `prerelease` version plan and the same RC mode, which increments the accepted RC line such as `1.0.0-rc.0` to `1.0.0-rc.1`.
+
+Stable mode runs `bun x nx release 1.0.0 --yes` without a prerelease flag. Installed-Nx dry-run verification proves that this explicit target promotes an accepted `1.0.0-rc.N` to `1.0.0`; merely omitting `--preid rc` is not the promotion contract. Selecting stable remains an explicit human KEE-5 decision: no RC automatically promotes, and the workflow remains manual. This release establishes the first supported project compatibility baseline and does not add a `0.x` to `1.0.0` consumer migration guarantee.
+
+Nx remains the sole versioning, changelog, tag, push, and npm publication authority. After Nx succeeds, the workflow reads the version Nx wrote to the root `package.json`; it does not calculate a published version independently.
 
 Before published acceptance, `bun run release:wait-for-published -- <exact-version>` creates a fresh temporary package project and isolated Bun cache on each attempt, installs the exact package selector from `https://registry.npmjs.org` through Bun's real install path, and verifies the installed `node_modules/keenko/package.json` version. It retries every 10 seconds, makes at most 25 attempts, and has a hard five-minute timeout. A different installed version does not satisfy the check, and both temporarily unavailable packages and transient resolver failures are retried within the same bound. Once Bun can install the exact version, the workflow passes it unchanged to one `bun run test:published -- <exact-version>` invocation.
 
