@@ -127,14 +127,6 @@ For Confect `10.0.0-next.22`, treat both `confect/_generated/` and the sibling `
 
 Confect-generated deployment/runtime modules are source-required generated artifacts for the checked-in application shape. Track them when the repository deploys/tests from source and regenerate them through the repository's canonical codegen command after Confect inputs change. The sibling official Convex `convex/_generated/api.*` surface has a distinct lifecycle: after generated Convex module topology changes, refresh it through the configured official `convex dev` workflow. Offline CI may validate the committed surface but cannot prove that deployment-bound API output is fresh. Make CI detect drift across generated targets while excluding the authored `convex/` exceptions from generator-byte comparison.
 
-### Known `@confect/test` compatibility defect
-
-With the pinned Confect `10.0.0-next.22`, Effect `4.0.0-rc.115`, and Effect TSGo `0.45.0` compatibility set, a ref assembled through the complete `FunctionSpec → Spec → Refs.FromSpec → Ref.Error` path can degrade an expected `never` error channel to `any`. `@confect/test` propagates that type, so Effect TSGo correctly reports `effecttsgo(any-unknown-in-error-context)` on otherwise idiomatic `yield* confect.query(...)` or `yield* confect.mutation(...)` calls.
-
-Keep canonical integration tests idiomatic: do not add casts, wrappers, repeated inline suppressions, replace `@confect/test`, or weaken Effect diagnostics globally. The generated Oxc configuration suppresses only `effecttsgo(any-unknown-in-error-context)` and only for `packages/backend/test/**/*.test.ts`, the authored Confect/Convex integration-test scope.
-
-This suppression is temporary, version-bound compatibility debt. After upgrading Confect, re-check `Ref.Error` through the complete `FunctionSpec → Spec → Refs.FromSpec → Ref.Error` path and remove the override as soon as upstream preserves the expected error type.
-
 - Run the repository's canonical codegen after specs/schema/refs/generated inputs change.
 - Keep tightly coupled `@confect/*` prereleases exact-version aligned.
 - Verify the installed Effect version satisfies Confect's Effect peer ranges. When relevant, verify separate platform peers such as `@confect/server`'s optional `@effect/platform-node` peer against their own ranges.

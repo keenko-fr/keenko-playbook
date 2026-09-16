@@ -26,11 +26,11 @@ const getCurrent = FunctionImpl.make(databaseSchema, spec, "getCurrent", () =>
 
 const findSynchronized = FunctionImpl.make(databaseSchema, spec, "findSynchronized", () =>
   E.gen(function* () {
-    const webhookSecret = yield* CFG.option(CFG.String("WORKOS_WEBHOOK_SECRET"));
+    const webhookSecret = yield* CFG.option(CFG.String("WORKOS_WEBHOOK_SECRET")).pipe(E.orDie);
     if (O.isNone(webhookSecret)) return O.none();
 
-    const clientId = yield* CFG.String("WORKOS_CLIENT_ID");
-    const apiKey = yield* CFG.String("WORKOS_API_KEY");
+    const clientId = yield* CFG.String("WORKOS_CLIENT_ID").pipe(E.orDie);
+    const apiKey = yield* CFG.String("WORKOS_API_KEY").pipe(E.orDie);
     const ctx = yield* QueryCtx;
 
     const authKit = makeAuthKit({ apiKey, clientId, webhookSecret: webhookSecret.value });
