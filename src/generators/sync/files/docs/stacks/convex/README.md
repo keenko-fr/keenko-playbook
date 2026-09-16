@@ -34,7 +34,9 @@ Infinite-scroll and load-more interfaces use native reactive Convex pagination t
 
 During creation, Keenko composes Convex and TanStack Query into the initial router/root baseline and establishes the shared helpers and schemas used by that fixed stack. Those application files become project-owned after creation rather than remaining Keenko-synchronized surfaces.
 
-The official Convex CLI requires an existing deployment to regenerate `convex/_generated/api`. To keep fresh generation and ordinary checks offline while the starter imports that official surface, the preset seeds the current official generated `api.js`/`api.d.ts` output for its fixed backend modules. This is checked-in Convex generated code, not a Keenko wrapper. After provisioning, `convex dev` remains its generator and must reproduce the checked-in files without drift.
+The official Convex CLI requires a configured deployment workflow to regenerate `convex/_generated/api.js` and `convex/_generated/api.d.ts`. The preset therefore seeds authentic first-party output matching its fixed initial module topology so a fresh repository can import, typecheck, test, and build before provisioning. These source-required files stay tracked and generator-owned; they are not a Keenko wrapper or a second implementation of Convex API generation.
+
+Ordinary `bun run codegen` runs only deployment-independent generators, and `bun run check` must remain usable without a Convex deployment. After a Convex module-topology change, run the configured official `convex dev` workflow to refresh `convex/_generated/api.*`, review and commit the result, then rerun the ordinary offline check. The offline check consumes and validates the committed API surface, but cannot independently prove that deployment-bound output is fresh after a topology change.
 
 For reactive Convex reads that fit the TanStack Query adapter, prefer `ConvexQueryClient` + TanStack Query with the generated Convex `api`. Browser callers consume encoded/plain-JavaScript representations by default; Effect/server consumers use Confect `refs`. See `../confect/README.md` for that representation boundary.
 

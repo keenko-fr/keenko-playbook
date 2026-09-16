@@ -689,6 +689,8 @@ describe("keenko preset", () => {
         expect(workspaceRoute).toContain("api.identity.findCurrent");
         expect(workspaceRoute).toContain("api.identity.findSynchronized");
         expect(workspaceRoute).not.toContain("workOSUserSynchronized");
+        expect(oxlintConfig).toContain('files: ["packages/backend/test/**/*.test.{ts,tsx}"]');
+        expect(oxlintConfig).toContain('"effecttsgo/any-unknown-in-error-context": "off"');
 
         expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
