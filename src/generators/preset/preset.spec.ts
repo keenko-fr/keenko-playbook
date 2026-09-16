@@ -1,8 +1,9 @@
-/* oxlint-disable effect/noGlobals, effect/noNodeBuiltinImport, effect/noTryCatch -- Disposable generated-workspace fixtures exercise the real Oxc process and require unconditional cleanup. */
 import { describe, expect, test } from "bun:test";
+/* oxlint-disable effect/noNodeBuiltinImport -- The disposable generated-workspace fixture requires Node filesystem primitives. */
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import nodePath from "node:path";
+/* oxlint-enable effect/noNodeBuiltinImport */
 
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { readJson, type Tree } from "@nx/devkit";
@@ -463,6 +464,7 @@ describe("keenko preset", () => {
         const workspace = mkdtempSync(nodePath.join(tmpdir(), "keenko-oxlint-compatibility-"));
         const diagnosticSource = `import { Effect } from "effect";\n\ndeclare const affected: Effect<void, any>;\n\nexport const program = Effect.gen(function* () {\n  yield* affected;\n});\n`;
 
+        // oxlint-disable-next-line effect/noTryCatch -- The disposable workspace must be removed after every assertion outcome.
         try {
           for (const change of tree.listChanges()) {
             const content = O.fromNullishOr(change.content);
@@ -481,6 +483,7 @@ describe("keenko preset", () => {
           }
           symlinkSync(nodePath.join(repository, "node_modules"), nodePath.join(workspace, "node_modules"), "dir");
 
+          // oxlint-disable-next-line effect/noGlobals -- Bun is the executable process boundary for this generated-tool fixture.
           const result = Bun.spawnSync([nodePath.join(repository, "node_modules/.bin/oxlint"), integrationTest, unrelatedSource], {
             cwd: workspace,
             stderr: "pipe",

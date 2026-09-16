@@ -82,7 +82,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/backend/test/**/*.test.{ts,tsx}"],
+      files: ["packages/backend/test/**/*.test.ts"],
       rules: {
         "effecttsgo/any-unknown-in-error-context": "off",
       },
