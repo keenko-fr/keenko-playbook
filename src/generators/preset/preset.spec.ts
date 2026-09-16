@@ -1,4 +1,8 @@
+/* oxlint-disable effect/noGlobals, effect/noNodeBuiltinImport, effect/noTryCatch -- Disposable generated-workspace fixtures exercise the real Oxc process and require unconditional cleanup. */
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import nodePath from "node:path";
 
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { readJson, type Tree } from "@nx/devkit";
@@ -451,6 +455,49 @@ describe("keenko preset", () => {
       })
     ));
 
+  test("suppresses the Confect error-channel defect only for backend integration tests", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+        const repository = nodePath.resolve(import.meta.dir, "../../..");
+        const workspace = mkdtempSync(nodePath.join(tmpdir(), "keenko-oxlint-compatibility-"));
+        const diagnosticSource = `import { Effect } from "effect";\n\ndeclare const affected: Effect<void, any>;\n\nexport const program = Effect.gen(function* () {\n  yield* affected;\n});\n`;
+
+        try {
+          for (const change of tree.listChanges()) {
+            const content = O.fromNullishOr(change.content);
+            if (change.type === "DELETE" || O.isNone(content)) continue;
+            const target = nodePath.join(workspace, change.path);
+            mkdirSync(nodePath.dirname(target), { recursive: true });
+            writeFileSync(target, content.value);
+          }
+
+          const integrationTest = "packages/backend/test/compatibility.test.ts";
+          const unrelatedSource = "packages/backend/compatibility.ts";
+          for (const file of [integrationTest, unrelatedSource]) {
+            const target = nodePath.join(workspace, file);
+            mkdirSync(nodePath.dirname(target), { recursive: true });
+            writeFileSync(target, diagnosticSource);
+          }
+          symlinkSync(nodePath.join(repository, "node_modules"), nodePath.join(workspace, "node_modules"), "dir");
+
+          const result = Bun.spawnSync([nodePath.join(repository, "node_modules/.bin/oxlint"), integrationTest, unrelatedSource], {
+            cwd: workspace,
+            stderr: "pipe",
+            stdout: "pipe",
+          });
+          const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+          const compatibilityDiagnostics = output.split("\n").filter((line) => line.includes("effecttsgo(any-unknown-in-error-context)"));
+
+          expect(compatibilityDiagnostics).not.toHaveLength(0);
+          expect(compatibilityDiagnostics.every((line) => line.includes(unrelatedSource))).toBe(true);
+          expect(compatibilityDiagnostics.every((line) => !line.includes(integrationTest))).toBe(true);
+        } finally {
+          rmSync(workspace, { force: true, recursive: true });
+        }
+      })
+    ));
+
   test("removes the EditorConfig created by the base Nx workspace", () =>
     E.runPromise(
       E.gen(function* () {
@@ -689,9 +736,6 @@ describe("keenko preset", () => {
         expect(workspaceRoute).toContain("api.identity.findCurrent");
         expect(workspaceRoute).toContain("api.identity.findSynchronized");
         expect(workspaceRoute).not.toContain("workOSUserSynchronized");
-        expect(oxlintConfig).toContain('files: ["packages/backend/test/**/*.test.{ts,tsx}"]');
-        expect(oxlintConfig).toContain('"effecttsgo/any-unknown-in-error-context": "off"');
-
         expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"
         );
