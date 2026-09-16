@@ -189,7 +189,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   yield* fs.makeDirectory(bootstrapPrime);
   yield* fs.writeFileString(
     path.join(bootstrapPrime, "package.json"),
-    yield* S.encodeEffect(sManifest)({ dependencies: { "create-nx-workspace": "23.2.0" }, private: true })
+    yield* S.encodeEffect(sManifest)({ dependencies: { "create-nx-workspace": "23.2.1" }, private: true })
   );
   yield* command(bootstrapPrime, bootstrapEnv, "bun", ["install", "--ignore-scripts"]);
 
@@ -244,7 +244,7 @@ const product = E.gen(function* () {
 
   const identity = "product-acceptance";
   const createArguments = [
-    "create-nx-workspace@23.2.0",
+    "create-nx-workspace@23.2.1",
     identity,
     source._tag === "local" ? "--preset=keenko" : `--preset=keenko@${packageVersion}`,
     "--packageManager=bun",

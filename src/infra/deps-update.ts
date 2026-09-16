@@ -16,11 +16,12 @@ export const prereleaseChannels = {
 
 // npm latest is incompatible with another member of the fixed tuple. Re-evaluate these holds whenever the named constraint changes.
 export const compatibilityVersionOverrides = {
-  "@nx/devkit": "23.2.0",
-  "@nx/oxlint": "23.2.0",
-  nx: "23.2.0",
+  "@nx/devkit": "23.2.1",
+  "@nx/oxlint": "23.2.1",
+  nx: "23.2.1",
   oxlint: "1.82.0",
   typescript: "6.0.2",
+  vitest: "4.0.18",
 };
 
 const alignedRootPackages = {

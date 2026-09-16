@@ -32,11 +32,11 @@ const fixture = E.fn("test.deps.fixture")(function* () {
   yield* fs.makeDirectory(path.join(root, "docs"), { recursive: true });
   yield* fs.writeFileString(
     path.join(versionsDirectory, "versions.ts"),
-    `export const packageVersions = {\n  "@nx/devkit": "23.2.0",\n  "@nx/oxlint": "23.2.0",\n  effect: "4.0.0-rc.1",\n  nx: "23.2.0",\n} satisfies Record<string, string>;\n\nexport const runtimeVersions = {\n  bun: "1.4.2",\n  nodeRange: ">=24.15 <25",\n} satisfies Record<string, string>;\n`
+    `export const packageVersions = {\n  "@nx/devkit": "23.2.1",\n  "@nx/oxlint": "23.2.1",\n  effect: "4.0.0-rc.1",\n  nx: "23.2.1",\n} satisfies Record<string, string>;\n\nexport const runtimeVersions = {\n  bun: "1.4.2",\n  nodeRange: ">=24.15 <25",\n} satisfies Record<string, string>;\n`
   );
   yield* fs.writeFileString(
     path.join(root, "package.json"),
-    '{\n  "dependencies": {\n    "@nx/devkit": "23.2.0",\n    "effect": "4.0.0-rc.1"\n  },\n  "devDependencies": {\n    "@nx/js": "23.2.0",\n    "@nx/oxlint": "23.2.0",\n    "nx": "23.2.0"\n  }\n}\n'
+    '{\n  "dependencies": {\n    "@nx/devkit": "23.2.1",\n    "effect": "4.0.0-rc.1"\n  },\n  "devDependencies": {\n    "@nx/js": "23.2.1",\n    "@nx/oxlint": "23.2.1",\n    "nx": "23.2.1"\n  }\n}\n'
   );
   yield* fs.writeFileString(path.join(root, "docs/versions.md"), "runtime and package documentation stays untouched\n");
 
@@ -59,7 +59,7 @@ describe("dependency updater", () => {
 
         const updates = yield* updateDependencySources(
           root,
-          { "@nx/devkit": "23.2.0", "@nx/oxlint": "23.2.0", effect: "4.0.0-rc.1", nx: "23.2.0" },
+          { "@nx/devkit": "23.2.1", "@nx/oxlint": "23.2.1", effect: "4.0.0-rc.1", nx: "23.2.1" },
           resolver
         );
         const versions = yield* fs.readFileString(path.join(root, "src/generators/versions.ts"));
@@ -67,21 +67,21 @@ describe("dependency updater", () => {
 
         expect(calls).toEqual([["effect", "rc"]]);
         expect(updates).toEqual({
-          "@nx/devkit": "23.2.0",
-          "@nx/oxlint": "23.2.0",
+          "@nx/devkit": "23.2.1",
+          "@nx/oxlint": "23.2.1",
           effect: "4.0.0-rc.9",
-          nx: "23.2.0",
+          nx: "23.2.1",
         });
         expect(Object.values(updates).every(isExactPackageVersion)).toBe(true);
         expect(versions).toContain('effect: "4.0.0-rc.9"');
-        expect(versions).toContain('"@nx/devkit": "23.2.0"');
-        expect(versions).toContain('"@nx/oxlint": "23.2.0"');
-        expect(versions).toContain('nx: "23.2.0"');
+        expect(versions).toContain('"@nx/devkit": "23.2.1"');
+        expect(versions).toContain('"@nx/oxlint": "23.2.1"');
+        expect(versions).toContain('nx: "23.2.1"');
         expect(manifest.dependencies.effect).toBe("4.0.0-rc.9");
-        expect(manifest.dependencies["@nx/devkit"]).toBe("23.2.0");
-        expect(manifest.devDependencies["@nx/oxlint"]).toBe("23.2.0");
-        expect(manifest.devDependencies.nx).toBe("23.2.0");
-        expect(manifest.devDependencies["@nx/js"]).toBe("23.2.0");
+        expect(manifest.dependencies["@nx/devkit"]).toBe("23.2.1");
+        expect(manifest.devDependencies["@nx/oxlint"]).toBe("23.2.1");
+        expect(manifest.devDependencies.nx).toBe("23.2.1");
+        expect(manifest.devDependencies["@nx/js"]).toBe("23.2.1");
       }).pipe(E.scoped)
     ));
 
@@ -97,9 +97,9 @@ describe("dependency updater", () => {
 
   test("keeps registry-incompatible members on explicit exact versions", () => {
     expect(compatibilityVersionOverrides).toEqual({
-      "@nx/devkit": "23.2.0",
-      "@nx/oxlint": "23.2.0",
-      nx: "23.2.0",
+      "@nx/devkit": "23.2.1",
+      "@nx/oxlint": "23.2.1",
+      nx: "23.2.1",
       oxlint: "1.82.0",
       typescript: "6.0.2",
     });
