@@ -88,10 +88,10 @@ jobs:
           RELEASE_MODE: ${{ inputs.mode }}
         run: |
           if [ "$RELEASE_MODE" = "rc" ]; then
-            bun x nx release --yes --skip-publish --preid rc
+            bun x nx release --skip-publish --preid rc
             bun x nx release publish --tag rc
           else
-            bun x nx release 1.0.0 --yes --skip-publish
+            bun x nx release 1.0.0 --skip-publish
             bun x nx release publish --tag latest
           fi
 
