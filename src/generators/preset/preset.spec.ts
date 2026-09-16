@@ -188,7 +188,7 @@ describe("keenko preset", () => {
         expect(web.devDependencies).toEqual(webDevDependencies);
         for (const specification of [...Object.values(webDependencies), ...Object.values(webDevDependencies)])
           expect(exactPackageVersion.test(specification)).toBe(true);
-        expect(web.devDependencies?.["@types/node"]).toBe("24.13.3");
+        expect(web.devDependencies?.["@types/node"]).toBe(packageVersions["@types/node"]);
         expect(web.nx?.targets?.codegen).toBeUndefined();
         expect(tree.exists("apps/web/project.inlang/settings.json")).toBe(true);
         expect(tree.exists("apps/web/tsr.config.json")).toBe(true);
