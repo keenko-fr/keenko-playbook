@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "exactOptionalPropertyTypes": true,
     "lib": ["ES2023"],
     "module": "ESNext",
     "moduleDetection": "force",

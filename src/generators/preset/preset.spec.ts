@@ -1,15 +1,10 @@
 import { describe, expect, test } from "bun:test";
-/* oxlint-disable effect/noNodeBuiltinImport -- The disposable generated-workspace fixture requires Node filesystem primitives. */
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import nodePath from "node:path";
-/* oxlint-enable effect/noNodeBuiltinImport */
 
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { readJson, type Tree } from "@nx/devkit";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { YAML } from "bun";
-import { Effect as E, FileSystem, Layer as L, Option as O, Path, Schema as S, Struct } from "effect";
+import { Effect as E, FileSystem, Layer as L, Option as O, Path, Struct } from "effect";
 
 import type { PackageJson } from "../helpers.js";
 import { packageVersions, runtimeVersions } from "../versions.js";
@@ -27,17 +22,6 @@ const managedRoots = ["apps/web", "packages/backend", "packages/shared", "packag
 const expectedWorkspaces = ["apps/*", "packages/*"];
 
 const exactPackageVersion = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
-
-const sOxlintJson = S.fromJsonString(
-  S.Struct({
-    diagnostics: S.Array(
-      S.Struct({
-        code: S.String,
-        filename: S.String,
-      })
-    ),
-  })
-);
 
 const expectedScripts = {
   build: "nx run-many -t build",
@@ -226,23 +210,19 @@ describe("keenko preset", () => {
       E.gen(function* () {
         const tree = yield* generatePreset();
 
-        for (const config of [
-          "apps/web/vitest.config.ts",
-          "packages/backend/vitest.config.ts",
-          "packages/shared/vitest.config.ts",
-          "packages/ui/vitest.config.ts",
-        ])
+        for (const config of ["apps/web/vitest.config.ts", "packages/shared/vitest.config.ts", "packages/ui/vitest.config.ts"])
           expect(tree.read(config, "utf-8")).toContain("passWithNoTests: true");
 
         expect(tree.read("apps/web/vitest.config.ts", "utf-8")).toContain('environment: "jsdom"');
         expect(tree.read("packages/ui/vitest.config.ts", "utf-8")).toContain('environment: "jsdom"');
         expect(tree.read("packages/shared/vitest.config.ts", "utf-8")).toContain('environment: "node"');
 
-        const backendConfig = tree.read("packages/backend/vitest.config.ts", "utf-8");
+        const backendConfig = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/vitest.config.ts", "utf-8")));
         expect(backendConfig).toContain('environment: "node"');
         expect(backendConfig).toContain('environment: "edge-runtime"');
         expect(backendConfig).toContain('exclude: ["convex/**", "test/**"]');
         expect(backendConfig).toContain('include: ["test/**/*.test.{ts,js}"]');
+        expect(backendConfig.match(/passWithNoTests/gu)).toHaveLength(1);
 
         expect(readJson<PackageJson>(tree, "packages/backend/package.json").devDependencies).toMatchObject(
           Struct.pick(packageVersions, ["@confect/test", "@edge-runtime/vm", "convex-test"])
@@ -461,6 +441,7 @@ describe("keenko preset", () => {
 
         expect(readJson(tree, "tsconfig.base.json")).toMatchObject({
           compilerOptions: {
+            exactOptionalPropertyTypes: true,
             moduleResolution: "bundler",
             noEmit: true,
             strict: true,
@@ -469,55 +450,28 @@ describe("keenko preset", () => {
       })
     ));
 
-  test("suppresses the Confect error-channel defect only for backend integration tests", () =>
+  test("keeps authored TypeScript inside each workspace compiler project", () =>
     E.runPromise(
       E.gen(function* () {
         const tree = yield* generatePreset();
-        const repository = nodePath.resolve(import.meta.dir, "../../..");
-        const workspace = mkdtempSync(nodePath.join(tmpdir(), "keenko-oxlint-compatibility-"));
-        const diagnosticSource = `import { Effect } from "effect";\n\ndeclare const affected: Effect<void, any>;\n\nexport const program = Effect.gen(function* () {\n  yield* affected;\n});\n`;
+        const backend = readJson<{ include: string[] }>(tree, "packages/backend/tsconfig.json");
+        const shared = readJson<{ include: string[] }>(tree, "packages/shared/tsconfig.json");
+        const ui = readJson<{ include: string[] }>(tree, "packages/ui/tsconfig.json");
+        const web = readJson<{ compilerOptions: { exactOptionalPropertyTypes?: boolean }; include: string[] }>(
+          tree,
+          "apps/web/tsconfig.json"
+        );
 
-        // oxlint-disable-next-line effect/noTryCatch -- The disposable workspace must be removed after every assertion outcome.
-        try {
-          for (const change of tree.listChanges()) {
-            const content = O.fromNullishOr(change.content);
-            if (change.type === "DELETE" || O.isNone(content)) continue;
-            const target = nodePath.join(workspace, change.path);
-            mkdirSync(nodePath.dirname(target), { recursive: true });
-            writeFileSync(target, content.value);
-          }
+        expect(backend.include).toContain("vitest.config.ts");
+        expect(backend.include).toContain("test/**/*.ts");
+        expect(shared.include).toContain("vitest.config.ts");
+        expect(ui.include).toContain("vitest.config.ts");
+        expect(web.include).toContain("**/*.ts");
+        expect(web.include).toContain("**/*.tsx");
+        expect(web.compilerOptions.exactOptionalPropertyTypes).toBe(true);
 
-          const integrationTest = "packages/backend/test/compatibility.test.ts";
-          const unrelatedSource = "packages/backend/compatibility.ts";
-          for (const file of [integrationTest, unrelatedSource]) {
-            const target = nodePath.join(workspace, file);
-            mkdirSync(nodePath.dirname(target), { recursive: true });
-            writeFileSync(target, diagnosticSource);
-          }
-          symlinkSync(nodePath.join(repository, "node_modules"), nodePath.join(workspace, "node_modules"), "dir");
-
-          // oxlint-disable-next-line effect/noGlobals -- Bun is the executable process boundary for this generated-tool fixture.
-          const result = Bun.spawnSync(
-            [nodePath.join(repository, "node_modules/.bin/oxlint"), "--format=json", integrationTest, unrelatedSource],
-            {
-              cwd: workspace,
-              stderr: "pipe",
-              stdout: "pipe",
-            }
-          );
-          const stdout = result.stdout.toString();
-          const output = yield* S.decodeEffect(sOxlintJson)(stdout.slice(stdout.indexOf('{ "diagnostics"')));
-          const compatibilityDiagnosticFiles = output.diagnostics
-            .filter(({ code }) => code === "effecttsgo(any-unknown-in-error-context)")
-            .map(({ filename }) => nodePath.relative(workspace, nodePath.resolve(workspace, filename)).replaceAll("\\", "/"))
-            .toSorted();
-
-          expect(compatibilityDiagnosticFiles).not.toHaveLength(0);
-          expect(new Set(compatibilityDiagnosticFiles)).toEqual(new Set([unrelatedSource]));
-          expect(compatibilityDiagnosticFiles).not.toContain(integrationTest);
-        } finally {
-          rmSync(workspace, { force: true, recursive: true });
-        }
+        const oxlintConfig = tree.read("oxlint.config.ts", "utf-8");
+        expect(oxlintConfig).not.toContain("effecttsgo/any-unknown-in-error-context");
       })
     ));
 
@@ -647,7 +601,7 @@ describe("keenko preset", () => {
 
         expect(packageJson.exports).toEqual({ "./*": "./src/*.ts" });
         expect(packageJson.dependencies).toEqual(Struct.pick(packageVersions, ["effect"]));
-        expect(tsconfig.include).toEqual(["src/**/*.ts"]);
+        expect(tsconfig.include).toEqual(["vitest.config.ts", "src/**/*.ts"]);
 
         expect(tree.read("packages/shared/src/index.ts", "utf-8")).toBe("");
         expect(tree.exists("packages/shared/src/schemas/string.ts")).toBe(true);
@@ -661,6 +615,21 @@ describe("keenko preset", () => {
 
         expect(tree.exists("packages/backend/confect/.gitkeep")).toBe(true);
         expect(tree.exists("packages/backend/convex/convex.config.ts")).toBe(true);
+        expect(tree.exists("packages/backend/data/confect.ts")).toBe(true);
+        expect(tree.exists("packages/shared/data/confect.ts")).toBe(false);
+        expect(tree.exists("packages/backend/confect/data.ts")).toBe(false);
+
+        const dataHelpers = tree.read("packages/backend/data/confect.ts", "utf-8");
+        for (const helper of [
+          "dieOnCodecError",
+          "dieOnDecodeError",
+          "dieOnEncodeError",
+          "dieOnPatchError",
+          "optionByBlob",
+          "optionById",
+          "optionByIndex",
+        ])
+          expect(dataHelpers).toContain(`export function ${helper}`);
       })
     ));
 
@@ -735,6 +704,8 @@ describe("keenko preset", () => {
         expect(workOSClient).toContain('"@convex-dev/workos-authkit"');
         expect(workOSSpec).toContain('FunctionSpec.convexInternalMutation<typeof backfillUsers>()("backfillUsers")');
         expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).toContain("WORKOS_CLIENT_ID");
+        expect(tree.read("packages/backend/confect/auth.ts", "utf-8")).toContain("O.fromUndefinedOr(clientId).pipe(");
+        expect(identityImpl).toContain('CFG.String("WORKOS_CLIENT_ID").pipe(E.orDie)');
         expect(tree.read("apps/web/src/start.ts", "utf-8")).toContain('"@workos/authkit-tanstack-react-start"');
         expect(generatedApi).toContain("identity: typeof");
         expect(generatedApi).toContain("workos: typeof");
@@ -758,6 +729,7 @@ describe("keenko preset", () => {
 
         expect(workspaceRoute).toContain("api.identity.findCurrent");
         expect(workspaceRoute).toContain("api.identity.findSynchronized");
+        expect(workspaceRoute).toContain("useQuery<FunctionReturnType<typeof api.identity.findCurrent>>");
         expect(workspaceRoute).not.toContain("workOSUserSynchronized");
         expect(identitySpec).toContain(
           "// SCHEMAS ---------------------------------------------------------------------------------------------------------------------------------"

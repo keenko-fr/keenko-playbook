@@ -90,6 +90,8 @@ Apply the general backend retrieval semantics above to persistence reads. Use di
 
 Creation operations accept the semantic `FooInsert` contract, not `FooFields` or read-side `Foo`, even when their current shapes coincide. Focused persistence-only Patch contracts remain data-owned and derive from shared `Fields`.
 
+Focused helpers that adapt Confect persistence errors and absence semantics belong in `data/confect.ts`. They are backend data-layer concerns, not cross-workspace utilities or endpoint/spec concerns. Convert document codec failures to defects only when they violate an owned persistence invariant. Preserve not-found as a typed failure for `get` / `getByX`; map it to `Option.none` for `find` / `findByX`. Do not generically turn not-found into a defect unless a concrete invariant establishes that absence is impossible.
+
 ## Infra
 
 `infra/` owns provider adapters and reusable technical capabilities. Business policy remains with the owning feature. A rate-limiter adapter may live in infra; rate names, windows, quotas, and consequences belong to the feature.

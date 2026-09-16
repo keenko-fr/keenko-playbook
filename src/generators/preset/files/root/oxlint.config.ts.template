@@ -81,12 +81,6 @@ export default defineConfig({
         "unicorn/throw-new-error": "off",
       },
     },
-    {
-      files: ["packages/backend/test/**/*.test.ts"],
-      rules: {
-        "effecttsgo/any-unknown-in-error-context": "off",
-      },
-    },
   ],
   plugins: ["effecttsgo"],
   rules: {

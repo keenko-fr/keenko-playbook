@@ -1,11 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "include": [
+    "vitest.config.ts",
     "confect/**/*.ts",
     "convex/**/*.ts",
     "data/**/*.ts",
     "features/**/*.ts",
     "infra/**/*.ts",
-    "schemas/**/*.ts"
+    "schemas/**/*.ts",
+    "test/**/*.ts"
   ]
 }

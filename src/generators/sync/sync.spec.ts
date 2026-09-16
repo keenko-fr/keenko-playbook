@@ -118,6 +118,28 @@ describe("keenko sync", () => {
       })
     ));
 
+  test("publishes corrected Confect compatibility and backend data guidance", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+
+        yield* runSync(tree);
+
+        const confect = tree.read(".keenko/docs/stacks/confect/README.md", "utf-8");
+        expect(confect).not.toContain("Known `@confect/test` compatibility defect");
+        expect(confect).not.toContain("Ref.Error");
+        expect(confect).toContain("canonical codegen");
+        expect(confect).toContain("exact-version aligned");
+        expect(confect).toContain("Effect peer ranges");
+        expect(confect).toContain("The owned `confect` skill");
+
+        const backend = tree.read(".keenko/docs/conventions/backend-architecture.md", "utf-8");
+        expect(backend).toContain("`data/confect.ts`");
+        expect(backend).toContain("map it to `Option.none` for `find` / `findByX`");
+        expect(backend).toContain("Preserve not-found as a typed failure for `get` / `getByX`");
+      })
+    ));
+
   test("removes stale files from the Keenko-owned documentation snapshot", () =>
     E.runPromise(
       E.gen(function* () {

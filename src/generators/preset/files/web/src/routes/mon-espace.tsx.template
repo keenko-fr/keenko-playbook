@@ -5,6 +5,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { getAuth } from "@workos/authkit-tanstack-react-start";
+import type { FunctionReturnType } from "convex/server";
 
 import * as m from "#/paraglide/messages";
 
@@ -23,8 +24,16 @@ export const Route = createFileRoute("/mon-espace")({
 // PAGE ------------------------------------------------------------------------------------------------------------------------------------
 function ProtectedPage() {
   const { user } = Route.useLoaderData();
-  const { data: convexUser } = useQuery(convexQuery(api.identity.findCurrent, {}));
-  const { data: workosUser } = useQuery(convexQuery(api.identity.findSynchronized, {}));
+  const currentIdentity = convexQuery(api.identity.findCurrent, {});
+  const synchronizedIdentity = convexQuery(api.identity.findSynchronized, {});
+  const { data: convexUser } = useQuery<FunctionReturnType<typeof api.identity.findCurrent>>({
+    queryKey: currentIdentity.queryKey,
+    staleTime: Infinity,
+  });
+  const { data: workosUser } = useQuery<FunctionReturnType<typeof api.identity.findSynchronized>>({
+    queryKey: synchronizedIdentity.queryKey,
+    staleTime: Infinity,
+  });
 
   return (
     <div className="flex flex-col gap-4">
