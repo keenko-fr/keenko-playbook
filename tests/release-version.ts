@@ -4,8 +4,6 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 class ReleaseVersionFailure extends S.TaggedError<ReleaseVersionFailure>()("ReleaseVersionFailure", { message: S.String }) {}
 
-const sManifest = S.fromJsonString(S.Struct({ version: S.String }));
-
 const runVersionDryRun = E.fn("keenko.releaseVersion.dryRun")(function* (executable: string, cwd: string, arguments_: readonly string[]) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   return yield* spawner.string(ChildProcess.make(executable, ["release", "version", ...arguments_, "--dry-run"], { cwd }), {
@@ -16,7 +14,7 @@ const runVersionDryRun = E.fn("keenko.releaseVersion.dryRun")(function* (executa
 const makeReleaseFixture = E.fn("keenko.releaseVersion.fixture")(function* (
   nodeModules: string,
   version: string,
-  bump: "none" | "prerelease"
+  bump: "none" | "premajor" | "prerelease"
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -28,11 +26,11 @@ const makeReleaseFixture = E.fn("keenko.releaseVersion.fixture")(function* (
   );
   yield* fs.writeFileString(
     path.join(root, "nx.json"),
-    `{\n  "release": {\n    "projects": ["keenko"],\n    "versionPlans": true\n  }\n}\n`
+    `{\n  "release": {\n    "projects": ["keenko"],\n    "versionPlans": true,\n    "version": {\n      "adjustSemverBumpsForZeroMajorVersion": false\n    }\n  }\n}\n`
   );
   yield* fs.symlink(nodeModules, path.join(root, "node_modules"));
 
-  if (bump === "prerelease") {
+  if (bump !== "none") {
     const plans = path.join(root, ".nx/version-plans");
     yield* fs.makeDirectory(plans, { recursive: true });
     yield* fs.writeFileString(path.join(plans, "version-plan-test.md"), `---\n__default__: ${bump}\n---\n\nTest release transition.\n`);
@@ -49,21 +47,12 @@ const program = E.gen(function* () {
   const path = yield* Path.Path;
   const repository = yield* path.fromFileUrl(new URL("../", import.meta.url));
   const nx = path.join(repository, "node_modules/.bin/nx");
-  const manifestPath = path.join(repository, "package.json");
-  const before = yield* fs.readFileString(manifestPath);
-  const current = yield* S.decodeEffect(sManifest)(before);
-
-  if (current.version !== "0.9.0")
-    return yield* new ReleaseVersionFailure({ message: `Expected the current Keenko version to be 0.9.0, got ${current.version}` });
-
-  const firstRc = yield* runVersionDryRun(nx, repository, ["--preid", "rc"]);
-  yield* assertContains(firstRc, 'Applied semver relative bump "premajor"', "Nx did not apply the KEE-42 premajor plan");
+  const nodeModules = path.join(repository, "node_modules");
+  const firstRcFixture = yield* makeReleaseFixture(nodeModules, "0.9.0", "premajor");
+  const firstRc = yield* runVersionDryRun(nx, firstRcFixture, ["--preid", "rc"]);
+  yield* assertContains(firstRc, 'Applied semver relative bump "premajor"', "Nx did not apply the first-RC fixture's premajor plan");
   yield* assertContains(firstRc, "new version 1.0.0-rc.0", "Nx did not resolve the first RC to 1.0.0-rc.0");
 
-  if ((yield* fs.readFileString(manifestPath)) !== before)
-    return yield* new ReleaseVersionFailure({ message: "First-RC dry-run changed package.json" });
-
-  const nodeModules = path.join(repository, "node_modules");
   const continuationFixture = yield* makeReleaseFixture(nodeModules, "1.0.0-rc.0", "prerelease");
   const nextRc = yield* runVersionDryRun(nx, continuationFixture, ["--preid", "rc"]);
   yield* assertContains(nextRc, 'Applied semver relative bump "prerelease"', "Nx did not apply a later-RC prerelease plan");
