@@ -15,11 +15,21 @@ These are the initial projects, not a permanent maximum.
 
 ## Create a project
 
+Current stable release:
+
 ```sh
 bunx create-nx-workspace@23.2.1 <project> --preset=keenko --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
 ```
 
-From the created project, `bun run check` is the canonical merge-ready verification command.
+Current release candidate:
+
+```sh
+bunx create-nx-workspace@23.2.1 <project> --preset=keenko@rc --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
+```
+
+keenko resolves the npm latest dist-tag. keenko@rc resolves the npm rc dist-tag.
+
+From the created project, bun run check is the canonical merge-ready verification command.
 
 ## Project compatibility
 
