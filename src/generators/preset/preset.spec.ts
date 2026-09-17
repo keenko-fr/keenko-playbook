@@ -140,8 +140,14 @@ describe("keenko preset", () => {
         const bunAction: unknown = expect.stringMatching(/^oven-sh\/setup-bun@[a-f\d]{40}$/u);
 
         expect(YAML.parse(workflow)).toEqual({
+          concurrency: {
+            "cancel-in-progress": true,
+            // oxlint-disable-next-line no-template-curly-in-string
+            group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+          },
           jobs: {
             check: {
+              if: "github.event_name == 'push' || github.event.pull_request.draft == false",
               "runs-on": "ubuntu-latest",
               steps: [
                 { uses: checkoutAction, with: { "persist-credentials": false } },
@@ -150,10 +156,14 @@ describe("keenko preset", () => {
                 { run: "bun install --frozen-lockfile" },
                 { run: "bun run check" },
               ],
+              "timeout-minutes": 10,
             },
           },
           name: "Check",
-          on: { pull_request: {}, push: { branches: ["main"] } },
+          on: {
+            pull_request: { types: ["opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft"] },
+            push: { branches: ["main"] },
+          },
           permissions: { contents: "read" },
         });
       })

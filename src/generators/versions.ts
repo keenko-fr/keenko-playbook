@@ -45,7 +45,7 @@ export const packageVersions = {
   convex: "1.46.0",
   "convex-test": "0.0.58",
   effect: "4.0.0-rc.115",
-  jsdom: "30.1.0",
+  jsdom: "30.0.1",
   "lucide-react": "1.46.0",
   nx: "23.2.1",
   oxfmt: "0.68.0",
