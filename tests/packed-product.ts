@@ -4,7 +4,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 
-type PackageSource = { readonly _tag: "local" } | { readonly _tag: "published"; readonly version: string };
+type PackageSource = { readonly _tag: "local" } | { readonly _tag: "published"; readonly version: string; readonly preset: string };
 interface Verification {
   readonly shadcnCompatibility: boolean;
   readonly source: PackageSource;
@@ -18,15 +18,38 @@ const exactSemver =
 const parseVerification = E.fn("product.parseVerification")(function* (args: readonly string[]) {
   if (args.length === 0) return { shadcnCompatibility: false, source: { _tag: "local" } } satisfies Verification;
   if (args.length === 1 && args[0] === "--shadcn") return { shadcnCompatibility: true, source: { _tag: "local" } } satisfies Verification;
-  const publishedArgs = S.decodeUnknownOption(S.Tuple([S.Literal("--published"), S.String]))(args);
-  if (O.isSome(publishedArgs) && exactSemver.test(publishedArgs.value[1]))
+  const publishedExactArgs = S.decodeUnknownOption(S.Tuple([S.Literal("--published"), S.String]))(args);
+
+  if (O.isSome(publishedExactArgs) && exactSemver.test(publishedExactArgs.value[1])) {
+    const [, version] = publishedExactArgs.value;
+
     return {
       shadcnCompatibility: false,
-      source: { _tag: "published", version: publishedArgs.value[1] },
+      source: {
+        _tag: "published",
+        preset: `keenko@${version}`,
+        version,
+      },
     } satisfies Verification;
+  }
+
+  const publishedSelectorArgs = S.decodeUnknownOption(S.Tuple([S.Literal("--published"), S.String, S.String]))(args);
+
+  if (O.isSome(publishedSelectorArgs) && exactSemver.test(publishedSelectorArgs.value[1])) {
+    const [, version, preset] = publishedSelectorArgs.value;
+
+    return {
+      shadcnCompatibility: false,
+      source: {
+        _tag: "published",
+        preset,
+        version,
+      },
+    } satisfies Verification;
+  }
 
   return yield* new ProductFailure({
-    message: "Usage: bun run test:product OR bun run test:published -- <exact-version> OR bun run test:shadcn",
+    message: "Usage: bun run test:product OR bun run test:published -- <exact-version> [preset] OR bun run test:shadcn",
   });
 });
 
@@ -246,7 +269,7 @@ const product = E.gen(function* () {
   const createArguments = [
     "create-nx-workspace@23.2.1",
     identity,
-    source._tag === "local" ? "--preset=keenko" : `--preset=keenko@${packageVersion}`,
+    source._tag === "local" ? "--preset=keenko" : `--preset=${source.preset}`,
     "--packageManager=bun",
     "--nxCloud=skip",
     "--interactive=false",

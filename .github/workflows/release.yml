@@ -82,6 +82,48 @@ jobs:
           git config user.name "${RELEASE_APP_SLUG}[bot]"
           git config user.email "${release_app_id}+${RELEASE_APP_SLUG}[bot]@users.noreply.github.com"
 
+      - name: Validate release mode
+        env:
+          RELEASE_MODE: ${{ inputs.mode }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+
+          if [[ "$RELEASE_MODE" == "stable" && "$VERSION" != *-* ]]; then
+            echo "Stable release requires the repository to already be on an RC version; got $VERSION"
+            exit 1
+          fi
+
+          if [[ "$RELEASE_MODE" == "rc" && "$VERSION" == *-* ]]; then
+            for plan in .nx/version-plans/*.md; do
+              [ -e "$plan" ] || continue
+
+              if ! grep -qE '^__default__: prerelease$' "$plan"; then
+                echo "RC continuation requires prerelease version plans; invalid plan: $plan"
+                exit 1
+              fi
+            done
+          fi
+
+          if [[ "$RELEASE_MODE" == "rc" && "$VERSION" != *-* ]]; then
+            for plan in .nx/version-plans/*.md; do
+              [ -e "$plan" ] || continue
+
+              if ! grep -qE '^__default__: pre(patch|minor|major)$' "$plan"; then
+                echo "Starting an RC from stable requires a prepatch, preminor, or premajor version plan; invalid plan: $plan"
+                exit 1
+              fi
+            done
+          fi
+
+      - name: Read current npm dist-tags
+        id: registry-before
+        run: |
+          latest="$(npm view keenko@latest version)"
+          rc="$(npm view keenko@rc version 2>/dev/null || true)"
+
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
       - name: Release with Nx
         env:
           GITHUB_TOKEN: ${{ steps.release-app.outputs.token }}
@@ -89,9 +131,25 @@ jobs:
         run: |
           if [ "$RELEASE_MODE" = "rc" ]; then
             bun x nx release --skip-publish --preid rc
+
+            VERSION="$(node -p "require('./package.json').version")"
+
+            if [[ "$VERSION" != *-rc.* ]]; then
+              echo "RC mode produced a non-RC version: $VERSION"
+              exit 1
+            fi
+
             bun x nx release publish --tag rc
           else
-            bun x nx release 1.0.0 --skip-publish
+            VERSION="$(node -p "require('./package.json').version")"
+            STABLE_TARGET="${VERSION%%-*}"
+
+            if [[ "$STABLE_TARGET" == "$VERSION" ]]; then
+              echo "Stable mode requires an RC version; got $VERSION"
+              exit 1
+            fi
+
+            bun x nx release "$STABLE_TARGET" --skip-publish
             bun x nx release publish --tag latest
           fi
 
@@ -104,5 +162,34 @@ jobs:
       - name: Wait for published version to be Bun-installable
         run: bun run release:wait-for-published -- "${{ steps.published.outputs.version }}"
 
+      - name: Verify npm dist-tags
+        env:
+          RELEASE_MODE: ${{ inputs.mode }}
+          PUBLISHED_VERSION: ${{ steps.published.outputs.version }}
+          PREVIOUS_LATEST: ${{ steps.registry-before.outputs.latest }}
+          PREVIOUS_RC: ${{ steps.registry-before.outputs.rc }}
+        run: |
+          CURRENT_LATEST="$(npm view keenko@latest version)"
+          CURRENT_RC="$(npm view keenko@rc version 2>/dev/null || true)"
+
+          if [ "$RELEASE_MODE" = "rc" ]; then
+            test "$CURRENT_RC" = "$PUBLISHED_VERSION"
+            test "$CURRENT_LATEST" = "$PREVIOUS_LATEST"
+          else
+            test "$CURRENT_LATEST" = "$PUBLISHED_VERSION"
+            test "$CURRENT_RC" = "$PREVIOUS_RC"
+          fi
+
       - name: Verify published product
         run: bun run test:published -- "${{ steps.published.outputs.version }}"
+
+      - name: Verify published preset selector
+        env:
+          RELEASE_MODE: ${{ inputs.mode }}
+          PUBLISHED_VERSION: ${{ steps.published.outputs.version }}
+        run: |
+          if [ "$RELEASE_MODE" = "rc" ]; then
+            bun run test:published -- "$PUBLISHED_VERSION" "keenko@rc"
+          else
+            bun run test:published -- "$PUBLISHED_VERSION" "keenko"
+          fi
