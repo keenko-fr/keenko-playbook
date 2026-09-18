@@ -86,6 +86,35 @@ Group implementations by Confect function kind. Do not create one separator per 
 
 `GROUP` is required for a Confect group implementation and owns the final `GroupImpl.make(...).pipe(...)` assembly. It is always last, after any `INTERNALS` and `TYPES` sections.
 
+## Error contract files
+
+Application/backend Failure contracts that must be imported by multiple backend owners, including Confect spec modules, live under:
+
+```text
+errors/
+  shows.ts
+  billing.ts
+  ...
+```
+
+Use an error contract file only when the Failure or Issue vocabulary has earned a cross-owner backend contract. Do not create `errors/` files merely to mirror `schemas/`, features, or resources.
+
+Error contract files must remain safe for Confect spec imports. They may depend on client-safe schema/contract modules but must not import data, infra implementations, generated server services, `@confect/server`, or other server-only modules.
+
+A typical error contract file owns these sections, in order:
+
+```text
+ISSUES
+FAILURES
+```
+
+- `ISSUES` owns canonical finite Issue schemas and their immediately adjacent derived types.
+- `FAILURES` owns Schema-tagged Failure classes.
+- Omit empty sections.
+- A `S.TaggedError` class already owns its TypeScript type identity and does not need a companion alias.
+
+Keep truly feature-local Failures in the owning feature file. Keep infra capability Failures with the infra capability.
+
 ## Feature files
 
 Features remain flat by default:
@@ -113,7 +142,7 @@ TYPES
 Each named exported feature function gets its own section, using that function name as the section label (`search` → `SEARCH`).
 
 - `SCHEMAS` owns feature-local schemas and their immediately adjacent schema-derived types.
-- `ERRORS` owns feature-local Schema-tagged Failure classes; do not add redundant companion aliases.
+- `ERRORS` owns Schema-tagged Failure classes that are genuinely local to this feature. If a Failure must also be imported by another backend owner such as a Confect spec, move the shared contract to `errors/<context>.ts` instead of importing the feature implementation module.
 - `INTERNALS` owns non-exported helpers, including pure policy mappers such as provider Issue → feature Issue translation.
 - `TYPES` is last and contains only standalone non-schema-derived types.
 

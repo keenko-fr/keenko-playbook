@@ -20,7 +20,9 @@ export type ShowIssue = typeof sShowIssue.Type;
 - Introduce a custom issue when the application needs specific copy/handling, the failure crosses a boundary, multiple consumers need to recognize it, or it represents a meaningful domain/application condition.
 - Do not create operation-specific issue schemas merely to document which failures an implementation might produce.
 
-Keep the issue schema at the narrowest genuinely shared owner. If one backend feature owns the vocabulary, keep it feature-local. If another workspace/runtime later genuinely consumes the same vocabulary, move/expose the canonical schema through the earned shared package boundary rather than importing backend implementation files.
+Keep the issue schema at the narrowest genuinely shared owner. If one backend feature alone owns the vocabulary, keep it feature-local. If the same backend Failure or Issue contract must be imported by multiple backend owners, including a Confect spec, move it to a client-safe `errors/<context>.ts` contract module rather than importing a feature implementation module. If another workspace/runtime later genuinely consumes the vocabulary, move or expose the canonical schema through the earned shared package boundary rather than importing backend implementation files.
+
+Do not create `errors/` modules merely to mirror `schemas/`, features, or resources. Shared error-contract ownership must be earned by a real cross-owner consumer.
 
 ## Expected typed Failures
 
@@ -37,6 +39,10 @@ export class ShowFailure extends S.TaggedError<ShowFailure>()("ShowFailure", {
 The class already provides the TypeScript type identity `ShowFailure`; do not add a redundant companion alias.
 
 Do not use competing canonical field names such as `reason` or `code` for the Failure's issue field.
+
+A Failure contract imported by a Confect spec must remain client-bundle-safe. Its owning `errors/<context>.ts` module may depend on client-safe schema and contract modules, but must not reach data implementations, infra implementations, generated server services, `@confect/server`, or other server-only dependencies.
+
+This placement separates the shared Failure contract from the feature implementation without moving infra-local diagnostic Failures out of their capability owner.
 
 ## One Failure or several
 
