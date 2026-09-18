@@ -13,7 +13,7 @@ For a persisted resource `Foo`:
 - focused Patch contracts: operation-scoped update payloads when the operation owns meaningful invariants;
 - `sFooDto` / `FooDto`: faithful foreign-system-owned representation crossing an integration boundary.
 
-Every persisted resource exposes `Fields`, `Doc`, and `Foo`. `Insert`, Patch contracts, foreign `Dto`, and other representations exist when meaningful. `Dto` is not a generic synonym for an object that transports data: do not use it for Keenko-owned application models, feature inputs, forms, command payloads, Confect inputs, persistence documents, inserts, patches, view models, arbitrary response objects, or internal intermediates. Do not introduce `Entity`, `Entry`, or `ViewModel` synonyms. `ENTITY` below is a section heading, not another representation name.
+Persisted resources expose `Fields` and `Doc`. A canonical `Foo` exists when the persisted resource also owns a meaningful application representation. `Insert`, Patch contracts, foreign `Dto`, and other representations exist when meaningful. Do not manufacture `Foo` or another application representation solely because a table exists in persistence. `Dto` is not a generic synonym for an object that transports data: do not use it for Keenko-owned application models, feature inputs, forms, command payloads, Confect inputs, persistence documents, inserts, patches, view models, arbitrary response objects, or internal intermediates. Do not introduce `Entity`, `Entry`, or `ViewModel` synonyms. `ENTITY` below is a section heading, not another representation name.
 
 Effect Schema values use the `s` prefix exclusively. An `s...` value is an Effect Schema, never a Standard Schema adapter.
 
@@ -68,7 +68,7 @@ packages/backend/
     tvmaze.ts
 ```
 
-Here `schemas/shows.ts` owns the provider-independent application `Show` representations, `schemas/tvmaze/shows.ts` owns faithful TVMaze DTO representations, and `infra/tvmaze.ts` owns the adapter capability and the boundary composition that knows both sides. When a decoder composes a foreign-owned DTO schema and an application-owned canonical schema, the adapter/infra boundary owns that composition unless a narrower genuine boundary owner exists. Do not make the foreign schema module depend on the application representation or make the canonical application schema aware of a foreign source.
+Here `schemas/shows.ts` owns the application Show representations, `schemas/tvmaze/shows.ts` owns faithful TVMaze DTO representations, and `infra/tvmaze.ts` owns the adapter capability and the boundary composition that knows both sides. The canonical application representation is independent of the provider's DTO and wire contract. It may still contain an explicit provider identity such as `tvMazeId` when that identity is an application-owned product fact. When a decoder composes a foreign-owned DTO schema and an application-owned canonical schema, the adapter/infra boundary owns that composition unless a narrower genuine boundary owner exists. Do not make the foreign schema module depend on the application representation or make the canonical application schema aware of a foreign source.
 
 Do not add `schemas/providers/`. Do not default to a flat `schemas/tvmaze.ts` when the provider contract has a meaningful resource/domain filename. Create provider-wide primitive/common files only after genuine reuse appears; do not speculate `common.ts` or `shared.ts`.
 
@@ -91,7 +91,7 @@ Omit empty sections. Use the separator mechanics from `backend-file-topology.md`
 
 - `CONSTANTS` owns semantic leaf schemas and genuine constants, including finite vocabularies, branded IDs, bounded semantic scalars, other semantic primitives, and real runtime constants.
 - `FIELDS` owns `sFooFields` / `FooFields` and `sFooDoc` / `FooDoc`. `FooDoc` stays in `FIELDS`; do not create a `DOC` section.
-- `ENTITY` owns `sFoo` / `Foo` and schema-owned representation-producing helpers such as `fooFrom(...)` when they are warranted.
+- `ENTITY` owns `sFoo` / `Foo` when the persisted resource has a meaningful canonical application representation, plus schema-owned representation-producing helpers such as `fooFrom(...)` when warranted. Omit `ENTITY` when the table is only a persistence encoding of another application concept and no distinct canonical `Foo` exists.
 - `INSERT` owns `sFooInsert` / `FooInsert` when creation is meaningful.
 - `PATCH` exists only when the shared schema module genuinely owns a reusable patch contract.
 - `INTERNALS` owns only genuine private implementation helpers.
@@ -120,6 +120,8 @@ export type Watchlist = typeof sWatchlist.Type;
 export const sWatchlistInsert = sWatchlistFields;
 export type WatchlistInsert = typeof sWatchlistInsert.Type;
 ```
+
+The example above represents a persisted resource that also owns a canonical application representation. Persistence alone does not require an `ENTITY` section. A storage-only table may expose `Fields`, `Doc`, `Insert`, and focused Patch contracts as meaningful without inventing `Foo`.
 
 For Confect `10.0.0-next.21`, `SystemFields.extendWithSystemFields(tableName, schema)` takes the table name first and the schema second. Inspect the installed Confect source before documenting exact syntax for another version. Do not manually recreate `_id` or `_creationTime`.
 
@@ -262,11 +264,11 @@ export const sShowDto = S.Struct({ id: S.Int, name: S.String });
 export type ShowDto = typeof sShowDto.Type;
 ```
 
-The application schema remains independent of every provider:
+The application schema remains independent of the provider's DTO and wire representation. Provider independence does not require erasing provider identity when that identity is part of the application model:
 
 ```ts
 // schemas/shows.ts
-export const sShow = S.Struct({ apiId: S.Int, title: S.String });
+export const sShow = S.Struct({ tvMazeId: S.Int, title: S.String });
 export type Show = typeof sShow.Type;
 ```
 
@@ -278,7 +280,7 @@ import { Schema as S, SchemaGetter as SG } from "effect";
 
 const sShowFromDto = sShowDto.pipe(
   S.decodeTo(sShow, {
-    decode: SG.transform(({ id, name }) => ({ apiId: id, title: name })),
+    decode: SG.transform(({ id, name }) => ({ tvMazeId: id, title: name })),
     encode: SG.forbidden(() => "Forbidden."),
   })
 );
@@ -292,7 +294,7 @@ Use `typeof sFoo.Type` for the normal decoded TypeScript type. Use `.Encoded` on
 
 `FooFields` and `FooDoc` are backend/persistence decoded representations and may use useful Effect-native values such as `Option` when the schema encodes them to Convex-compatible primitives.
 
-`Foo` is different: `sFoo.Type` itself must be transport-safe/plain. Its semantic identity must not depend on a particular foreign provider, and canonical `sFoo` must not universally encode a provider DTO. Do not put `Option`, `Either`, `Date`, Effect classes, fibers, causes, services, or other runtime-specific values in a server/client application contract and rely on callers to remember to encode them.
+`Foo` is different: `sFoo.Type` itself must be transport-safe/plain. Its shape and semantics must not be dictated by a foreign provider's DTO or wire contract, and canonical sFoo must not encode a provider DTO as its application model. An explicit provider identity may still be part of Foo when the application itself owns and depends on that identity. Do not put `Option`, `Either`, `Date`, Effect classes, fibers, causes, services, or other runtime-specific values in a server/client application contract and rely on callers to remember to encode them.
 
 ## Timestamps
 
