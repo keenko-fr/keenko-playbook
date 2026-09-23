@@ -32,7 +32,7 @@ export default defineConfig({
   },
   overrides: [
     {
-      files: ["apps/web/**/*.{ts,tsx}"],
+      files: ["apps/**/*.{ts,tsx}"],
       rules: {
         "eslint/sort-keys": "off",
       },
@@ -90,7 +90,7 @@ export default defineConfig({
         allow: [],
         depConstraints: [
           { onlyDependOnLibsWithTags: ["type:package"], sourceTag: "type:package" },
-          { onlyDependOnLibsWithTags: ["scope:backend", "scope:ui", "scope:shared"], sourceTag: "scope:web" },
+          { onlyDependOnLibsWithTags: ["scope:backend", "scope:ui", "scope:shared"], sourceTag: "type:app" },
           { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:backend" },
           { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:ui" },
           { onlyDependOnLibsWithTags: [], sourceTag: "scope:shared" },

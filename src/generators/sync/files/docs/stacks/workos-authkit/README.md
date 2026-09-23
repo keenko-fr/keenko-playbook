@@ -19,6 +19,8 @@ Every Keenko project starts with a production-shaped WorkOS AuthKit foundation t
 
 The component's synchronized WorkOS user is authentication/infrastructure identity. It is not the canonical application `User`, `Profile`, `Member`, `Customer`, or other domain concept. Add a domain model only when the product needs one, with an explicit reference to infrastructure identity.
 
+For multiple applications, follow the [application-workspace convention](../../conventions/application-workspaces.md). Every development application origin must be permitted, every callback URI must be registered, and redirect behavior must return to the correct application. Names, ports, callback routes, and the mechanism used to select an application-specific redirect URI remain project-owned; do not assume one process-wide `WORKOS_REDIRECT_URI` arrangement is universal.
+
 ## Prerequisites
 
 - Node and Bun versions declared by the generated root manifest.
@@ -97,7 +99,7 @@ The separate headed smoke begins from the public application and navigates to `/
 5. When Playwright pauses on AuthKit Hosted UI, choose Google and complete authentication yourself. Resume the test in Playwright Inspector only after AuthKit has returned the browser to `/mon-espace`.
 6. Observe Playwright automatically verify the return route, authenticated Convex identity, synchronized WorkOS infrastructure identity, and sign-out.
 
-The smoke verifies the Hosted UI full-document transition, authenticated Convex state, synchronized WorkOS component user, and sign-out. Provider interaction is intentionally human-in-the-loop. It is not part of `bun run check` and must not be treated as an unattended CI check.
+The smoke verifies the Hosted UI full-document transition by observing the browser leave the origin derived from `AUTH_E2E_BASE_URL`, then verifies authenticated Convex state, synchronized WorkOS component user, and sign-out. It never identifies Hosted UI from provider-specific hostname text. Provider interaction is intentionally human-in-the-loop. It is not part of `bun run check` and must not be treated as an unattended CI check. The generated smoke remains scoped to the initial generated application; projects decide whether and how to add equivalent smoke coverage for another application.
 
 If the test stops before synchronized-user confirmation, verify the WorkOS webhook URL/events and the deployed Convex environment's `WORKOS_WEBHOOK_SECRET`. If Convex remains unauthenticated, verify the generated callback URL and the provisioned client ID in both local and deployment environment state.
 

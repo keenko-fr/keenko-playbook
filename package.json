@@ -12,6 +12,7 @@
     "dist",
     "!**/*.tsbuildinfo",
     "generators.json",
+    "migrations.json",
     "README.md",
     "LICENSE"
   ],
@@ -132,5 +133,6 @@
         }
       }
     }
-  }
+  },
+  "nx-migrations": "./migrations.json"
 }

@@ -4,17 +4,19 @@ const escapeRegExp = (value: string) => value.replaceAll(/[.*+?^${}()|[\]\\]/gu,
 
 test("Google auth reaches Convex identity, WorkOS synchronization, and sign-out", async ({ page }) => {
   const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
+  const applicationOrigin = new URL(baseUrl).origin;
+  const isOutsideApplicationOrigin = (url: string) => new URL(url).origin !== applicationOrigin;
 
   await page.goto("/");
   const hostedUiDocumentRequest = page.waitForRequest(
-    (request) => request.isNavigationRequest() && /(?:authkit|workos)/u.test(request.url())
+    (request) => request.isNavigationRequest() && isOutsideApplicationOrigin(request.url())
   );
   await Promise.all([
     hostedUiDocumentRequest,
-    page.waitForURL(/(?:authkit|workos)/u),
+    page.waitForURL((url) => url.origin !== applicationOrigin),
     page.getByRole("link", { name: "Mon espace" }).click(),
   ]);
-  await expect(page).toHaveURL(/(?:authkit|workos)/u);
+  expect(new URL(page.url()).origin).not.toBe(applicationOrigin);
 
   // Complete Google authentication in AuthKit Hosted UI, then resume the test in Playwright Inspector.
   await page.pause();
