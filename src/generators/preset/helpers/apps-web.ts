@@ -151,6 +151,9 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
       tags: ["type:app", "scope:web"],
       targets: {
         ...packageJson.nx?.targets,
+        dev: {
+          continuous: true,
+        },
         typecheck: {
           command: "node ../../node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.json",
           options: {

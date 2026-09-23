@@ -14,7 +14,7 @@ const runGeneratedDriftCheck = (scenario: "drift" | "head-failure" | "status-fai
     `#!/bin/sh
 case "$GIT_SCENARIO:$1:$2" in
   status-failure:status:*) exit 73 ;;
-  drift:status:*) printf ' M apps/web/src/routeTree.gen.ts\\n'; exit 0 ;;
+  drift:status:*) printf ' M apps/admin/src/routeTree.gen.ts\\n'; exit 0 ;;
   *:status:*) exit 0 ;;
   drift:rev-parse:--verify) exit 0 ;;
   head-failure:rev-parse:--verify) exit 74 ;;
@@ -54,7 +54,7 @@ describe("generated drift check", () => {
     const result = runGeneratedDriftCheck("drift");
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout.toString()).toContain("apps/web/src/routeTree.gen.ts");
+    expect(result.stdout.toString()).toContain("apps/admin/src/routeTree.gen.ts");
   });
 
   test("accepts canonical unborn main", () => {

@@ -1,0 +1,117 @@
+/* oxlint-disable effect/noNewError, effect/noNullish, effect/noRuntimeTypeof, effect/noThrowStatement, effect/noUnknownParameters, effect/noUnsafeDictionaryType, eslint/curly, eslint/prefer-destructuring, eslint/prefer-named-capture-group, typescript/no-unsafe-assignment, typescript/no-unsafe-member-access, typescript/strict-boolean-expressions -- Native Nx migrations are synchronous Tree transforms over untyped project state and report deliberate conflicts by throwing. */
+import { formatFiles, updateJson, type Tree } from "@nx/devkit";
+
+type JsonObject = Record<string, unknown>;
+
+const oldRouteTreePath = "apps/web/src/routeTree.gen.ts";
+const applicationRouteTreePath = ":(glob)apps/*/src/routeTree.gen.ts";
+const oldAppFiles = /files:\s*\[["']apps\/web\/\*\*\/\*\.\{ts,tsx\}["']\]/u;
+const applicationFiles = /files:\s*\[["']apps\/\*\*\/\*\.\{ts,tsx\}["']\]/u;
+const oldBoundary = /sourceTag:\s*["']scope:web["']/u;
+const applicationBoundary = /sourceTag:\s*["']type:app["']/u;
+const oldHostedUi = "/(?:authkit|workos)/u";
+
+export default function applicationWorkspaces102(tree: Tree) {
+  migrateVitestDiscovery(tree);
+  migrateGeneratedDrift(tree);
+  migrateOxlint(tree);
+  migrateContinuousTargets(tree);
+  migrateAuthSmoke(tree);
+  return formatFiles(tree);
+}
+
+function migrateVitestDiscovery(tree: Tree) {
+  updateJson<JsonObject>(tree, "nx.json", (nxJson) => {
+    const plugins = nxJson.plugins;
+    if (!Array.isArray(plugins)) return conflict("nx.json", "@nx/vitest plugin configuration");
+    const plugin = plugins.find((entry) => isObject(entry) && entry.plugin === "@nx/vitest");
+    if (!plugin) return conflict("nx.json", "@nx/vitest plugin configuration");
+    if (sameStrings(plugin.exclude, ["apps/*/vite.config.ts"])) return nxJson;
+    if (!sameStrings(plugin.exclude, ["apps/web/vite.config.ts"])) return conflict("nx.json", "@nx/vitest exclude");
+    plugin.exclude = ["apps/*/vite.config.ts"];
+    return nxJson;
+  });
+}
+
+function migrateGeneratedDrift(tree: Tree) {
+  updateJson<JsonObject>(tree, "package.json", (packageJson) => {
+    const scripts = packageJson.scripts;
+    if (!isObject(scripts) || typeof scripts.check !== "string") return conflict("package.json", "scripts.check");
+    if (scripts.check.includes(applicationRouteTreePath)) return packageJson;
+    if (!scripts.check.includes(oldRouteTreePath)) return conflict("package.json", "scripts.check generated route-tree path");
+    scripts.check = scripts.check.replace(oldRouteTreePath, applicationRouteTreePath);
+    return packageJson;
+  });
+}
+
+function migrateOxlint(tree: Tree) {
+  const path = "oxlint.config.ts";
+  const source = tree.read(path, "utf-8");
+  if (source === null) return conflict(path, "application lint and boundary policy");
+  const filesCompliant = applicationFiles.test(source);
+  const boundaryCompliant = applicationBoundary.test(source);
+  if (filesCompliant && boundaryCompliant) return;
+  if ((!filesCompliant && !oldAppFiles.test(source)) || (!boundaryCompliant && !oldBoundary.test(source)))
+    return conflict(path, "application lint and boundary policy");
+  tree.write(path, source.replace(oldAppFiles, 'files: ["apps/**/*.{ts,tsx}"]').replace(oldBoundary, 'sourceTag: "type:app"'));
+}
+
+function migrateContinuousTargets(tree: Tree) {
+  for (const root of ["apps", "packages"]) {
+    for (const workspace of tree.children(root)) {
+      const path = `${root}/${workspace}/package.json`;
+      if (!tree.exists(path)) continue;
+      updateJson<JsonObject>(tree, path, (packageJson) => {
+        const scripts = packageJson.scripts;
+        if (!isObject(scripts) || typeof scripts.dev !== "string") return packageJson;
+        const nx = packageJson.nx;
+        if (!isObject(nx) || !isContinuousWorkspace(nx.tags)) return packageJson;
+        const targets = isObject(nx.targets) ? nx.targets : (nx.targets = {});
+        const dev = targets.dev;
+        if (dev === undefined) {
+          targets.dev = { continuous: true };
+          return packageJson;
+        }
+        if (!isObject(dev) || (dev.continuous !== undefined && dev.continuous !== true)) return conflict(path, "nx.targets.dev.continuous");
+        dev.continuous = true;
+        return packageJson;
+      });
+    }
+  }
+}
+
+function migrateAuthSmoke(tree: Tree) {
+  const path = "apps/web/e2e/auth.e2e.ts";
+  const source = tree.read(path, "utf-8");
+  if (source === null) return;
+  if (!source.includes(oldHostedUi)) return;
+  tree.write(
+    path,
+    source
+      .replace(
+        /(\s*)const baseUrl = process\.env\.AUTH_E2E_BASE_URL \?\? ["']http:\/\/localhost:3210["'];/u,
+        '$1const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";$1const applicationOrigin = new URL(baseUrl).origin;$1const isOutsideApplicationOrigin = (url: string) => new URL(url).origin !== applicationOrigin;'
+      )
+      .replace(/\/\(\?:authkit\|workos\)\/u\.test\(request\.url\(\)\)/u, "isOutsideApplicationOrigin(request.url())")
+      .replace("page.waitForURL(/(?:authkit|workos)/u)", "page.waitForURL((url) => url.origin !== applicationOrigin)")
+      .replace("await expect(page).toHaveURL(/(?:authkit|workos)/u);", "expect(new URL(page.url()).origin).not.toBe(applicationOrigin);")
+  );
+}
+
+function isContinuousWorkspace(tags: unknown) {
+  return Array.isArray(tags) && (tags.includes("type:app") || tags.includes("scope:backend"));
+}
+
+function sameStrings(value: unknown, expected: string[]) {
+  return Array.isArray(value) && value.length === expected.length && value.every((item, index) => item === expected[index]);
+}
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function conflict(path: string, value: string): never {
+  throw new Error(
+    `Keenko-owned ${value} in ${path} conflicts with the 1.0.2 application-workspace contract. Reconcile the customization manually, then rerun the Keenko migration.`
+  );
+}

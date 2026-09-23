@@ -385,7 +385,7 @@ describe("keenko preset", () => {
           },
           plugins: [
             {
-              exclude: ["apps/web/vite.config.ts"],
+              exclude: ["apps/*/vite.config.ts"],
               options: { testMode: "run", testTargetName: "test" },
               plugin: "@nx/vitest",
             },
@@ -414,6 +414,8 @@ describe("keenko preset", () => {
           expect(tree.read(rootCode, "utf-8")).not.toContain("@tanstack/react-start");
 
         expect(backendPackageJson.scripts).toEqual({ codegen: "confect codegen", dev: "confect dev" });
+        expect(backendPackageJson.nx?.targets?.dev).toEqual({ continuous: true });
+        expect(webPackageJson.nx?.targets?.dev).toEqual({ continuous: true });
 
         expect(readJson(tree, "convex.json")).toEqual({
           $schema: "./node_modules/convex/schemas/convex.schema.json",
@@ -526,7 +528,9 @@ describe("keenko preset", () => {
         expect(router).toContain("<ConvexProviderWithAuth client={convexClient} useAuth={useAuthFromWorkOS}>");
         expect(rootRoute).not.toContain("<ConvexProvider");
 
-        expect(oxlintConfig).toContain('files: ["apps/web/**/*.{ts,tsx}"]');
+        expect(oxlintConfig).toContain('files: ["apps/**/*.{ts,tsx}"]');
+        expect(oxlintConfig).toContain('sourceTag: "type:app"');
+        expect(oxlintConfig).not.toContain('sourceTag: "scope:web"');
         expect(oxlintConfig).toContain('"eslint/sort-keys": "off"');
       })
     ));
@@ -665,6 +669,8 @@ describe("keenko preset", () => {
         expect(authSmoke).toContain("await page.pause()");
         expect(authSmoke).toContain('page.getByTestId("convex-authenticated")');
         expect(authSmoke).toContain('page.getByTestId("workos-user-synchronized")');
+        expect(authSmoke).toContain("url.origin !== applicationOrigin");
+        expect(authSmoke).not.toContain("/(?:authkit|workos)/u");
         expect(authSmoke).not.toMatch(/AUTH_E2E_EMAIL_DOMAIN|createUser|deleteUser|Password|Continue with email/u);
         expect(backendPackageJson.dependencies).toMatchObject(
           Struct.pick(packageVersions, ["@convex-dev/workos-authkit", "@workos-inc/authkit-react", "@workos-inc/node"])
