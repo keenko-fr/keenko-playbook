@@ -59,15 +59,23 @@ function migrateVitestDiscovery(tree: Tree) {
   updateJson<JsonObject>(tree, "nx.json", (nxJson) => {
     const plugins = nxJson.plugins;
     if (!Array.isArray(plugins)) return conflict("nx.json", "@nx/vitest plugin configuration");
-    const candidates = plugins.filter(
-      (entry) =>
-        isObject(entry) &&
-        entry.plugin === "@nx/vitest" &&
-        isObject(entry.options) &&
-        entry.options.testMode === "run" &&
-        entry.options.testTargetName === "test"
-    );
-    if (candidates.length !== 1) return conflict("nx.json", "@nx/vitest plugin configuration");
+    const candidates = plugins.filter((entry) => {
+      if (
+        !isObject(entry) ||
+        entry.plugin !== "@nx/vitest" ||
+        !isObject(entry.options) ||
+        entry.options.testMode !== "run" ||
+        entry.options.testTargetName !== "test"
+      )
+        return false;
+      const exclusions = entry.exclude;
+      return (
+        Array.isArray(exclusions) &&
+        exclusions.every((exclusion) => typeof exclusion === "string") &&
+        (exclusions.includes("apps/web/vite.config.ts") || exclusions.includes("apps/*/vite.config.ts"))
+      );
+    });
+    if (candidates.length !== 1) return conflict("nx.json", "@nx/vitest plugin ownership");
     const plugin = candidates[0];
     if (plugin === undefined) return conflict("nx.json", "@nx/vitest plugin configuration");
     const exclusions = plugin.exclude;

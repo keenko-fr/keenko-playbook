@@ -121,7 +121,7 @@ describe("1.0.2 application-workspace migration", () => {
     const projectRegistration = {
       exclude: ["tools/**"],
       include: ["tools/*/vite.config.ts"],
-      options: { testMode: "watch", testTargetName: "test:tools" },
+      options: { testMode: "run", testTargetName: "test" },
       plugin: "@nx/vitest",
     };
     tree.write(
@@ -138,6 +138,16 @@ describe("1.0.2 application-workspace migration", () => {
     expect(plugins[1]?.exclude).toEqual(["examples/**", "apps/*/vite.config.ts"]);
   });
 
+  test("rejects ambiguous duplicate Keenko-shaped Vitest registrations without mutation", () => {
+    const tree = makeTree();
+    const plugins = [vitestRegistration(["apps/web/vite.config.ts"]), vitestRegistration(["examples/**", "apps/*/vite.config.ts"])];
+    tree.write("nx.json", JSON.stringify({ plugins }));
+    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+
+    expect(() => migration(tree)).toThrow("@nx/vitest plugin ownership");
+    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+  });
+
   test("rejects a Vitest registration with customized owned options without mutating it", () => {
     const tree = makeTree();
     const plugins = [
@@ -149,7 +159,7 @@ describe("1.0.2 application-workspace migration", () => {
     ];
     tree.write("nx.json", JSON.stringify({ plugins }));
 
-    expect(() => migration(tree)).toThrow("@nx/vitest plugin configuration");
+    expect(() => migration(tree)).toThrow("@nx/vitest plugin ownership");
     expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins).toEqual(plugins);
   });
 
