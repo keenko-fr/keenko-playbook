@@ -594,7 +594,7 @@ describe("keenko preset", () => {
         const packageJson = readJson<PackageJson>(tree, "apps/web/package.json");
 
         expect(packageJson.nx).toMatchObject({
-          tags: ["type:app", "scope:web"],
+          tags: ["type:app"],
           targets: {
             typecheck: expectedTypecheckTarget,
           },

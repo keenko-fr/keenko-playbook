@@ -1,7 +1,7 @@
 {
   "generators": {
     "1.0.2-application-workspaces": {
-      "version": "1.0.2",
+      "version": "1.0.2-rc.0",
       "description": "Make application workspaces first-class in Keenko tooling and verification.",
       "factory": "./dist/migrations/application-workspaces-1-0-2"
     }
