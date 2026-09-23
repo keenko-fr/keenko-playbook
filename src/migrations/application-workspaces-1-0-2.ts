@@ -1,4 +1,4 @@
-/* oxlint-disable effect/noNewError, effect/noNullish, effect/noRuntimeTypeof, effect/noThrowStatement, effect/noUnknownParameters, effect/noUnsafeDictionaryType, eslint/curly, eslint/prefer-destructuring, eslint/prefer-named-capture-group, typescript/no-unsafe-assignment, typescript/no-unsafe-member-access, typescript/strict-boolean-expressions -- Native Nx migrations are synchronous Tree transforms over untyped project state and report deliberate conflicts by throwing. */
+/* oxlint-disable effect/noNewError, effect/noNullish, effect/noRuntimeTypeof, effect/noThrowStatement, effect/noUnknownParameters, effect/noUnsafeDictionaryType, eslint/curly, eslint/prefer-destructuring, eslint/prefer-named-capture-group, typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access, typescript/strict-boolean-expressions -- Native Nx migrations are synchronous Tree transforms over untyped project state and report deliberate conflicts by throwing. */
 import { formatFiles, updateJson, type Tree } from "@nx/devkit";
 
 type JsonObject = Record<string, unknown>;
@@ -15,9 +15,34 @@ export default function applicationWorkspaces102(tree: Tree) {
   migrateVitestDiscovery(tree);
   migrateGeneratedDrift(tree);
   migrateOxlint(tree);
+  migrateApplicationTags(tree);
   migrateContinuousTargets(tree);
   migrateAuthSmoke(tree);
   return formatFiles(tree);
+}
+
+function migrateApplicationTags(tree: Tree) {
+  for (const workspace of tree.children("apps")) {
+    const path = `apps/${workspace}/package.json`;
+    if (!tree.exists(path)) continue;
+    updateJson<JsonObject>(tree, path, (packageJson) => {
+      const nx = packageJson.nx;
+      if (nx === undefined) {
+        packageJson.nx = { tags: ["type:app"] };
+        return packageJson;
+      }
+      if (!isObject(nx)) return conflict(path, "nx application metadata");
+      const tags = nx.tags;
+      if (tags === undefined) {
+        nx.tags = ["type:app"];
+        return packageJson;
+      }
+      if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== "string")) return conflict(path, "nx.tags");
+      if (tags.some((tag) => tag.startsWith("type:") && tag !== "type:app")) return conflict(path, "nx.tags application classification");
+      if (!tags.includes("type:app")) tags.push("type:app");
+      return packageJson;
+    });
+  }
 }
 
 function migrateVitestDiscovery(tree: Tree) {

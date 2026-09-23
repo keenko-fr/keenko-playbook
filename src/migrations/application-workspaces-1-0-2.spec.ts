@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 /* oxlint-disable effect/noAsyncFunction, effect/noGlobals -- Native Nx migration fixtures exercise promise-returning formatFiles and serialize virtual-tree JSON directly. */
-import { readJson } from "@nx/devkit";
+import { readJson, readJsonFile } from "@nx/devkit";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
+import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-line/migrate/migrate";
 
 import migration from "./application-workspaces-1-0-2.js";
 
@@ -29,7 +30,7 @@ const makeTree = () => {
     "apps/admin/package.json",
     JSON.stringify({
       dependencies: { "@acme/backend": "workspace:*" },
-      nx: { tags: ["type:app"], targets: {} },
+      nx: { tags: ["scope:admin"], targets: {} },
       scripts: { dev: "vite dev" },
     })
   );
@@ -42,6 +43,24 @@ const makeTree = () => {
 };
 
 describe("1.0.2 application-workspace migration", () => {
+  test("is selected by native Nx for a 1.0.1 to 1.0.2 release-candidate plan", async () => {
+    const migrationConfig = readJsonFile<ResolvedMigrationConfiguration>("migrations.json");
+    const migrator = new Migrator({
+      fetch: async (_packageName, targetVersion) => ({ ...migrationConfig, version: targetVersion }),
+      from: {},
+      getInstalledPackageVersion: () => "1.0.1",
+      interactive: false,
+      packageJson: { dependencies: { keenko: "1.0.1" }, name: "migration-fixture", version: "0.0.0" },
+      to: {},
+    });
+
+    const plan = await migrator.migrate("keenko", "1.0.2-rc.2");
+
+    expect(plan.migrations.map(({ name, package: packageName, version }) => ({ name, packageName, version }))).toEqual([
+      { name: "1.0.2-application-workspaces", packageName: "keenko", version: "1.0.2-rc.0" },
+    ]);
+  });
+
   test("transforms untouched 1.0.1 state for two applications sharing one backend", async () => {
     const tree = makeTree();
     await migration(tree);
@@ -50,6 +69,8 @@ describe("1.0.2 application-workspace migration", () => {
     expect(readJson<{ scripts: { check: string } }>(tree, "package.json").scripts.check).toContain(":(glob)apps/*/src/routeTree.gen.ts");
     for (const path of ["apps/web/package.json", "apps/admin/package.json", "packages/backend/package.json"])
       expect(readJson<{ nx: { targets: { dev: { continuous: boolean } } } }>(tree, path).nx.targets.dev.continuous).toBe(true);
+    expect(readJson<{ nx: { tags: string[] } }>(tree, "apps/web/package.json").nx.tags).toEqual(["type:app", "scope:web"]);
+    expect(readJson<{ nx: { tags: string[] } }>(tree, "apps/admin/package.json").nx.tags).toEqual(["scope:admin", "type:app"]);
     expect(tree.read("oxlint.config.ts", "utf-8")).toContain("sourceTag: 'type:app'");
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).not.toContain("authkit|workos");
   });
@@ -70,5 +91,16 @@ describe("1.0.2 application-workspace migration", () => {
 
     expect(() => migration(tree)).toThrow("nx.json");
     expect(readJson<{ plugins: { exclude: string[] }[] }>(tree, "nx.json").plugins[0]?.exclude).toEqual(["apps/custom/vite.config.ts"]);
+  });
+
+  test("rejects a conflicting application type without removing project scopes", () => {
+    const tree = makeTree();
+    tree.write(
+      "apps/admin/package.json",
+      JSON.stringify({ nx: { tags: ["type:package", "scope:admin"], targets: {} }, scripts: { dev: "vite dev" } })
+    );
+
+    expect(() => migration(tree)).toThrow("nx.tags application classification");
+    expect(readJson<{ nx: { tags: string[] } }>(tree, "apps/admin/package.json").nx.tags).toEqual(["type:package", "scope:admin"]);
   });
 });

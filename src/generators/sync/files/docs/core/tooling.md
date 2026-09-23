@@ -205,7 +205,7 @@ Only applicable stages run.
 
 Nx owns the workspace project graph and workspace dependency-boundary enforcement.
 
-Keenko defines the initial scope model and configures Nx/Oxlint boundary constraints around it.
+Keenko configures Nx/Oxlint boundary constraints around the initial workspace model.
 
 A fresh project starts with:
 
@@ -218,16 +218,17 @@ packages/shared
 
 The preset owns this initial topology. It does not impose a permanent four-workspace maximum.
 
-Additional workspaces are valid when they model a real ownership or reuse boundary and participate in the Nx project graph with the required tags.
+Additional workspaces are valid when they model a real ownership or reuse boundary and participate in the Nx project graph with the required tags. Every workspace under `apps/*` has the required `type:app` classification.
 
-The initial scopes are:
+The initial package scopes are:
 
 ```text
-scope:web
 scope:backend
 scope:ui
 scope:shared
 ```
+
+Application-specific `scope:*` tags are optional project metadata for stricter boundaries; they are not part of the fresh required baseline.
 
 Nx is the sole implementation of package and source dependency-boundary checks.
 

@@ -148,7 +148,7 @@ export const generateWeb = E.fn("keenko.preset.generateWeb")(function* (tree: Tr
     },
     nx: {
       ...packageJson.nx,
-      tags: ["type:app", "scope:web"],
+      tags: ["type:app"],
       targets: {
         ...packageJson.nx?.targets,
         dev: {
