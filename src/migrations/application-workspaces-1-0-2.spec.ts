@@ -75,6 +75,45 @@ describe("1.0.2 application-workspace migration", () => {
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).not.toContain("authkit|workos");
   });
 
+  test("preserves unrelated exclusions while replacing the legacy application exclusion", async () => {
+    const tree = makeTree();
+    tree.write(
+      "nx.json",
+      JSON.stringify({
+        plugins: [{ exclude: ["tools/foo/vite.config.ts", "apps/web/vite.config.ts", "examples/**"], plugin: "@nx/vitest" }],
+      })
+    );
+
+    await migration(tree);
+
+    expect(readJson<{ plugins: { exclude: string[] }[] }>(tree, "nx.json").plugins[0]?.exclude).toEqual([
+      "tools/foo/vite.config.ts",
+      "apps/*/vite.config.ts",
+      "examples/**",
+    ]);
+  });
+
+  test("preserves an already-compliant customized exclusion list", async () => {
+    const tree = makeTree();
+    const exclusions = ["tools/foo/vite.config.ts", "apps/*/vite.config.ts", "examples/**"];
+    tree.write("nx.json", JSON.stringify({ plugins: [{ exclude: exclusions, plugin: "@nx/vitest" }] }));
+
+    await migration(tree);
+
+    expect(readJson<{ plugins: { exclude: string[] }[] }>(tree, "nx.json").plugins[0]?.exclude).toEqual(exclusions);
+  });
+
+  test("rejects a customized old auth smoke without partially rewriting it", () => {
+    const tree = makeTree();
+    const customizedSmoke = oldSmoke.replace("http://localhost:3210", "http://localhost:4173");
+    tree.write("apps/web/e2e/auth.e2e.ts", customizedSmoke);
+    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(customizedSmoke);
+    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+  });
+
   test("leaves already compliant state unchanged", async () => {
     const tree = makeTree();
     await migration(tree);
@@ -91,6 +130,7 @@ describe("1.0.2 application-workspace migration", () => {
 
     expect(() => migration(tree)).toThrow("nx.json");
     expect(readJson<{ plugins: { exclude: string[] }[] }>(tree, "nx.json").plugins[0]?.exclude).toEqual(["apps/custom/vite.config.ts"]);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(oldSmoke);
   });
 
   test("rejects a conflicting application type without removing project scopes", () => {

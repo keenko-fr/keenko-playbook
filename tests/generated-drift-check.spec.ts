@@ -14,7 +14,7 @@ const runGeneratedDriftCheck = (scenario: "drift" | "head-failure" | "status-fai
     `#!/bin/sh
 case "$GIT_SCENARIO:$1:$2" in
   status-failure:status:*) exit 73 ;;
-  drift:status:*) printf ' M apps/admin/src/routeTree.gen.ts\\n'; exit 0 ;;
+  drift:status:*) case " $* " in *" :(glob)apps/*/src/routeTree.gen.ts "*) printf ' M apps/admin/src/routeTree.gen.ts\\n' ;; esac; exit 0 ;;
   *:status:*) exit 0 ;;
   drift:rev-parse:--verify) exit 0 ;;
   head-failure:rev-parse:--verify) exit 74 ;;

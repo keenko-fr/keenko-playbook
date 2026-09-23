@@ -16,6 +16,7 @@
         "@effect/tsgo": "0.45.0",
         "@nx/js": "23.2.1",
         "@nx/oxlint": "23.2.1",
+        "@nx/vitest": "23.2.1",
         "@testing-library/dom": "10.4.2",
         "@testing-library/react": "16.3.3",
         "@types/bun": "1.4.2",
@@ -413,6 +414,8 @@
     "@nx/nx-win32-x64-msvc": ["@nx/nx-win32-x64-msvc@23.2.1", "", { "os": "win32", "cpu": "x64" }, "sha512-qZQBNB4L/yljM81Fm5M/LoyCMoGJc7yc//KePQ5xiyhzZjJENooHsFkB8ps/pSv4cfHKfYJbvgBAMPOLXeHqqA=="],
 
     "@nx/oxlint": ["@nx/oxlint@23.2.1", "", { "dependencies": { "@nx/devkit": "23.2.1", "@nx/eslint-plugin": "23.2.1", "@nx/js": "23.2.1", "tslib": "^2.3.0" }, "peerDependencies": { "oxlint": "^1.43.0" }, "optionalPeers": ["oxlint"] }, "sha512-BKZHdb5s3HW4wJZbDuAsuBW2XYI/3rBRHLMEYuOjVAhojsFguEuyTm2Uj7IyY3EcI7yu2qOwp71ffzeiHdrm3Q=="],
+
+    "@nx/vitest": ["@nx/vitest@23.2.1", "", { "dependencies": { "@nx/devkit": "23.2.1", "@nx/js": "23.2.1", "@phenomnomnominal/tsquery": "~6.2.0", "semver": "^7.6.3", "tslib": "^2.3.0" }, "peerDependencies": { "@nx/eslint": "23.2.1", "vite": "^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0", "vitest": "^3.0.0 || ^4.0.0" }, "optionalPeers": ["@nx/eslint", "vite", "vitest"] }, "sha512-LL0C5wDKhL8qEZ+XX4ec/EoGMP3BLQiqswPR/bgH9OssK9hBBBNndcQiJvEyh3+M+4ULxrT+NAXIOgIpCrVVww=="],
 
     "@nx/workspace": ["@nx/workspace@23.2.1", "", { "dependencies": { "@nx/devkit": "23.2.1", "@zkochan/js-yaml": "0.0.7", "chalk": "^4.1.0", "nx": "23.2.1", "picomatch": "4.0.4", "semver": "^7.6.3", "tslib": "^2.3.0", "yargs-parser": "21.1.1" } }, "sha512-lC5NdIQUK7tmz4SeJE0zJ+DTDTAYvbs88gZJQZBwAqkky20ZlRnJiebrOXHlhhVn6Cn35XVLmEkhEsZVda1R0A=="],
 

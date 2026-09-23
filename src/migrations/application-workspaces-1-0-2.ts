@@ -10,14 +10,23 @@ const applicationFiles = /files:\s*\[["']apps\/\*\*\/\*\.\{ts,tsx\}["']\]/u;
 const oldBoundary = /sourceTag:\s*["']scope:web["']/u;
 const applicationBoundary = /sourceTag:\s*["']type:app["']/u;
 const oldHostedUi = "/(?:authkit|workos)/u";
+const oldBaseUrl = /(\s*)const baseUrl = process\.env\.AUTH_E2E_BASE_URL \?\? ["']http:\/\/localhost:3210["'];/u;
+const oldHostedUiRequest = /\/\(\?:authkit\|workos\)\/u\.test\(request\.url\(\)\)/u;
+const oldHostedUiWait = "page.waitForURL(/(?:authkit|workos)/u)";
+const oldHostedUiExpectation = "await expect(page).toHaveURL(/(?:authkit|workos)/u);";
+const applicationOriginDeclaration = "const applicationOrigin = new URL(baseUrl).origin;";
+const hostedUiRequestByOrigin = "isOutsideApplicationOrigin(request.url())";
+const hostedUiWaitByOrigin = "page.waitForURL((url) => url.origin !== applicationOrigin)";
+const hostedUiExpectationByOrigin = "expect(new URL(page.url()).origin).not.toBe(applicationOrigin);";
 
 export default function applicationWorkspaces102(tree: Tree) {
+  const authSmokeMigration = planAuthSmokeMigration(tree);
   migrateVitestDiscovery(tree);
   migrateGeneratedDrift(tree);
   migrateOxlint(tree);
   migrateApplicationTags(tree);
   migrateContinuousTargets(tree);
-  migrateAuthSmoke(tree);
+  if (authSmokeMigration !== undefined) tree.write(authSmokeMigration.path, authSmokeMigration.source);
   return formatFiles(tree);
 }
 
@@ -51,9 +60,13 @@ function migrateVitestDiscovery(tree: Tree) {
     if (!Array.isArray(plugins)) return conflict("nx.json", "@nx/vitest plugin configuration");
     const plugin = plugins.find((entry) => isObject(entry) && entry.plugin === "@nx/vitest");
     if (!plugin) return conflict("nx.json", "@nx/vitest plugin configuration");
-    if (sameStrings(plugin.exclude, ["apps/*/vite.config.ts"])) return nxJson;
-    if (!sameStrings(plugin.exclude, ["apps/web/vite.config.ts"])) return conflict("nx.json", "@nx/vitest exclude");
-    plugin.exclude = ["apps/*/vite.config.ts"];
+    const exclusions = plugin.exclude;
+    if (!Array.isArray(exclusions) || exclusions.some((entry) => typeof entry !== "string"))
+      return conflict("nx.json", "@nx/vitest exclude");
+    if (exclusions.includes("apps/*/vite.config.ts")) return nxJson;
+    const legacyIndex = exclusions.indexOf("apps/web/vite.config.ts");
+    if (legacyIndex === -1) return conflict("nx.json", "@nx/vitest exclude");
+    exclusions[legacyIndex] = "apps/*/vite.config.ts";
     return nxJson;
   });
 }
@@ -105,30 +118,38 @@ function migrateContinuousTargets(tree: Tree) {
   }
 }
 
-function migrateAuthSmoke(tree: Tree) {
+function planAuthSmokeMigration(tree: Tree) {
   const path = "apps/web/e2e/auth.e2e.ts";
   const source = tree.read(path, "utf-8");
   if (source === null) return;
-  if (!source.includes(oldHostedUi)) return;
-  tree.write(
-    path,
-    source
-      .replace(
-        /(\s*)const baseUrl = process\.env\.AUTH_E2E_BASE_URL \?\? ["']http:\/\/localhost:3210["'];/u,
-        '$1const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";$1const applicationOrigin = new URL(baseUrl).origin;$1const isOutsideApplicationOrigin = (url: string) => new URL(url).origin !== applicationOrigin;'
-      )
-      .replace(/\/\(\?:authkit\|workos\)\/u\.test\(request\.url\(\)\)/u, "isOutsideApplicationOrigin(request.url())")
-      .replace("page.waitForURL(/(?:authkit|workos)/u)", "page.waitForURL((url) => url.origin !== applicationOrigin)")
-      .replace("await expect(page).toHaveURL(/(?:authkit|workos)/u);", "expect(new URL(page.url()).origin).not.toBe(applicationOrigin);")
-  );
+  if (!source.includes(oldHostedUi)) {
+    const newMarkers = [applicationOriginDeclaration, hostedUiRequestByOrigin, hostedUiWaitByOrigin, hostedUiExpectationByOrigin];
+    const newMarkerCount = newMarkers.filter((marker) => source.includes(marker)).length;
+    if (newMarkerCount > 0 && newMarkerCount !== newMarkers.length) return conflict(path, "Hosted UI transition detection");
+    return;
+  }
+  if (
+    !oldBaseUrl.test(source) ||
+    !oldHostedUiRequest.test(source) ||
+    !source.includes(oldHostedUiWait) ||
+    !source.includes(oldHostedUiExpectation)
+  )
+    return conflict(path, "Hosted UI transition detection");
+
+  const migrated = source
+    .replace(
+      oldBaseUrl,
+      '$1const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";$1const applicationOrigin = new URL(baseUrl).origin;$1const isOutsideApplicationOrigin = (url: string) => new URL(url).origin !== applicationOrigin;'
+    )
+    .replace(oldHostedUiRequest, hostedUiRequestByOrigin)
+    .replace(oldHostedUiWait, hostedUiWaitByOrigin)
+    .replace(oldHostedUiExpectation, hostedUiExpectationByOrigin);
+  if (migrated.includes(oldHostedUi)) return conflict(path, "Hosted UI transition detection");
+  return { path, source: migrated };
 }
 
 function isContinuousWorkspace(tags: unknown) {
   return Array.isArray(tags) && (tags.includes("type:app") || tags.includes("scope:backend"));
-}
-
-function sameStrings(value: unknown, expected: string[]) {
-  return Array.isArray(value) && value.length === expected.length && value.every((item, index) => item === expected[index]);
 }
 
 function isObject(value: unknown): value is JsonObject {

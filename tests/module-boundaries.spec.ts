@@ -1,6 +1,6 @@
 /* oxlint-disable effect/noGlobals, effect/noNodeBuiltinImport -- Synchronous platform adapters keep this generated-tool integration fixture narrow. */
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -83,10 +83,14 @@ describe("generated Nx/Oxlint module boundaries", () => {
               })
             );
             tree.write("apps/admin/src/forbidden.ts", 'import "../../web/src/router";\n');
-            updateJson<NxJsonConfiguration>(tree, "nx.json", (nxJson) => {
-              nxJson.plugins = [];
-              return nxJson;
-            });
+            tree.write(
+              "apps/admin/vitest.config.ts",
+              'import { defineConfig } from "vitest/config";\n\nexport default defineConfig({ test: { passWithNoTests: true } });\n'
+            );
+            tree.write(
+              "apps/admin/vite.config.ts",
+              'import { writeFileSync } from "node:fs";\nimport { defineConfig } from "vite";\n\nwriteFileSync("apps/admin/.vite-config-evaluated", "evaluated");\n\nexport default defineConfig({});\n'
+            );
 
             for (const change of tree.listChanges()) {
               if (!Buffer.isBuffer(change.content)) continue;
@@ -104,6 +108,7 @@ describe("generated Nx/Oxlint module boundaries", () => {
             expect(graph.exitCode, graph.stderr.toString()).toBe(0);
             expect(graph.stdout.toString()).toContain("@multi-app-test/web");
             expect(graph.stdout.toString()).toContain("@multi-app-test/admin");
+            expect(existsSync(path.join(workspace, "apps/admin/.vite-config-evaluated"))).toBe(false);
 
             const result = Bun.spawnSync([path.join(repository, "node_modules/.bin/oxlint"), "apps/admin/src/forbidden.ts"], {
               cwd: workspace,
