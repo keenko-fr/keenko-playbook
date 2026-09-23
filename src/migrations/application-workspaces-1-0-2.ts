@@ -7,8 +7,8 @@ const oldRouteTreePath = "apps/web/src/routeTree.gen.ts";
 const applicationRouteTreePath = ":(glob)apps/*/src/routeTree.gen.ts";
 const oldAppFiles = /files:\s*\[["']apps\/web\/\*\*\/\*\.\{ts,tsx\}["']\]/u;
 const applicationFiles = /files:\s*\[["']apps\/\*\*\/\*\.\{ts,tsx\}["']\]/u;
-const oldBoundary = /sourceTag:\s*["']scope:web["']/u;
-const applicationBoundary = /sourceTag:\s*["']type:app["']/u;
+const dependencyConstraint = /\{[^{}]*\}/gu;
+const applicationTargetTags = ["scope:backend", "scope:shared", "scope:ui"];
 const oldHostedUi = "/(?:authkit|workos)/u";
 const oldBaseUrl = /(\s*)const baseUrl = process\.env\.AUTH_E2E_BASE_URL \?\? ["']http:\/\/localhost:3210["'];/u;
 const oldHostedUiRequest = /\/\(\?:authkit\|workos\)\/u\.test\(request\.url\(\)\)/u;
@@ -21,12 +21,13 @@ const hostedUiExpectationByOrigin = "expect(new URL(page.url()).origin).not.toBe
 
 export default function applicationWorkspaces102(tree: Tree) {
   const authSmokeMigration = planAuthSmokeMigration(tree);
+  const oxlintMigration = planOxlintMigration(tree);
   migrateVitestDiscovery(tree);
   migrateGeneratedDrift(tree);
-  migrateOxlint(tree);
   migrateApplicationTags(tree);
   migrateContinuousTargets(tree);
   if (authSmokeMigration !== undefined) tree.write(authSmokeMigration.path, authSmokeMigration.source);
+  if (oxlintMigration !== undefined) tree.write(oxlintMigration.path, oxlintMigration.source);
   return formatFiles(tree);
 }
 
@@ -58,8 +59,17 @@ function migrateVitestDiscovery(tree: Tree) {
   updateJson<JsonObject>(tree, "nx.json", (nxJson) => {
     const plugins = nxJson.plugins;
     if (!Array.isArray(plugins)) return conflict("nx.json", "@nx/vitest plugin configuration");
-    const plugin = plugins.find((entry) => isObject(entry) && entry.plugin === "@nx/vitest");
-    if (!plugin) return conflict("nx.json", "@nx/vitest plugin configuration");
+    const candidates = plugins.filter(
+      (entry) =>
+        isObject(entry) &&
+        entry.plugin === "@nx/vitest" &&
+        isObject(entry.options) &&
+        entry.options.testMode === "run" &&
+        entry.options.testTargetName === "test"
+    );
+    if (candidates.length !== 1) return conflict("nx.json", "@nx/vitest plugin configuration");
+    const plugin = candidates[0];
+    if (plugin === undefined) return conflict("nx.json", "@nx/vitest plugin configuration");
     const exclusions = plugin.exclude;
     if (!Array.isArray(exclusions) || exclusions.some((entry) => typeof entry !== "string"))
       return conflict("nx.json", "@nx/vitest exclude");
@@ -82,16 +92,33 @@ function migrateGeneratedDrift(tree: Tree) {
   });
 }
 
-function migrateOxlint(tree: Tree) {
+function planOxlintMigration(tree: Tree) {
   const path = "oxlint.config.ts";
   const source = tree.read(path, "utf-8");
   if (source === null) return conflict(path, "application lint and boundary policy");
   const filesCompliant = applicationFiles.test(source);
-  const boundaryCompliant = applicationBoundary.test(source);
+  const constraints = [...source.matchAll(dependencyConstraint)].map((match) => match[0]);
+  const newBoundaries = constraints.filter((constraint) => isApplicationBoundary(constraint, "type:app"));
+  const oldBoundaries = constraints.filter((constraint) => isApplicationBoundary(constraint, "scope:web"));
+  if (newBoundaries.length > 1 || (newBoundaries.length === 0 && oldBoundaries.length !== 1))
+    return conflict(path, "application dependency boundary");
+  const boundaryCompliant = newBoundaries.length === 1;
   if (filesCompliant && boundaryCompliant) return;
-  if ((!filesCompliant && !oldAppFiles.test(source)) || (!boundaryCompliant && !oldBoundary.test(source)))
-    return conflict(path, "application lint and boundary policy");
-  tree.write(path, source.replace(oldAppFiles, 'files: ["apps/**/*.{ts,tsx}"]').replace(oldBoundary, 'sourceTag: "type:app"'));
+  if (!filesCompliant && !oldAppFiles.test(source)) return conflict(path, "application lint and boundary policy");
+  const migratedBoundary = boundaryCompliant
+    ? source
+    : source.replace(oldBoundaries[0] ?? "", (constraint) =>
+        constraint.replace(/sourceTag:\s*(["'])scope:web\1/u, 'sourceTag: "type:app"')
+      );
+  return { path, source: migratedBoundary.replace(oldAppFiles, 'files: ["apps/**/*.{ts,tsx}"]') };
+}
+
+function isApplicationBoundary(constraint: string, sourceTag: string) {
+  const source = /sourceTag:\s*["']([^"']+)["']/u.exec(constraint)?.[1];
+  const targets = /onlyDependOnLibsWithTags:\s*\[([^\]]*)\]/u.exec(constraint)?.[1];
+  if (source !== sourceTag || targets === undefined) return false;
+  const tags = [...targets.matchAll(/["']([^"']+)["']/gu)].map((match) => match[1]).toSorted();
+  return tags.length === applicationTargetTags.length && tags.every((tag, index) => tag === applicationTargetTags[index]);
 }
 
 function migrateContinuousTargets(tree: Tree) {
