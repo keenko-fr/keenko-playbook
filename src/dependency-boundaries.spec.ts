@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import type { ProjectGraph } from "@nx/devkit";
 
-import { findDependencyBoundaryViolations, type DependencyConstraint, validateDependencyBoundaryPolicy } from "./dependency-boundaries.js";
+import { findConstraintsFor } from "../node_modules/@nx/eslint-plugin/dist/src/utils/runtime-lint-utils.js";
+import {
+  findDependencyBoundaryViolations,
+  type DependencyConstraint,
+  matchesProjectTag,
+  validateDependencyBoundaryPolicy,
+} from "./dependency-boundaries.js";
 
 const constraints = [
   { onlyDependOnLibsWithTags: ["type:package"], sourceTag: "type:package" },
@@ -67,5 +73,33 @@ describe("dependency-boundary graph verifier", () => {
         ],
       })
     ).toThrow("supports only sourceTag and onlyDependOnLibsWithTags for internal project dependency direction");
+  });
+
+  test("matches exact, wildcard, glob, and regex source tags like pinned Nx", () => {
+    const project = graph.nodes.admin;
+    const patterns = ["type:app", "scope:*", "*", "/^scope:(admin|ops)$/", "scope:ops"];
+    const projectWithScope = { ...project, data: { ...project.data, tags: ["type:app", "scope:admin"] } };
+
+    for (const sourceTag of patterns) {
+      const nxMatches = findConstraintsFor([{ onlyDependOnLibsWithTags: [], sourceTag }], projectWithScope).length > 0;
+      expect(matchesProjectTag(sourceTag, projectWithScope.data.tags)).toBe(nxMatches);
+    }
+  });
+
+  test("uses patterned target tags and rejects the same unmatched relationship", () => {
+    const scopedConstraints = [{ onlyDependOnLibsWithTags: ["scope:*"], sourceTag: "type:app" }];
+    const allowedGraph: ProjectGraph = {
+      ...graph,
+      dependencies: { ...graph.dependencies, admin: [{ source: "admin", target: "ui", type: "static" }], shared: [] },
+    };
+    const rejectedGraph: ProjectGraph = {
+      ...graph,
+      dependencies: { ...graph.dependencies, admin: [{ source: "admin", target: "web", type: "static" }], shared: [] },
+    };
+
+    expect(findDependencyBoundaryViolations(allowedGraph, scopedConstraints)).toEqual([]);
+    expect(findDependencyBoundaryViolations(rejectedGraph, scopedConstraints)).toEqual([
+      expect.objectContaining({ source: "admin", target: "web" }),
+    ]);
   });
 });
