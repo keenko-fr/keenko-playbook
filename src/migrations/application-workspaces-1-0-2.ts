@@ -103,15 +103,23 @@ function applicationClassRelation(pattern: string): ApplicationClassRelation {
 
 function classCanBeIncluded(patterns: readonly string[]) {
   if (patterns.length === 0) return true;
-  let canInclude = patterns[0]?.startsWith("!") ?? false;
+  let includesWholeClass = patterns[0]?.startsWith("!") ?? false;
+  const partialInclusions = new Set<string>();
   for (const pattern of patterns) {
     const relation = applicationClassRelation(pattern);
     if (relation === "none") continue;
+    const normalized = pattern.startsWith("!") ? pattern.slice(1) : pattern;
     if (pattern.startsWith("!")) {
-      if (relation === "all") canInclude = false;
-    } else canInclude = true;
+      if (relation === "all") {
+        includesWholeClass = false;
+        partialInclusions.clear();
+      } else partialInclusions.delete(normalized);
+    } else if (relation === "all") {
+      includesWholeClass = true;
+      partialInclusions.clear();
+    } else partialInclusions.add(normalized);
   }
-  return canInclude;
+  return includesWholeClass || partialInclusions.size > 0;
 }
 
 function classIsExcluded(patterns: readonly string[]) {
@@ -353,28 +361,112 @@ function isOriginBasedHostedUiDetection(source: string) {
     .map((match) => match[1]);
   return originNames.some((originName) => {
     if (originName === undefined) return false;
-    const helpers = [...source.matchAll(/const\s+([\w$]+)\s*=\s*\(\s*([\w$]+)(?:\s*:[^)]*)?\)\s*=>\s*([^;]+);/gu)]
-      .filter((match) => isOriginDepartureExpression(match[3] ?? "", match[2] ?? "", originName))
-      .map((match) => match[1])
-      .filter((name): name is string => name !== undefined);
-    return findCallArguments(source, /page\.waitFor(?:Request|URL)\s*\(/gu).some((argument) => {
-      const callback = /(?:async\s*)?\(\s*([\w$]+)(?:\s*:[^)]*)?\)\s*=>\s*([\s\S]*)/u.exec(argument);
-      if (callback === null) return helpers.some((helper) => argument.trim() === helper);
-      const parameter = callback[1] ?? "";
-      const body = callback[2] ?? "";
-      if (isOriginDepartureExpression(body, parameter, originName)) return true;
-      return helpers.some((helper) => new RegExp(`\\b${helper}\\s*\\(\\s*${parameter}(?:\\.url\\(\\))?\\s*\\)`, "u").test(body));
-    });
+    const helpers = findTransitionHelpers(source, originName);
+    const urlTransition = findCallArguments(source, /page\.waitForURL\s*\(/gu).some((argument) =>
+      waitForUrlProvesOriginDeparture(argument, helpers, originName)
+    );
+    const requestTransition = findCallArguments(source, /page\.waitForRequest\s*\(/gu).some((argument) =>
+      waitForRequestProvesNavigationDeparture(argument, helpers, originName)
+    );
+    return urlTransition || requestTransition;
   });
 }
 
-function isOriginDepartureExpression(expression: string, inputName: string, originName: string) {
+interface TransitionHelper {
+  readonly conjoinsNavigationAndOrigin: boolean;
+  readonly name: string;
+  readonly navigation: boolean;
+  readonly originInput: "request" | "url" | undefined;
+}
+
+function findTransitionHelpers(source: string, originName: string) {
+  return [...source.matchAll(/const\s+([\w$]+)\s*=\s*\(\s*([\w$]+)(?:\s*:[^)]*)?\)\s*=>\s*([^;]+);/gu)].flatMap(
+    (match): TransitionHelper[] => {
+      const name = match[1];
+      const parameter = match[2];
+      const body = match[3] ?? "";
+      if (name === undefined || parameter === undefined) return [];
+      const navigation = isNavigationRequestExpression(body, parameter);
+      const originInput = originDepartureInput(body, parameter, originName);
+      return [
+        {
+          conjoinsNavigationAndOrigin: navigation && originInput !== undefined && isUnambiguousConjunction(body),
+          name,
+          navigation,
+          originInput,
+        },
+      ];
+    }
+  );
+}
+
+function waitForUrlProvesOriginDeparture(argument: string, helpers: readonly TransitionHelper[], originName: string) {
+  const callback = parseWaitCallback(argument);
+  if (callback === undefined) return helpers.some(({ name, originInput }) => argument.trim() === name && originInput === "url");
+  if (originDepartureInput(callback.body, callback.parameter, originName) === "url") return true;
+  return helpers.some(
+    ({ name, originInput }) =>
+      originInput === "url" && new RegExp(`\\b${name}\\s*\\(\\s*${callback.parameter}\\s*\\)`, "u").test(callback.body)
+  );
+}
+
+function waitForRequestProvesNavigationDeparture(argument: string, helpers: readonly TransitionHelper[], originName: string) {
+  const callback = parseWaitCallback(argument);
+  if (callback === undefined)
+    return helpers.some(
+      ({ conjoinsNavigationAndOrigin, name, originInput }) =>
+        argument.trim() === name && conjoinsNavigationAndOrigin && originInput === "request"
+    );
+  const conjoinedHelper = helpers.some(
+    ({ conjoinsNavigationAndOrigin, name, originInput }) =>
+      conjoinsNavigationAndOrigin &&
+      originInput === "request" &&
+      new RegExp(`\\b${name}\\s*\\(\\s*${callback.parameter}\\s*\\)`, "u").test(callback.body)
+  );
+  if (conjoinedHelper) return true;
+  const navigation =
+    isNavigationRequestExpression(callback.body, callback.parameter) ||
+    helpers.some(
+      ({ name, navigation: helperNavigation }) =>
+        helperNavigation && new RegExp(`\\b${name}\\s*\\(\\s*${callback.parameter}\\s*\\)`, "u").test(callback.body)
+    );
+  const originDeparture =
+    originDepartureInput(callback.body, callback.parameter, originName) === "request" ||
+    helpers.some(({ name, originInput }) => {
+      const argumentPattern = originInput === "request" ? callback.parameter : `${callback.parameter}\\.url\\(\\)`;
+      return originInput !== undefined && new RegExp(`\\b${name}\\s*\\(\\s*${argumentPattern}\\s*\\)`, "u").test(callback.body);
+    });
+  return navigation && originDeparture && isUnambiguousConjunction(callback.body);
+}
+
+function isUnambiguousConjunction(expression: string) {
+  return expression.includes("&&") && !expression.includes("||") && !expression.includes("?");
+}
+
+function parseWaitCallback(argument: string) {
+  const callback = /(?:async\s*)?\(\s*([\w$]+)(?:\s*:[^)]*)?\)\s*=>\s*([\s\S]*)/u.exec(argument);
+  const parameter = callback?.[1];
+  const body = callback?.[2];
+  return parameter === undefined || body === undefined ? undefined : { body, parameter };
+}
+
+function isNavigationRequestExpression(expression: string, inputName: string) {
+  const escapedInput = inputName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
+  return new RegExp(`(?:^|&&)\\s*\\(*\\s*${escapedInput}\\.isNavigationRequest\\(\\)\\s*\\)*(?=\\s*(?:&&|$))`, "u").test(expression);
+}
+
+function originDepartureInput(expression: string, inputName: string, originName: string): "request" | "url" | undefined {
   const escapedInput = inputName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
   const escapedOrigin = originName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
-  return new RegExp(
-    `(?:new URL\\(\\s*${escapedInput}(?:\\.url\\(\\))?\\s*\\)\\.origin|${escapedInput}\\.origin)\\s*!==\\s*${escapedOrigin}`,
-    "u"
-  ).test(expression);
+  if (new RegExp(`new URL\\(\\s*${escapedInput}\\.url\\(\\)\\s*\\)\\.origin\\s*!==\\s*${escapedOrigin}`, "u").test(expression))
+    return "request";
+  if (
+    new RegExp(`(?:new URL\\(\\s*${escapedInput}\\s*\\)\\.origin|${escapedInput}\\.origin)\\s*!==\\s*${escapedOrigin}`, "u").test(
+      expression
+    )
+  )
+    return "url";
+  return undefined;
 }
 
 function findCallArguments(source: string, callPattern: RegExp) {
