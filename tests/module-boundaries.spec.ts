@@ -1,6 +1,6 @@
-/* oxlint-disable effect/noGlobals, effect/noNodeBuiltinImport -- Synchronous platform adapters keep this generated-tool integration fixture narrow. */
-import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+/* oxlint-disable effect/noGlobals, effect/noNodeBuiltinImport, effect/noNullish -- Synchronous platform adapters and process environment forwarding keep this generated-tool integration fixture narrow. */
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -13,6 +13,22 @@ import type { PackageJson } from "../src/generators/helpers.js";
 import { presetProgram } from "../src/generators/preset/preset.js";
 
 const platformLayer = L.mergeAll(NodeFileSystem.layer, NodePath.layer);
+setDefaultTimeout(60_000);
+
+const runGraphBoundaryVerifier = (repository: string, workspace: string, env: Record<string, string | undefined>) => {
+  const commandDirectory = path.join(workspace, ".test-bin");
+  const commandPath = path.join(commandDirectory, "keenko-verify-boundaries");
+  mkdirSync(commandDirectory);
+  writeFileSync(
+    commandPath,
+    `#!/usr/bin/env sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(repository, "src/verify-dependency-boundaries.ts"))}\n`
+  );
+  chmodSync(commandPath, 0o755);
+  return Bun.spawnSync([process.execPath, "run", "boundaries:check"], {
+    cwd: workspace,
+    env: { ...env, PATH: `${commandDirectory}${path.delimiter}${env.PATH ?? ""}` },
+  });
+};
 
 describe("generated Nx/Oxlint module boundaries", () => {
   test("rejects a shared-to-ui dependency", () =>
@@ -55,6 +71,11 @@ describe("generated Nx/Oxlint module boundaries", () => {
 
             expect(result.exitCode).not.toBe(0);
             expect(output).toMatch(/@nx(?:\/|\()enforce-module-boundaries\)?/u);
+            const boundaryResult = runGraphBoundaryVerifier(repository, workspace, nxEnvironment);
+            expect(boundaryResult.exitCode).not.toBe(0);
+            expect(boundaryResult.stderr.toString()).toContain("@boundary-test/shared");
+            expect(boundaryResult.stderr.toString()).toContain("@boundary-test/ui");
+            expect(boundaryResult.stderr.toString()).toContain("scope:shared may depend only on [no internal projects]");
           }),
         (workspace) =>
           E.sync(() => {
@@ -82,7 +103,6 @@ describe("generated Nx/Oxlint module boundaries", () => {
                 type: "module",
               })
             );
-            tree.write("apps/admin/src/forbidden.ts", 'import "../../web/src/router";\n');
             tree.write(
               "apps/admin/vitest.config.ts",
               'import { defineConfig } from "vitest/config";\n\nexport default defineConfig({ test: { passWithNoTests: true } });\n'
@@ -110,13 +130,26 @@ describe("generated Nx/Oxlint module boundaries", () => {
             expect(graph.stdout.toString()).toContain("@multi-app-test/admin");
             expect(existsSync(path.join(workspace, "apps/admin/.vite-config-evaluated"))).toBe(false);
 
-            const result = Bun.spawnSync([path.join(repository, "node_modules/.bin/oxlint"), "apps/admin/src/forbidden.ts"], {
-              cwd: workspace,
-              env: nxEnvironment,
-            });
+            const graphInspection = Bun.spawnSync(
+              [
+                process.execPath,
+                "-e",
+                'import { createProjectGraphAsync } from "@nx/devkit"; const graph = await createProjectGraphAsync({ exitOnError: false }); console.log(JSON.stringify(graph.dependencies["@multi-app-test/admin"]));',
+              ],
+              {
+                cwd: workspace,
+                env: nxEnvironment,
+              }
+            );
+            expect(graphInspection.exitCode, graphInspection.stderr.toString()).toBe(0);
+            expect(graphInspection.stdout.toString()).toContain('"target":"@multi-app-test/web"');
+
+            const result = runGraphBoundaryVerifier(repository, workspace, nxEnvironment);
             const output = `${result.stdout.toString()}\n${result.stderr.toString()}`;
             expect(result.exitCode).not.toBe(0);
-            expect(output).toMatch(/@nx(?:\/|\()enforce-module-boundaries\)?/u);
+            expect(output).toContain("@multi-app-test/admin");
+            expect(output).toContain("@multi-app-test/web");
+            expect(output).toContain("type:app may depend only on [scope:backend, scope:ui, scope:shared]");
           }),
         (workspace) =>
           E.sync(() => {

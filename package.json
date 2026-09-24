@@ -8,6 +8,9 @@
     "type": "git",
     "url": "git+https://github.com/keenko-fr/keenko-playbook.git"
   },
+  "bin": {
+    "keenko-verify-boundaries": "./dist/verify-dependency-boundaries.js"
+  },
   "files": [
     "dist",
     "!**/*.tsbuildinfo",

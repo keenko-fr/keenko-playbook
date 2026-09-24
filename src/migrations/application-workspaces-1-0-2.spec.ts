@@ -15,10 +15,22 @@ interface VitestPluginRegistration {
 }
 
 const oldCheck = "nx sync:check && git status --porcelain -- apps/web/src/routeTree.gen.ts";
-const oldOxlint = `export default {
+const oldOxlint = `import { defineConfig } from "oxlint";
+
+export default defineConfig({
   overrides: [{ files: ["apps/web/**/*.{ts,tsx}"] }],
-  rules: [{ onlyDependOnLibsWithTags: ["scope:backend", "scope:ui", "scope:shared"], sourceTag: "scope:web" }],
-};\n`;
+  rules: {
+    boundaries: [{
+      depConstraints: [
+        { onlyDependOnLibsWithTags: ["type:package"], sourceTag: "type:package" },
+        { onlyDependOnLibsWithTags: ["scope:backend", "scope:ui", "scope:shared"], sourceTag: "scope:web" },
+        { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:backend" },
+        { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:ui" },
+        { onlyDependOnLibsWithTags: [], sourceTag: "scope:shared" },
+      ],
+    }],
+  },
+});\n`;
 const oldSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
 const request = (request: { isNavigationRequest(): boolean; url(): string }) => request.isNavigationRequest() && /(?:authkit|workos)/u.test(request.url());
 page.waitForURL(/(?:authkit|workos)/u);
@@ -79,12 +91,17 @@ describe("1.0.2 application-workspace migration", () => {
     await migration(tree);
 
     expect(readJson<{ plugins: { exclude: string[] }[] }>(tree, "nx.json").plugins[0]?.exclude).toEqual(["apps/*/vite.config.ts"]);
-    expect(readJson<{ scripts: { check: string } }>(tree, "package.json").scripts.check).toContain(":(glob)apps/*/src/routeTree.gen.ts");
+    const { scripts } = readJson<{ scripts: { "boundaries:check": string; check: string } }>(tree, "package.json");
+    expect(scripts.check).toContain(":(glob)apps/*/src/routeTree.gen.ts");
+    expect(scripts.check).toContain("bun run boundaries:check");
+    expect(scripts["boundaries:check"]).toBe("keenko-verify-boundaries");
     for (const path of ["apps/web/package.json", "apps/admin/package.json", "packages/backend/package.json"])
       expect(readJson<{ nx: { targets: { dev: { continuous: boolean } } } }>(tree, path).nx.targets.dev.continuous).toBe(true);
     expect(readJson<{ nx: { tags: string[] } }>(tree, "apps/web/package.json").nx.tags).toEqual(["type:app", "scope:web"]);
     expect(readJson<{ nx: { tags: string[] } }>(tree, "apps/admin/package.json").nx.tags).toEqual(["scope:admin", "type:app"]);
-    expect(tree.read("oxlint.config.ts", "utf-8")).toContain("sourceTag: 'type:app'");
+    expect(tree.read("oxlint.config.ts", "utf-8")).toContain("depConstraints: dependencyConstraints");
+    expect(tree.read("oxlint.config.ts", "utf-8")).not.toContain("onlyDependOnLibsWithTags");
+    expect(tree.read("tools/dependency-boundaries.ts", "utf-8")).toContain("sourceTag: 'type:app'");
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).not.toContain("authkit|workos");
   });
 
@@ -140,39 +157,87 @@ describe("1.0.2 application-workspace migration", () => {
 
   test("rejects ambiguous duplicate Keenko-shaped Vitest registrations without mutation", () => {
     const tree = makeTree();
-    const plugins = [vitestRegistration(["apps/web/vite.config.ts"]), vitestRegistration(["examples/**", "apps/*/vite.config.ts"])];
+    const plugins = [vitestRegistration(["apps/web/vite.config.ts"]), vitestRegistration(["examples/**", "apps/web/vite.config.ts"])];
     tree.write("nx.json", JSON.stringify({ plugins }));
     const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
 
-    expect(() => migration(tree)).toThrow("@nx/vitest plugin ownership");
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
     expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
   });
 
-  test("rejects a Vitest registration with customized owned options without mutating it", () => {
+  test("preserves a compliant Vitest exclusion with customized options", async () => {
     const tree = makeTree();
     const plugins = [
       {
-        exclude: ["apps/web/vite.config.ts"],
+        exclude: ["tools/foo/vite.config.ts", "apps/*/vite.config.ts"],
         options: { testMode: "watch", testTargetName: "test" },
         plugin: "@nx/vitest",
       },
     ];
     tree.write("nx.json", JSON.stringify({ plugins }));
 
-    expect(() => migration(tree)).toThrow("@nx/vitest plugin ownership");
+    await migration(tree);
+
     expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins).toEqual(plugins);
+  });
+
+  test("preserves a Vitest registration whose ordered include scope excludes applications", async () => {
+    const tree = makeTree();
+    const projectRegistration = {
+      exclude: ["tools/legacy/**"],
+      include: ["!apps/**", "tools/**"],
+      options: { testMode: "watch", testTargetName: "test" },
+      plugin: "@nx/vitest",
+    };
+    const plugins = [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])];
+    tree.write("nx.json", JSON.stringify({ plugins }));
+
+    await migration(tree);
+
+    const migrated = readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins;
+    expect(migrated[0]).toEqual(projectRegistration);
+    expect(migrated[1]?.exclude).toEqual(["apps/*/vite.config.ts"]);
+  });
+
+  test("rejects a second Vitest registration that still covers application configs", () => {
+    const tree = makeTree();
+    const plugins = [
+      { options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
+      vitestRegistration(["apps/web/vite.config.ts"]),
+    ];
+    tree.write("nx.json", JSON.stringify({ plugins }));
+    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+  });
+
+  test("rejects an ordered Vitest exclusion that re-enables an application config", () => {
+    const tree = makeTree();
+    const plugins = [
+      {
+        exclude: ["apps/*/vite.config.ts", "!apps/admin/vite.config.ts"],
+        options: { testMode: "watch", testTargetName: "test" },
+        plugin: "@nx/vitest",
+      },
+    ];
+    tree.write("nx.json", JSON.stringify({ plugins }));
+    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
   });
 
   test("migrates only the complete legacy application boundary after a stricter scope rule", async () => {
     const tree = makeTree();
     tree.write(
       "oxlint.config.ts",
-      oldOxlint.replace("rules: [", 'rules: [{ onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:web" }, ')
+      oldOxlint.replace("depConstraints: [", 'depConstraints: [{ onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:web" }, ')
     );
 
     await migration(tree);
 
-    const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
+    const source = tree.read("tools/dependency-boundaries.ts", "utf-8") ?? "";
     expect(source).toContain("onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'scope:web'");
     expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(1);
   });
@@ -181,12 +246,12 @@ describe("1.0.2 application-workspace migration", () => {
     const tree = makeTree();
     tree.write(
       "oxlint.config.ts",
-      oldOxlint.replace("rules: [", 'rules: [{ onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "type:app" }, ')
+      oldOxlint.replace("depConstraints: [", 'depConstraints: [{ onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "type:app" }, ')
     );
 
     await migration(tree);
 
-    const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
+    const source = tree.read("tools/dependency-boundaries.ts", "utf-8") ?? "";
     expect(source).toContain("onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'type:app'");
     expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(2);
   });
@@ -196,12 +261,12 @@ describe("1.0.2 application-workspace migration", () => {
     const compliant = oldOxlint
       .replace('"scope:backend", "scope:ui", "scope:shared"', '"scope:shared", "scope:backend", "scope:ui"')
       .replace('sourceTag: "scope:web"', 'sourceTag: "type:app"')
-      .replace("rules: [", 'rules: [{ onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:web" }, ');
+      .replace("depConstraints: [", 'depConstraints: [{ onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:web" }, ');
     tree.write("oxlint.config.ts", compliant);
 
     await migration(tree);
 
-    const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
+    const source = tree.read("tools/dependency-boundaries.ts", "utf-8") ?? "";
     expect(source).toContain("onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'scope:web'");
     expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(1);
   });
@@ -212,7 +277,7 @@ describe("1.0.2 application-workspace migration", () => {
     tree.write("oxlint.config.ts", customized);
     const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
 
-    expect(() => migration(tree)).toThrow("application dependency boundary");
+    expect(() => migration(tree)).toThrow("application dependency constraint");
     expect(tree.read("oxlint.config.ts", "utf-8")).toBe(customized);
     expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
   });
@@ -225,6 +290,56 @@ describe("1.0.2 application-workspace migration", () => {
 
     expect(() => migration(tree)).toThrow("Hosted UI transition detection");
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(customizedSmoke);
+    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+  });
+
+  test("rejects customized provider-hostname AuthKit detection without mutation", () => {
+    const tree = makeTree();
+    const customizedSmoke = oldSmoke.replaceAll("/(?:authkit|workos)/u", "/login\\.workos\\.com/u");
+    tree.write("apps/web/e2e/auth.e2e.ts", customizedSmoke);
+    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+  });
+
+  test("recognizes a semantically compliant origin-based AuthKit smoke", async () => {
+    const tree = makeTree();
+    const compliantSmoke = `const startUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const localOrigin = new URL(startUrl).origin;
+const leftLocalApplication = (location: string) => new URL(location).origin !== localOrigin;
+page.waitForRequest((request) => request.isNavigationRequest() && leftLocalApplication(request.url()));
+page.waitForURL((location) => location.origin !== localOrigin);
+expect(new URL(page.url()).origin).not.toBe(localOrigin);\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
+
+    await migration(tree);
+
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("leftLocalApplication");
+  });
+
+  test("rejects a partial origin-based AuthKit smoke without mutation", () => {
+    const tree = makeTree();
+    const partialSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
+const applicationOrigin = new URL(baseUrl).origin;
+page.waitForURL((url) => url.origin !== applicationOrigin);\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", partialSmoke);
+    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+  });
+
+  test("rejects transition logic comparing an origin unrelated to AUTH_E2E_BASE_URL", () => {
+    const tree = makeTree();
+    const unrelatedOriginSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
+const unrelatedOrigin = new URL("https://example.com").origin;
+page.waitForURL((url) => url.origin !== unrelatedOrigin);
+expect(new URL(page.url()).origin).not.toBe(unrelatedOrigin);\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", unrelatedOriginSmoke);
+    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
     expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
   });
 

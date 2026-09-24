@@ -1,0 +1,7 @@
+export const dependencyConstraints = [
+  { onlyDependOnLibsWithTags: ["type:package"], sourceTag: "type:package" },
+  { onlyDependOnLibsWithTags: ["scope:backend", "scope:ui", "scope:shared"], sourceTag: "type:app" },
+  { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:backend" },
+  { onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:ui" },
+  { onlyDependOnLibsWithTags: [], sourceTag: "scope:shared" },
+];
