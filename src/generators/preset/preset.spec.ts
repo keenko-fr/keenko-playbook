@@ -24,8 +24,9 @@ const expectedWorkspaces = ["apps/*", "packages/*"];
 const exactPackageVersion = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 
 const expectedScripts = {
+  "boundaries:check": "keenko-verify-boundaries",
   build: "nx run-many -t build",
-  check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
+  check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run boundaries:check && bun run typecheck && bun run test && bun run build`,
   codegen: "nx run-many -t codegen",
   dev: 'NX_TUI=false convex dev --start "nx run-many -t dev"',
   format: "oxfmt .",
@@ -352,6 +353,7 @@ describe("keenko preset", () => {
           generatedDriftCheck,
           "bun run format:check",
           "bun run lint",
+          "bun run boundaries:check",
           "bun run typecheck",
           "bun run test",
           "bun run build",
@@ -529,8 +531,11 @@ describe("keenko preset", () => {
         expect(rootRoute).not.toContain("<ConvexProvider");
 
         expect(oxlintConfig).toContain('files: ["apps/**/*.{ts,tsx}"]');
-        expect(oxlintConfig).toContain('sourceTag: "type:app"');
         expect(oxlintConfig).not.toContain('sourceTag: "scope:web"');
+        expect(oxlintConfig).toContain('import { dependencyConstraints } from "./tools/dependency-boundaries.ts"');
+        expect(oxlintConfig).toContain("depConstraints: dependencyConstraints");
+        expect(oxlintConfig).not.toContain("onlyDependOnLibsWithTags");
+        expect(tree.read("tools/dependency-boundaries.ts", "utf-8")).toContain('sourceTag: "type:app"');
         expect(oxlintConfig).toContain('"eslint/sort-keys": "off"');
       })
     ));

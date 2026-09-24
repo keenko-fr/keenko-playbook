@@ -44,8 +44,9 @@ export const devDependencies = Struct.pick(packageVersions, [
 export const generatedDriftCheck = `{ generated_drift="$(git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts' packages/backend/confect/_generated packages/backend/convex ':(exclude)packages/backend/convex/convex.config.ts' ':(exclude)packages/backend/convex/tsconfig.json')" || { generated_status=$?; printf 'Unable to inspect generated code with Git.\\n' >&2; exit "$generated_status"; }; if git rev-parse --verify HEAD >/dev/null 2>&1; then if [ -n "$generated_drift" ]; then printf 'Generated code has drifted:\\n%s\\n' "$generated_drift"; exit 1; fi; else head_ref="$(git symbolic-ref --quiet HEAD 2>/dev/null)" || { printf 'Unable to resolve Git HEAD as a commit or unborn main.\\n' >&2; exit 1; }; if [ "$head_ref" != "refs/heads/main" ]; then printf 'Unable to resolve Git HEAD as a commit or unborn main.\\n' >&2; exit 1; fi; git show-ref --verify --quiet refs/heads/main; main_ref_status=$?; if [ "$main_ref_status" -ne 1 ]; then printf 'Unable to resolve Git HEAD as a commit or unborn main.\\n' >&2; exit 1; fi; fi; }`;
 
 export const scripts = {
+  "boundaries:check": "keenko-verify-boundaries",
   build: "nx run-many -t build",
-  check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build`,
+  check: `nx sync:check && bun run codegen && ${generatedDriftCheck} && bun run format:check && bun run lint && bun run boundaries:check && bun run typecheck && bun run test && bun run build`,
   codegen: "nx run-many -t codegen",
   dev: 'NX_TUI=false convex dev --start "nx run-many -t dev"',
   format: "oxfmt .",

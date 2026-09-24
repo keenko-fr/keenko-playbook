@@ -193,6 +193,7 @@ managed-state drift
 -> generated-code drift when applicable
 -> format
 -> lint
+-> graph dependency boundaries
 -> typecheck
 -> tests
 -> build when applicable
@@ -203,9 +204,9 @@ Only applicable stages run.
 
 ## Workspace boundaries
 
-Nx owns the workspace project graph and workspace dependency-boundary enforcement.
+Nx owns workspace discovery and the project graph. The project-owned `tools/dependency-boundaries.ts` file is the single source of dependency-boundary policy. Keenko seeds its baseline constraints, and projects may add stricter `scope:*` constraints there when their ownership model requires them.
 
-Keenko configures Nx/Oxlint boundary constraints around the initial workspace model.
+Oxlint applies that policy to source imports for fast, file-specific diagnostics. Keenko's graph verifier applies the same policy to every internal edge in the native Nx project graph, including dependencies declared only in workspace manifests. `bun run check` runs both and is the final dependency-boundary gate.
 
 A fresh project starts with:
 
@@ -230,9 +231,7 @@ scope:shared
 
 Application-specific `scope:*` tags are optional project metadata for stricter boundaries; they are not part of the fresh required baseline.
 
-Nx is the sole implementation of package and source dependency-boundary checks.
-
-When the pinned Nx boundary implementation changes materially, verify source and package dependency enforcement against the project graph before changing the Keenko boundary configuration.
+When the pinned Nx graph or Oxlint boundary implementation changes materially, verify source diagnostics and graph-wide enforcement before changing the shared project policy.
 
 ## CI
 
