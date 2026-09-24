@@ -67,6 +67,12 @@ const makeTree = () => {
   return tree;
 };
 
+const snapshotChanges = (tree: ReturnType<typeof makeTree>) => tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+
+const addInlineConstraint = (tree: ReturnType<typeof makeTree>, constraint: string) => {
+  tree.write("oxlint.config.ts", oldOxlint.replace("depConstraints: [", `depConstraints: [${constraint}, `));
+};
+
 describe("1.0.2 application-workspace migration", () => {
   test("is selected by native Nx for a 1.0.1 to 1.0.2 release-candidate plan", async () => {
     const migrationConfig = readJsonFile<ResolvedMigrationConfiguration>("migrations.json");
@@ -271,15 +277,64 @@ describe("1.0.2 application-workspace migration", () => {
     expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(1);
   });
 
+  test("leaves an already-shared policy with a valid narrow project constraint unchanged", async () => {
+    const tree = makeTree();
+    await migration(tree);
+    const policy = tree.read("tools/dependency-boundaries.ts", "utf-8") ?? "";
+    tree.write(
+      "tools/dependency-boundaries.ts",
+      policy.replace(
+        "export const dependencyConstraints = [",
+        "export const dependencyConstraints = [\n  { onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'scope:admin' },"
+      )
+    );
+    const before = snapshotChanges(tree);
+
+    await migration(tree);
+
+    expect(snapshotChanges(tree)).toEqual(before);
+    expect(tree.read("tools/dependency-boundaries.ts", "utf-8")).toContain("sourceTag: 'scope:admin'");
+  });
+
+  test("rejects allSourceTags policy customization without mutation", () => {
+    const tree = makeTree();
+    addInlineConstraint(tree, '{ allSourceTags: ["type:app"], onlyDependOnLibsWithTags: ["scope:shared"] }');
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("dependency constraints");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects notDependOnLibsWithTags policy customization without mutation", () => {
+    const tree = makeTree();
+    addInlineConstraint(
+      tree,
+      '{ sourceTag: "scope:admin", onlyDependOnLibsWithTags: ["scope:shared"], notDependOnLibsWithTags: ["scope:ui"] }'
+    );
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("dependency constraints");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each(["allowedExternalImports", "bannedExternalImports"])("rejects %s policy customization without mutation", (field) => {
+    const tree = makeTree();
+    addInlineConstraint(tree, `{ sourceTag: "scope:admin", onlyDependOnLibsWithTags: ["scope:shared"], ${field}: ["example"] }`);
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("dependency constraints");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
   test("rejects a customized application boundary without mutating Oxlint source", () => {
     const tree = makeTree();
     const customized = oldOxlint.replace('"scope:backend", "scope:ui", "scope:shared"', '"scope:ui", "scope:shared"');
     tree.write("oxlint.config.ts", customized);
-    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+    const before = snapshotChanges(tree);
 
     expect(() => migration(tree)).toThrow("application dependency constraint");
     expect(tree.read("oxlint.config.ts", "utf-8")).toBe(customized);
-    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+    expect(snapshotChanges(tree)).toEqual(before);
   });
 
   test("rejects a customized old auth smoke without partially rewriting it", () => {

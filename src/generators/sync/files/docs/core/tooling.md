@@ -204,9 +204,16 @@ Only applicable stages run.
 
 ## Workspace boundaries
 
-Nx owns workspace discovery and the project graph. The project-owned `tools/dependency-boundaries.ts` file is the single source of dependency-boundary policy. Keenko seeds its baseline constraints, and projects may add stricter `scope:*` constraints there when their ownership model requires them.
+Nx owns workspace discovery and the project graph. The project-owned `tools/dependency-boundaries.ts` file is the single source for internal Nx project dependency-direction constraints. Its deliberately narrow constraint shape is `sourceTag: string` plus `onlyDependOnLibsWithTags: string[]`. Keenko seeds the baseline, and projects may add stricter `scope:*` constraints using that same shape when their ownership model requires them. For example:
 
-Oxlint applies that policy to source imports for fast, file-specific diagnostics. Keenko's graph verifier applies the same policy to every internal edge in the native Nx project graph, including dependencies declared only in workspace manifests. `bun run check` runs both and is the final dependency-boundary gate.
+```ts
+{
+  sourceTag: "scope:admin",
+  onlyDependOnLibsWithTags: ["scope:backend", "scope:shared"],
+}
+```
+
+Oxlint applies those direction constraints to source imports for fast, file-specific diagnostics. Other source-level boundary concerns, such as external-import restrictions, remain Oxlint-specific configuration and do not belong in the shared graph policy. Keenko's graph verifier evaluates only the shared internal-project direction policy against every internal edge in the native Nx project graph, including dependencies declared only in workspace manifests. `bun run check` runs both and is the final graph-boundary gate.
 
 A fresh project starts with:
 
