@@ -250,6 +250,122 @@ describe("1.0.2 application-workspace migration", () => {
     expect(plugins[1]?.exclude).toEqual(["apps/*/vite.config.ts"]);
   });
 
+  test("treats identical partial include and exclude scopes as harmless", async () => {
+    const tree = makeTree();
+    const projectRegistration = {
+      exclude: ["apps/pro*/vite.config.ts"],
+      include: ["apps/pro*/vite.config.ts"],
+      options: { testMode: "watch", testTargetName: "other-test" },
+      plugin: "@nx/vitest",
+    };
+    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
+
+    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], projectRegistration.include, projectRegistration.exclude)).toEqual([]);
+    await migration(tree);
+
+    const { plugins } = readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json");
+    expect(plugins[0]).toEqual(projectRegistration);
+    expect(plugins[1]?.exclude).toEqual(["apps/*/vite.config.ts"]);
+  });
+
+  test("leaves an already-compliant registration with cancelled partial scope unchanged", async () => {
+    const tree = makeTree();
+    await migration(tree);
+    const plugins = [
+      {
+        exclude: ["apps/pro*/vite.config.ts"],
+        include: ["apps/pro*/vite.config.ts"],
+        options: { testMode: "watch", testTargetName: "other-test" },
+        plugin: "@nx/vitest",
+      },
+      vitestRegistration(["apps/*/vite.config.ts"]),
+    ];
+    tree.write("nx.json", JSON.stringify({ plugins }));
+
+    await migration(tree);
+
+    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins).toEqual(plugins);
+  });
+
+  test("keeps coverage when the exclude removes only part of the include", () => {
+    const tree = makeTree();
+    const include = ["apps/pro*/vite.config.ts"];
+    const exclude = ["apps/pro-admin/vite.config.ts"];
+    tree.write(
+      "nx.json",
+      JSON.stringify({
+        plugins: [
+          { exclude, include, options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
+          vitestRegistration(["apps/web/vite.config.ts"]),
+        ],
+      })
+    );
+    const before = snapshotChanges(tree);
+
+    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], include, exclude)).toEqual(["apps/pro/vite.config.ts"]);
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("treats whole-class include and exclude scopes as harmless", async () => {
+    const tree = makeTree();
+    const projectRegistration = {
+      exclude: ["apps/*/vite.config.ts"],
+      include: ["apps/*/vite.config.ts"],
+      options: { testMode: "watch", testTargetName: "other-test" },
+      plugin: "@nx/vitest",
+    };
+    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
+
+    await migration(tree);
+
+    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins[0]).toEqual(projectRegistration);
+  });
+
+  test("keeps coverage when a broad include has a narrower exclude", () => {
+    const tree = makeTree();
+    tree.write(
+      "nx.json",
+      JSON.stringify({
+        plugins: [
+          {
+            exclude: ["apps/pro*/vite.config.ts"],
+            include: ["apps/**/vite.config.ts"],
+            options: { testMode: "watch", testTargetName: "other-test" },
+            plugin: "@nx/vitest",
+          },
+          vitestRegistration(["apps/web/vite.config.ts"]),
+        ],
+      })
+    );
+
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+  });
+
+  test("keeps coverage when an ordered exclusion re-enables a partial region", () => {
+    const tree = makeTree();
+    const exclude = ["apps/pro*/vite.config.ts", "!apps/pro*/vite.config.ts"];
+    tree.write(
+      "nx.json",
+      JSON.stringify({
+        plugins: [
+          {
+            exclude,
+            include: ["apps/pro*/vite.config.ts"],
+            options: { testMode: "watch", testTargetName: "other-test" },
+            plugin: "@nx/vitest",
+          },
+          vitestRegistration(["apps/web/vite.config.ts"]),
+        ],
+      })
+    );
+
+    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], ["apps/pro*/vite.config.ts"], exclude)).toEqual([
+      "apps/pro/vite.config.ts",
+    ]);
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+  });
+
   test("leaves compliant state with a cancelled partial application scope semantically unchanged", async () => {
     const tree = makeTree();
     await migration(tree);
@@ -479,6 +595,74 @@ await page.waitForURL((location) => location.origin !== localOrigin);\n`;
     await migration(tree);
 
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("page.waitForURL((location) => location.origin !== localOrigin)");
+  });
+
+  test("recognizes origin departure in a required URL conjunction", async () => {
+    const tree = makeTree();
+    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+await page.waitForURL((url) => url.origin !== appOrigin && anotherRequiredCondition);\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
+
+    await migration(tree);
+
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin && anotherRequiredCondition");
+  });
+
+  test("recognizes a directly passed helper that requires origin departure", async () => {
+    const tree = makeTree();
+    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: URL) => url.origin !== appOrigin;
+await page.waitForURL(isOutsideApp);\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
+
+    await migration(tree);
+
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("page.waitForURL(isOutsideApp)");
+  });
+
+  test("recognizes an origin helper in a required URL conjunction", async () => {
+    const tree = makeTree();
+    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: URL) => url.origin !== appOrigin;
+await page.waitForURL((url) => isOutsideApp(url) && anotherRequiredCondition);\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
+
+    await migration(tree);
+
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("isOutsideApp(url) && anotherRequiredCondition");
+  });
+
+  test.each([
+    "url.origin !== appOrigin || true",
+    "otherCondition || url.origin !== appOrigin",
+    "condition ? url.origin !== appOrigin : true",
+    "!(url.origin !== appOrigin) && anotherCondition",
+  ])("rejects optional or negated URL origin departure: %s", (predicate) => {
+    const tree = makeTree();
+    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+await page.waitForURL((url) => ${predicate});\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects a directly passed helper with optional origin departure", () => {
+    const tree = makeTree();
+    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: URL) => url.origin !== appOrigin || true;
+await page.waitForURL(isOutsideApp);\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
   });
 
   test("recognizes an origin helper used by the actual waitForRequest transition", async () => {
