@@ -86,7 +86,9 @@ function migrateVitestDiscovery(tree: Tree) {
 function registrationCoversApplicationViteConfig(registration: JsonObject) {
   const inclusions = isStringArray(registration.include) ? registration.include : [];
   const exclusions = isStringArray(registration.exclude) ? registration.exclude : [];
-  return classCanBeIncluded(inclusions) && !classIsExcluded(exclusions);
+  const included = includedApplicationRegions(inclusions);
+  if (included.whole) return !classIsExcluded(exclusions);
+  return [...included.partial].some((region) => !classExcludesRegion(exclusions, region));
 }
 
 type ApplicationClassRelation = "all" | "none" | "some";
@@ -101,8 +103,8 @@ function applicationClassRelation(pattern: string): ApplicationClassRelation {
   return "some";
 }
 
-function classCanBeIncluded(patterns: readonly string[]) {
-  if (patterns.length === 0) return true;
+function includedApplicationRegions(patterns: readonly string[]) {
+  if (patterns.length === 0) return { partial: new Set<string>(), whole: true };
   let includesWholeClass = patterns[0]?.startsWith("!") ?? false;
   const partialInclusions = new Set<string>();
   for (const pattern of patterns) {
@@ -119,7 +121,21 @@ function classCanBeIncluded(patterns: readonly string[]) {
       partialInclusions.clear();
     } else partialInclusions.add(normalized);
   }
-  return includesWholeClass || partialInclusions.size > 0;
+  return { partial: partialInclusions, whole: includesWholeClass };
+}
+
+function classExcludesRegion(patterns: readonly string[], region: string) {
+  let excluded = patterns[0]?.startsWith("!") ?? false;
+  for (const pattern of patterns) {
+    const relation = applicationClassRelation(pattern);
+    if (relation === "none") continue;
+    const normalized = pattern.startsWith("!") ? pattern.slice(1) : pattern;
+    if (pattern.startsWith("!")) {
+      // An unknown overlap may re-enable part of this region, so it cannot prove exclusion.
+      excluded = false;
+    } else if (relation === "all" || normalized === region) excluded = true;
+  }
+  return excluded;
 }
 
 function classIsExcluded(patterns: readonly string[]) {
@@ -377,6 +393,7 @@ interface TransitionHelper {
   readonly name: string;
   readonly navigation: boolean;
   readonly originInput: "request" | "url" | undefined;
+  readonly originRequired: boolean;
 }
 
 function findTransitionHelpers(source: string, originName: string) {
@@ -394,6 +411,7 @@ function findTransitionHelpers(source: string, originName: string) {
           name,
           navigation,
           originInput,
+          originRequired: originInput !== undefined && hasRequiredPositiveConditions(body),
         },
       ];
     }
@@ -402,11 +420,13 @@ function findTransitionHelpers(source: string, originName: string) {
 
 function waitForUrlProvesOriginDeparture(argument: string, helpers: readonly TransitionHelper[], originName: string) {
   const callback = parseWaitCallback(argument);
-  if (callback === undefined) return helpers.some(({ name, originInput }) => argument.trim() === name && originInput === "url");
+  if (callback === undefined)
+    return helpers.some(({ name, originInput, originRequired }) => argument.trim() === name && originInput === "url" && originRequired);
+  if (!hasRequiredPositiveConditions(callback.body)) return false;
   if (originDepartureInput(callback.body, callback.parameter, originName) === "url") return true;
   return helpers.some(
-    ({ name, originInput }) =>
-      originInput === "url" && new RegExp(`\\b${name}\\s*\\(\\s*${callback.parameter}\\s*\\)`, "u").test(callback.body)
+    ({ name, originInput, originRequired }) =>
+      originInput === "url" && originRequired && new RegExp(`\\b${name}\\s*\\(\\s*${callback.parameter}\\s*\\)`, "u").test(callback.body)
   );
 }
 
@@ -440,7 +460,11 @@ function waitForRequestProvesNavigationDeparture(argument: string, helpers: read
 }
 
 function isUnambiguousConjunction(expression: string) {
-  return expression.includes("&&") && !expression.includes("||") && !expression.includes("?");
+  return expression.includes("&&") && hasRequiredPositiveConditions(expression);
+}
+
+function hasRequiredPositiveConditions(expression: string) {
+  return !expression.includes("||") && !expression.includes("?") && !expression.replaceAll("!==", "").includes("!");
 }
 
 function parseWaitCallback(argument: string) {
