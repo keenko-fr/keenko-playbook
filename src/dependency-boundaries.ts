@@ -47,11 +47,22 @@ export const findDependencyBoundaryViolations = (
   return violations;
 };
 
+export const validateDependencyBoundaryPolicy = (
+  value: unknown,
+  policyPath = "tools/dependency-boundaries.ts"
+): readonly DependencyConstraint[] => {
+  if (!isPolicyModule(value))
+    throw new Error(
+      `Invalid dependency-boundary policy in ${policyPath}. The shared Keenko graph policy supports only sourceTag and onlyDependOnLibsWithTags for internal project dependency direction.`
+    );
+  return value.dependencyConstraints;
+};
+
 export const verifyWorkspaceDependencyBoundaries = async (policyPath = "tools/dependency-boundaries.ts") => {
   const policyModule: unknown = await import(pathToFileURL(path.resolve(policyPath)).href);
-  if (!isPolicyModule(policyModule)) throw new Error(`Invalid dependency-boundary policy in ${policyPath}.`);
+  const dependencyConstraints = validateDependencyBoundaryPolicy(policyModule, policyPath);
   const graph = await createProjectGraphAsync({ exitOnError: false });
-  const violations = findDependencyBoundaryViolations(graph, policyModule.dependencyConstraints);
+  const violations = findDependencyBoundaryViolations(graph, dependencyConstraints);
   if (violations.length === 0) return;
 
   const diagnostics = violations.map(({ constraint, source, sourceTags, target, targetTags }) => {
@@ -70,9 +81,11 @@ const isPolicyModule = (value: unknown): value is { dependencyConstraints: reado
   return (
     Array.isArray(dependencyConstraints) &&
     dependencyConstraints.every(
-      (constraint) =>
+      (constraint: unknown) =>
         typeof constraint === "object" &&
         constraint !== null &&
+        Reflect.ownKeys(constraint).length === 2 &&
+        Reflect.ownKeys(constraint).every((key) => key === "sourceTag" || key === "onlyDependOnLibsWithTags") &&
         "sourceTag" in constraint &&
         typeof constraint.sourceTag === "string" &&
         "onlyDependOnLibsWithTags" in constraint &&

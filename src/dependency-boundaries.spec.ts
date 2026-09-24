@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { ProjectGraph } from "@nx/devkit";
 
-import { findDependencyBoundaryViolations, type DependencyConstraint } from "./dependency-boundaries.js";
+import { findDependencyBoundaryViolations, type DependencyConstraint, validateDependencyBoundaryPolicy } from "./dependency-boundaries.js";
 
 const constraints = [
   { onlyDependOnLibsWithTags: ["type:package"], sourceTag: "type:package" },
@@ -47,5 +47,25 @@ describe("dependency-boundary graph verifier", () => {
     expect(findDependencyBoundaryViolations(allowedGraph, constraints)).toEqual([
       expect.objectContaining({ source: "shared", target: "ui" }),
     ]);
+  });
+
+  test("loads the narrow shared policy and evaluates it normally", () => {
+    const loaded = validateDependencyBoundaryPolicy({ dependencyConstraints: constraints });
+
+    expect(findDependencyBoundaryViolations(graph, loaded)).toHaveLength(2);
+  });
+
+  test("rejects unsupported policy semantics instead of silently ignoring them", () => {
+    expect(() =>
+      validateDependencyBoundaryPolicy({
+        dependencyConstraints: [
+          {
+            notDependOnLibsWithTags: ["type:app"],
+            onlyDependOnLibsWithTags: ["scope:shared"],
+            sourceTag: "scope:backend",
+          },
+        ],
+      })
+    ).toThrow("supports only sourceTag and onlyDependOnLibsWithTags for internal project dependency direction");
   });
 });

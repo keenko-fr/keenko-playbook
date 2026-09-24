@@ -185,6 +185,8 @@ function validateAndMigrateConstraints(body: string, migrateLegacyApplication: b
 }
 
 function parseConstraint(constraint: string) {
+  const propertyNames = [...constraint.matchAll(/[,{]\s*([A-Za-z_$][\w$]*)\s*:/gu)].map((match) => match[1]);
+  if (propertyNames.length !== 2 || !propertyNames.includes("sourceTag") || !propertyNames.includes("onlyDependOnLibsWithTags")) return;
   const sourceTag = /sourceTag:\s*["']([^"']+)["']/u.exec(constraint)?.[1];
   const targets = /onlyDependOnLibsWithTags:\s*\[([^\]]*)\]/u.exec(constraint)?.[1];
   if (sourceTag === undefined || targets === undefined) return;
