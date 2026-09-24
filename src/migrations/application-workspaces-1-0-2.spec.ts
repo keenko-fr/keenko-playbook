@@ -9,7 +9,7 @@ import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-li
 import migration from "./application-workspaces-1-0-2.js";
 
 interface VitestPluginRegistration {
-  exclude: string[];
+  exclude?: string[];
   include?: string[];
   options: { testMode: string; testTargetName: string };
   plugin: string;
@@ -233,6 +233,91 @@ describe("1.0.2 application-workspace migration", () => {
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
+  test("treats an identical ordered partial inclusion and negation as harmless", async () => {
+    const tree = makeTree();
+    const projectRegistration = {
+      include: ["apps/pro*/vite.config.ts", "!apps/pro*/vite.config.ts"],
+      options: { testMode: "watch", testTargetName: "other-test" },
+      plugin: "@nx/vitest",
+    };
+    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
+
+    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], projectRegistration.include, [])).toEqual([]);
+    await migration(tree);
+
+    const { plugins } = readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json");
+    expect(plugins[0]).toEqual(projectRegistration);
+    expect(plugins[1]?.exclude).toEqual(["apps/*/vite.config.ts"]);
+  });
+
+  test("leaves compliant state with a cancelled partial application scope semantically unchanged", async () => {
+    const tree = makeTree();
+    await migration(tree);
+    const plugins = [
+      {
+        include: ["apps/pro*/vite.config.ts", "!apps/pro*/vite.config.ts"],
+        options: { testMode: "watch", testTargetName: "other-test" },
+        plugin: "@nx/vitest",
+      },
+      vitestRegistration(["apps/*/vite.config.ts"]),
+    ];
+    tree.write("nx.json", JSON.stringify({ plugins }));
+
+    await migration(tree);
+
+    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins).toEqual(plugins);
+  });
+
+  test("treats the reversed partial negation as covering", () => {
+    const tree = makeTree();
+    const include = ["!apps/pro*/vite.config.ts", "apps/pro*/vite.config.ts"];
+    tree.write(
+      "nx.json",
+      JSON.stringify({
+        plugins: [
+          { include, options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
+          vitestRegistration(["apps/web/vite.config.ts"]),
+        ],
+      })
+    );
+
+    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], include, [])).toEqual(["apps/pro/vite.config.ts"]);
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+  });
+
+  test("treats an exact class inclusion followed by exclusion as harmless", async () => {
+    const tree = makeTree();
+    const projectRegistration = {
+      include: ["apps/*/vite.config.ts", "!apps/*/vite.config.ts"],
+      options: { testMode: "watch", testTargetName: "other-test" },
+      plugin: "@nx/vitest",
+    };
+    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
+
+    await migration(tree);
+
+    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins[0]).toEqual(projectRegistration);
+  });
+
+  test("keeps covering when a different partial negation cannot prove cancellation", () => {
+    const tree = makeTree();
+    tree.write(
+      "nx.json",
+      JSON.stringify({
+        plugins: [
+          {
+            include: ["apps/pro*/vite.config.ts", "!apps/pro-admin/vite.config.ts"],
+            options: { testMode: "watch", testTargetName: "other-test" },
+            plugin: "@nx/vitest",
+          },
+          vitestRegistration(["apps/web/vite.config.ts"]),
+        ],
+      })
+    );
+
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+  });
+
   test("rejects a broad application Vitest registration", () => {
     const tree = makeTree();
     const plugins = [
@@ -407,6 +492,98 @@ await page.waitForRequest((request) => request.isNavigationRequest() && isOutsid
     await migration(tree);
 
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("isOutsideApp(request.url())");
+  });
+
+  test("recognizes reordered navigation and origin checks in the request predicate", async () => {
+    const tree = makeTree();
+    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
+await page.waitForRequest((request) => isOutsideApp(request.url()) && request.isNavigationRequest());\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
+
+    await migration(tree);
+
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("request.isNavigationRequest()");
+  });
+
+  test("rejects waitForRequest with origin departure but no navigation check", () => {
+    const tree = makeTree();
+    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
+await page.waitForRequest((request) => isOutsideApp(request.url()));\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects waitForRequest with navigation but no origin departure", () => {
+    const tree = makeTree();
+    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+await page.waitForRequest((request) => request.isNavigationRequest());\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects ambiguous request logic that does not require both navigation and origin departure", () => {
+    const tree = makeTree();
+    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
+await page.waitForRequest((request) => request.isNavigationRequest() || (isOutsideApp(request.url()) && otherCondition));\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects a negated navigation check even when origin departure is required", () => {
+    const tree = makeTree();
+    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
+await page.waitForRequest((request) => !request.isNavigationRequest() && isOutsideApp(request.url()));\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("recognizes a helper that enforces navigation and origin departure", async () => {
+    const tree = makeTree();
+    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isHostedUiNavigation = (request) =>
+  request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin;
+await page.waitForRequest(isHostedUiNavigation);\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
+
+    await migration(tree);
+
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("page.waitForRequest(isHostedUiNavigation)");
+  });
+
+  test("does not borrow an unrelated navigation check for an unsafe request wait", () => {
+    const tree = makeTree();
+    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
+const unrelatedNavigation = (request) => request.isNavigationRequest();
+await page.waitForRequest((request) => isOutsideApp(request.url()));\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
+    const before = snapshotChanges(tree);
+
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
   });
 
   test("rejects a fixed-hostname transition despite unrelated origin markers", () => {
