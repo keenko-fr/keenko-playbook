@@ -1,6 +1,5 @@
 /* oxlint-disable effect/maxCognitiveComplexity, effect/noNewError, effect/noNullish, effect/noRuntimeTypeof, effect/noThrowStatement, effect/noUnknownParameters, effect/noUnsafeDictionaryType, eslint/curly, eslint/prefer-destructuring, eslint/prefer-named-capture-group, typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access, typescript/strict-boolean-expressions -- Native Nx migrations are synchronous Tree transforms over untyped project state and report deliberate conflicts by throwing. */
 import { formatFiles, updateJson, type Tree } from "@nx/devkit";
-import { findMatchingConfigFiles } from "@nx/devkit/internal";
 
 type JsonObject = Record<string, unknown>;
 
@@ -87,14 +86,44 @@ function migrateVitestDiscovery(tree: Tree) {
 function registrationCoversApplicationViteConfig(registration: JsonObject) {
   const inclusions = isStringArray(registration.include) ? registration.include : [];
   const exclusions = isStringArray(registration.exclude) ? registration.exclude : [];
-  const applicationNames = new Set(["__keenko_application__", "admin", "web"]);
-  for (const pattern of [...inclusions, ...exclusions]) {
-    if (typeof pattern !== "string") continue;
-    for (const match of pattern.matchAll(/apps\/([\w.-]+)\//gu)) if (match[1] !== undefined) applicationNames.add(match[1]);
+  return classCanBeIncluded(inclusions) && !classIsExcluded(exclusions);
+}
+
+type ApplicationClassRelation = "all" | "none" | "some";
+
+function applicationClassRelation(pattern: string): ApplicationClassRelation {
+  const normalized = pattern.startsWith("!") ? pattern.slice(1) : pattern;
+  if (["apps/*/vite.config.ts", "apps/**/vite.config.ts", "apps/**"].includes(normalized)) return "all";
+  const literalPrefix = /^[^*?[{!(]+/u.exec(normalized)?.[0] ?? "";
+  if (literalPrefix !== "" && !"apps/".startsWith(literalPrefix) && !literalPrefix.startsWith("apps/")) return "none";
+  if (!/[*?[{!(]/u.test(normalized)) return /^apps\/[^/]+\/vite\.config\.ts$/u.test(normalized) ? "some" : "none";
+  // Nx owns actual matching. Any glob whose intersection cannot be disproved is conservatively covering.
+  return "some";
+}
+
+function classCanBeIncluded(patterns: readonly string[]) {
+  if (patterns.length === 0) return true;
+  let canInclude = patterns[0]?.startsWith("!") ?? false;
+  for (const pattern of patterns) {
+    const relation = applicationClassRelation(pattern);
+    if (relation === "none") continue;
+    if (pattern.startsWith("!")) {
+      if (relation === "all") canInclude = false;
+    } else canInclude = true;
   }
-  const applicationViteConfigs = [...applicationNames].map((name) => `apps/${name}/vite.config.ts`);
-  // Nx 23.2.1 owns the ordered include/exclude semantics used during plugin discovery.
-  return findMatchingConfigFiles(applicationViteConfigs, inclusions, exclusions).length > 0;
+  return canInclude;
+}
+
+function classIsExcluded(patterns: readonly string[]) {
+  if (patterns.length === 0) return false;
+  let allExcluded = patterns[0]?.startsWith("!") ?? false;
+  for (const pattern of patterns) {
+    const relation = applicationClassRelation(pattern);
+    if (relation === "none") continue;
+    if (pattern.startsWith("!")) allExcluded = false;
+    else if (relation === "all") allExcluded = true;
+  }
+  return allExcluded;
 }
 
 function isOptionalStringArray(value: unknown) {
@@ -324,13 +353,59 @@ function isOriginBasedHostedUiDetection(source: string) {
     .map((match) => match[1]);
   return originNames.some((originName) => {
     if (originName === undefined) return false;
-    const escapedOriginName = originName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
-    return (
-      new RegExp(`(?:new URL\\([^)]*\\)\\.origin|[\\w$]+\\.origin)\\s*!==\\s*${escapedOriginName}`, "u").test(source) &&
-      new RegExp(`not\\.toBe\\(${escapedOriginName}\\)`, "u").test(source) &&
-      /page\.waitFor(?:Request|URL)\(/u.test(source)
-    );
+    const helpers = [...source.matchAll(/const\s+([\w$]+)\s*=\s*\(\s*([\w$]+)(?:\s*:[^)]*)?\)\s*=>\s*([^;]+);/gu)]
+      .filter((match) => isOriginDepartureExpression(match[3] ?? "", match[2] ?? "", originName))
+      .map((match) => match[1])
+      .filter((name): name is string => name !== undefined);
+    return findCallArguments(source, /page\.waitFor(?:Request|URL)\s*\(/gu).some((argument) => {
+      const callback = /(?:async\s*)?\(\s*([\w$]+)(?:\s*:[^)]*)?\)\s*=>\s*([\s\S]*)/u.exec(argument);
+      if (callback === null) return helpers.some((helper) => argument.trim() === helper);
+      const parameter = callback[1] ?? "";
+      const body = callback[2] ?? "";
+      if (isOriginDepartureExpression(body, parameter, originName)) return true;
+      return helpers.some((helper) => new RegExp(`\\b${helper}\\s*\\(\\s*${parameter}(?:\\.url\\(\\))?\\s*\\)`, "u").test(body));
+    });
   });
+}
+
+function isOriginDepartureExpression(expression: string, inputName: string, originName: string) {
+  const escapedInput = inputName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
+  const escapedOrigin = originName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
+  return new RegExp(
+    `(?:new URL\\(\\s*${escapedInput}(?:\\.url\\(\\))?\\s*\\)\\.origin|${escapedInput}\\.origin)\\s*!==\\s*${escapedOrigin}`,
+    "u"
+  ).test(expression);
+}
+
+function findCallArguments(source: string, callPattern: RegExp) {
+  const arguments_: string[] = [];
+  for (const match of source.matchAll(callPattern)) {
+    if (match.index === undefined) continue;
+    const open = source.indexOf("(", match.index);
+    let depth = 0;
+    let quote = "";
+    let escaped = false;
+    for (let index = open; index < source.length; index += 1) {
+      const character = source[index] ?? "";
+      if (quote !== "") {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === quote) quote = "";
+        continue;
+      }
+      if (character === '"' || character === "'" || character === "`") {
+        quote = character;
+        continue;
+      }
+      if (character === "(") depth += 1;
+      if (character !== ")") continue;
+      depth -= 1;
+      if (depth !== 0) continue;
+      arguments_.push(source.slice(open + 1, index));
+      break;
+    }
+  }
+  return arguments_;
 }
 
 function hasProviderHostnameInspection(source: string) {

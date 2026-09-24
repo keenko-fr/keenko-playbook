@@ -215,6 +215,8 @@ Nx owns workspace discovery and the project graph. The project-owned `tools/depe
 
 Oxlint applies those direction constraints to source imports for fast, file-specific diagnostics. Other source-level boundary concerns, such as external-import restrictions, remain Oxlint-specific configuration and do not belong in the shared graph policy. Keenko's graph verifier evaluates only the shared internal-project direction policy against every internal edge in the native Nx project graph, including dependencies declared only in workspace manifests. `bun run check` runs both and is the final graph-boundary gate.
 
+Tag strings within `sourceTag` and `onlyDependOnLibsWithTags` use the pinned Nx matching semantics. Exact tags, `*`, glob forms such as `scope:*`, and `/regex/` forms therefore mean the same thing in Oxlint and the graph verifier. These matching semantics are version-sensitive compatibility data and must be reverified when Nx changes.
+
 A fresh project starts with:
 
 ```text

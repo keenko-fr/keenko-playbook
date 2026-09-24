@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 /* oxlint-disable effect/noAsyncFunction, effect/noGlobals -- Native Nx migration fixtures exercise promise-returning formatFiles and serialize virtual-tree JSON directly. */
 import { readJson, readJsonFile } from "@nx/devkit";
+import { findMatchingConfigFiles } from "@nx/devkit/internal";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-line/migrate/migrate";
 
@@ -218,6 +219,31 @@ describe("1.0.2 application-workspace migration", () => {
     expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
   });
 
+  test("rejects an application-name glob without relying on sampled names", () => {
+    const tree = makeTree();
+    const plugins = [
+      { include: ["apps/pro*/vite.config.ts"], options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
+      vitestRegistration(["apps/web/vite.config.ts"]),
+    ];
+    tree.write("nx.json", JSON.stringify({ plugins }));
+    const before = snapshotChanges(tree);
+
+    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], ["apps/pro*/vite.config.ts"], [])).toEqual(["apps/pro/vite.config.ts"]);
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects a broad application Vitest registration", () => {
+    const tree = makeTree();
+    const plugins = [
+      { include: ["apps/**/vite.config.ts"], options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
+      vitestRegistration(["apps/web/vite.config.ts"]),
+    ];
+    tree.write("nx.json", JSON.stringify({ plugins }));
+
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+  });
+
   test("rejects an ordered Vitest exclusion that re-enables an application config", () => {
     const tree = makeTree();
     const plugins = [
@@ -358,32 +384,57 @@ describe("1.0.2 application-workspace migration", () => {
     expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
   });
 
-  test("recognizes a semantically compliant origin-based AuthKit smoke", async () => {
+  test("recognizes a direct origin-based waitForURL transition", async () => {
     const tree = makeTree();
     const compliantSmoke = `const startUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
 const localOrigin = new URL(startUrl).origin;
-const leftLocalApplication = (location: string) => new URL(location).origin !== localOrigin;
-page.waitForRequest((request) => request.isNavigationRequest() && leftLocalApplication(request.url()));
-page.waitForURL((location) => location.origin !== localOrigin);
-expect(new URL(page.url()).origin).not.toBe(localOrigin);\n`;
+await page.waitForURL((location) => location.origin !== localOrigin);\n`;
     tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
 
     await migration(tree);
 
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("leftLocalApplication");
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("page.waitForURL((location) => location.origin !== localOrigin)");
   });
 
-  test("rejects a partial origin-based AuthKit smoke without mutation", () => {
+  test("recognizes an origin helper used by the actual waitForRequest transition", async () => {
     const tree = makeTree();
-    const partialSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
+    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
+await page.waitForRequest((request) => request.isNavigationRequest() && isOutsideApp(request.url()));\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
+
+    await migration(tree);
+
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("isOutsideApp(request.url())");
+  });
+
+  test("rejects a fixed-hostname transition despite unrelated origin markers", () => {
+    const tree = makeTree();
+    const customizedSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
 const applicationOrigin = new URL(baseUrl).origin;
-page.waitForURL((url) => url.origin !== applicationOrigin);\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", partialSmoke);
-    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
+const unrelated = new URL(otherUrl).origin !== applicationOrigin;
+expect(new URL(otherUrl).origin).not.toBe(applicationOrigin);
+await page.waitForURL("https://login.acme.example/authorize");\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", customizedSmoke);
+    const before = snapshotChanges(tree);
 
     expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+    expect(snapshotChanges(tree)).toEqual(before);
   });
+
+  test.each(['"https://login.acme.example/authorize"', "/login\\.acme\\.example/u"])(
+    "rejects provider-hostname transition %s without mutation",
+    (transition) => {
+      const tree = makeTree();
+      const customizedSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";\nawait page.waitForURL(${transition});\n`;
+      tree.write("apps/web/e2e/auth.e2e.ts", customizedSmoke);
+      const before = snapshotChanges(tree);
+
+      expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+      expect(snapshotChanges(tree)).toEqual(before);
+    }
+  );
 
   test("rejects transition logic comparing an origin unrelated to AUTH_E2E_BASE_URL", () => {
     const tree = makeTree();
