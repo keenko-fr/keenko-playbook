@@ -21,4 +21,6 @@ Shared packages are earned by genuine reuse. Do not introduce a shared applicati
 
 Run `bun run codegen` and `bun run check` from the repository root. The Nx graph must discover every application without evaluating its Vite config through the Vitest plugin, generated route trees under every `apps/*` workspace must remain clean after codegen, and module boundaries must reject application-to-application dependencies across the complete Nx project graph, including dependencies declared only in workspace manifests.
 
+Manifest-only boundary enforcement remains an architecture decision for Griller: the pinned Nx 23.2.1 Oxlint bridge does not reject an unused sibling-application dependency declared only in a workspace manifest. Nx remains the sole boundary implementation; do not add a Keenko-owned evaluator to close this gap.
+
 If an application cannot be discovered or verified, compare its package-owned Nx metadata and targets with this contract. Correct project-owned application configuration; do not add a second registry or hard-code its name into root Keenko tooling.

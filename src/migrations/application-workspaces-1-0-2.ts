@@ -9,10 +9,6 @@ const oldAppFiles = /files:\s*\[["']apps\/web\/\*\*\/\*\.\{ts,tsx\}["']\]/u;
 const applicationFiles = /files:\s*\[["']apps\/\*\*\/\*\.\{ts,tsx\}["']\]/u;
 const dependencyConstraint = /\{[^{}]*\}/gu;
 const applicationTargetTags = ["scope:backend", "scope:shared", "scope:ui"];
-const dependencyPolicyPath = "tools/dependency-boundaries.ts";
-const dependencyPolicyImport =
-  /import\s*\{\s*dependencyConstraints\s*\}\s*from\s*["']\.\/tools\/dependency-boundaries(?:\.(?:js|ts))?["'];/u;
-const dependencyPolicyUsage = /depConstraints:\s*dependencyConstraints/u;
 const oldHostedUi = "/(?:authkit|workos)/u";
 const oldBaseUrl = /(\s*)const baseUrl = process\.env\.AUTH_E2E_BASE_URL \?\? ["']http:\/\/localhost:3210["'];/u;
 const oldHostedUiRequest = /\/\(\?:authkit\|workos\)\/u\.test\(request\.url\(\)\)/u;
@@ -86,9 +82,38 @@ function migrateVitestDiscovery(tree: Tree) {
 function registrationCoversApplicationViteConfig(registration: JsonObject) {
   const inclusions = isStringArray(registration.include) ? registration.include : [];
   const exclusions = isStringArray(registration.exclude) ? registration.exclude : [];
-  const included = includedApplicationRegions(inclusions);
-  if (included.whole) return !classIsExcluded(exclusions);
-  return [...included.partial].some((region) => !classExcludesRegion(exclusions, region));
+  const included = applicationMatcherConditions(inclusions, true, true);
+  const notExcluded = applicationMatcherConditions(exclusions, false, false);
+  return included.some((include) =>
+    notExcluded.some((exclude) => [...include].every(([pattern, matches]) => !exclude.has(pattern) || exclude.get(pattern) === matches))
+  );
+}
+
+// Each outcome requires its last matching pattern and no later matches, exactly as Nx's ordered matcher does.
+// Preserve shared pattern identities across include/exclude; unknown glob overlaps remain conservative conflicts.
+function applicationMatcherConditions(patterns: readonly string[], outcome: boolean, emptyValue: boolean) {
+  const conditions: Map<string, boolean>[] = [];
+  const initial = patterns.length === 0 ? emptyValue : (patterns[0]?.startsWith("!") ?? false);
+  for (let lastMatch = -1; lastMatch < patterns.length; lastMatch += 1) {
+    const value = lastMatch === -1 ? initial : !patterns[lastMatch]?.startsWith("!");
+    if (value !== outcome) continue;
+    const condition = new Map<string, boolean>();
+    let possible = true;
+    for (let index = Math.max(0, lastMatch); index < patterns.length; index += 1) {
+      const pattern = patterns[index] ?? "";
+      const matches = index === lastMatch;
+      const relation = applicationClassRelation(pattern);
+      if (relation !== "some") {
+        if ((relation === "all") !== matches) possible = false;
+        continue;
+      }
+      const normalized = pattern.startsWith("!") ? pattern.slice(1) : pattern;
+      if (condition.has(normalized) && condition.get(normalized) !== matches) possible = false;
+      condition.set(normalized, matches);
+    }
+    if (possible) conditions.push(condition);
+  }
+  return conditions;
 }
 
 type ApplicationClassRelation = "all" | "none" | "some";
@@ -101,53 +126,6 @@ function applicationClassRelation(pattern: string): ApplicationClassRelation {
   if (!/[*?[{!(]/u.test(normalized)) return /^apps\/[^/]+\/vite\.config\.ts$/u.test(normalized) ? "some" : "none";
   // Nx owns actual matching. Any glob whose intersection cannot be disproved is conservatively covering.
   return "some";
-}
-
-function includedApplicationRegions(patterns: readonly string[]) {
-  if (patterns.length === 0) return { partial: new Set<string>(), whole: true };
-  let includesWholeClass = patterns[0]?.startsWith("!") ?? false;
-  const partialInclusions = new Set<string>();
-  for (const pattern of patterns) {
-    const relation = applicationClassRelation(pattern);
-    if (relation === "none") continue;
-    const normalized = pattern.startsWith("!") ? pattern.slice(1) : pattern;
-    if (pattern.startsWith("!")) {
-      if (relation === "all") {
-        includesWholeClass = false;
-        partialInclusions.clear();
-      } else partialInclusions.delete(normalized);
-    } else if (relation === "all") {
-      includesWholeClass = true;
-      partialInclusions.clear();
-    } else partialInclusions.add(normalized);
-  }
-  return { partial: partialInclusions, whole: includesWholeClass };
-}
-
-function classExcludesRegion(patterns: readonly string[], region: string) {
-  let excluded = patterns[0]?.startsWith("!") ?? false;
-  for (const pattern of patterns) {
-    const relation = applicationClassRelation(pattern);
-    if (relation === "none") continue;
-    const normalized = pattern.startsWith("!") ? pattern.slice(1) : pattern;
-    if (pattern.startsWith("!")) {
-      // An unknown overlap may re-enable part of this region, so it cannot prove exclusion.
-      excluded = false;
-    } else if (relation === "all" || normalized === region) excluded = true;
-  }
-  return excluded;
-}
-
-function classIsExcluded(patterns: readonly string[]) {
-  if (patterns.length === 0) return false;
-  let allExcluded = patterns[0]?.startsWith("!") ?? false;
-  for (const pattern of patterns) {
-    const relation = applicationClassRelation(pattern);
-    if (relation === "none") continue;
-    if (pattern.startsWith("!")) allExcluded = false;
-    else if (relation === "all") allExcluded = true;
-  }
-  return allExcluded;
 }
 
 function isOptionalStringArray(value: unknown) {
@@ -163,18 +141,9 @@ function migrateRootVerification(tree: Tree) {
     const scripts = packageJson.scripts;
     if (!isObject(scripts) || typeof scripts.check !== "string") return conflict("package.json", "scripts.check");
     let check = scripts.check;
-    const boundaryScript = scripts["boundaries:check"];
-    if (boundaryScript !== undefined && boundaryScript !== "keenko-verify-boundaries")
-      return conflict("package.json", "scripts.boundaries:check");
-    scripts["boundaries:check"] = "keenko-verify-boundaries";
     if (!check.includes(applicationRouteTreePath)) {
       if (!check.includes(oldRouteTreePath)) return conflict("package.json", "scripts.check generated route-tree path");
       check = check.replace(oldRouteTreePath, applicationRouteTreePath);
-    }
-    if (!check.includes("bun run boundaries:check")) {
-      check = check.includes("bun run typecheck")
-        ? check.replace("bun run typecheck", "bun run boundaries:check && bun run typecheck")
-        : `${check} && bun run boundaries:check`;
     }
     scripts.check = check;
     return packageJson;
@@ -187,36 +156,17 @@ function planBoundaryPolicyMigration(tree: Tree) {
   if (source === null) return conflict(path, "application lint and boundary policy");
   const filesCompliant = applicationFiles.test(source);
   if (!filesCompliant && !oldAppFiles.test(source)) return conflict(path, "application lint and boundary policy");
-  const hasPolicyImport = dependencyPolicyImport.test(source);
-  const hasPolicyUsage = dependencyPolicyUsage.test(source);
   const inlinePolicy = findArrayProperty(source, "depConstraints");
-  const policySource = tree.read(dependencyPolicyPath, "utf-8");
-
-  if (hasPolicyImport || hasPolicyUsage || policySource !== null) {
-    if (!hasPolicyImport || !hasPolicyUsage || inlinePolicy !== undefined || policySource === null)
-      return conflict(path, "shared dependency-boundary policy integration");
-    const policyArray = findAssignedArray(policySource, "dependencyConstraints");
-    if (policyArray === undefined) return conflict(dependencyPolicyPath, "dependency constraints");
-    validateAndMigrateConstraints(policyArray.body, false);
-    if (filesCompliant) return [];
-    return [{ path, source: source.replace(oldAppFiles, 'files: ["apps/**/*.{ts,tsx}"]') }];
-  }
-
   if (inlinePolicy === undefined) return conflict(path, "dependency constraints");
-  const migratedPolicyBody = validateAndMigrateConstraints(inlinePolicy.body, true);
-  const withPolicyUsage = `${source.slice(0, inlinePolicy.start)}depConstraints: dependencyConstraints,${source.slice(inlinePolicy.end)}`;
-  const withPolicyImport = insertDependencyPolicyImport(withPolicyUsage);
-  const migratedOxlint = filesCompliant ? withPolicyImport : withPolicyImport.replace(oldAppFiles, 'files: ["apps/**/*.{ts,tsx}"]');
-  return [
-    { path, source: migratedOxlint },
-    { path: dependencyPolicyPath, source: `export const dependencyConstraints = [${migratedPolicyBody}\n];\n` },
-  ];
+  const migratedPolicyBody = validateAndMigrateConstraints(inlinePolicy.body);
+  const migratedPolicy = `${source.slice(0, inlinePolicy.start)}depConstraints: [${migratedPolicyBody}],${source.slice(inlinePolicy.end)}`;
+  const migratedOxlint = filesCompliant ? migratedPolicy : migratedPolicy.replace(oldAppFiles, 'files: ["apps/**/*.{ts,tsx}"]');
+  return migratedOxlint === source ? [] : [{ path, source: migratedOxlint }];
 }
 
-function validateAndMigrateConstraints(body: string, migrateLegacyApplication: boolean) {
+function validateAndMigrateConstraints(body: string) {
   const constraints = [...body.matchAll(dependencyConstraint)].map((match) => match[0]);
-  if (constraints.length === 0 || constraints.some((constraint) => parseConstraint(constraint) === undefined))
-    return conflict(dependencyPolicyPath, "dependency constraints");
+  if (constraints.length === 0) return conflict("oxlint.config.ts", "dependency constraints");
   const required = [
     ["type:package", ["type:package"]],
     ["scope:backend", ["scope:shared"]],
@@ -225,21 +175,18 @@ function validateAndMigrateConstraints(body: string, migrateLegacyApplication: b
   ] satisfies readonly (readonly [string, readonly string[]])[];
   for (const [sourceTag, targetTags] of required) {
     if (constraints.filter((constraint) => isConstraint(constraint, sourceTag, targetTags)).length !== 1)
-      return conflict(dependencyPolicyPath, `${sourceTag} dependency constraint`);
+      return conflict("oxlint.config.ts", `${sourceTag} dependency constraint`);
   }
   const newApplications = constraints.filter((constraint) => isApplicationBoundary(constraint, "type:app"));
   const oldApplications = constraints.filter((constraint) => isApplicationBoundary(constraint, "scope:web"));
   if (newApplications.length === 1) return body;
-  if (newApplications.length > 1 || !migrateLegacyApplication || oldApplications.length !== 1)
-    return conflict(dependencyPolicyPath, "application dependency constraint");
+  if (newApplications.length > 1 || oldApplications.length !== 1) return conflict("oxlint.config.ts", "application dependency constraint");
   return body.replace(oldApplications[0] ?? "", (constraint) =>
     constraint.replace(/sourceTag:\s*(["'])scope:web\1/u, 'sourceTag: "type:app"')
   );
 }
 
 function parseConstraint(constraint: string) {
-  const propertyNames = [...constraint.matchAll(/[,{]\s*([A-Za-z_$][\w$]*)\s*:/gu)].map((match) => match[1]);
-  if (propertyNames.length !== 2 || !propertyNames.includes("sourceTag") || !propertyNames.includes("onlyDependOnLibsWithTags")) return;
   const sourceTag = /sourceTag:\s*["']([^"']+)["']/u.exec(constraint)?.[1];
   const targets = /onlyDependOnLibsWithTags:\s*\[([^\]]*)\]/u.exec(constraint)?.[1];
   if (sourceTag === undefined || targets === undefined) return;
@@ -266,10 +213,6 @@ function isApplicationBoundary(constraint: string, sourceTag: string) {
 
 function findArrayProperty(source: string, property: string) {
   return findArray(source, new RegExp(`${property}:\\s*\\[`, "u"));
-}
-
-function findAssignedArray(source: string, identifier: string) {
-  return findArray(source, new RegExp(`${identifier}\\s*=\\s*\\[`, "u"));
 }
 
 function findArray(source: string, pattern: RegExp) {
@@ -304,14 +247,6 @@ function findArray(source: string, pattern: RegExp) {
   }
   // oxlint-disable-next-line unicorn/no-useless-undefined -- Explicit absence satisfies noImplicitReturns for the source scanner.
   return undefined;
-}
-
-function insertDependencyPolicyImport(source: string) {
-  const imports = [...source.matchAll(/^import .*;\n/gmu)];
-  const lastImport = imports.at(-1);
-  if (lastImport === undefined || lastImport.index === undefined) return conflict("oxlint.config.ts", "imports");
-  const insertion = lastImport.index + lastImport[0].length;
-  return `${source.slice(0, insertion)}import { dependencyConstraints } from "./tools/dependency-boundaries.ts";\n${source.slice(insertion)}`;
 }
 
 function migrateContinuousTargets(tree: Tree) {
@@ -407,11 +342,11 @@ function findTransitionHelpers(source: string, originName: string) {
       const originInput = originDepartureInput(body, parameter, originName);
       return [
         {
-          conjoinsNavigationAndOrigin: navigation && originInput !== undefined && isUnambiguousConjunction(body),
+          conjoinsNavigationAndOrigin: navigation && originInput !== undefined,
           name,
           navigation,
           originInput,
-          originRequired: originInput !== undefined && hasRequiredPositiveConditions(body),
+          originRequired: originInput !== undefined,
         },
       ];
     }
@@ -422,11 +357,12 @@ function waitForUrlProvesOriginDeparture(argument: string, helpers: readonly Tra
   const callback = parseWaitCallback(argument);
   if (callback === undefined)
     return helpers.some(({ name, originInput, originRequired }) => argument.trim() === name && originInput === "url" && originRequired);
-  if (!hasRequiredPositiveConditions(callback.body)) return false;
   if (originDepartureInput(callback.body, callback.parameter, originName) === "url") return true;
   return helpers.some(
     ({ name, originInput, originRequired }) =>
-      originInput === "url" && originRequired && new RegExp(`\\b${name}\\s*\\(\\s*${callback.parameter}\\s*\\)`, "u").test(callback.body)
+      originInput === "url" &&
+      originRequired &&
+      hasRequiredPositiveCondition(callback.body, new RegExp(`^${name}\\s*\\(\\s*${callback.parameter}\\s*\\)$`, "u"))
   );
 }
 
@@ -441,30 +377,48 @@ function waitForRequestProvesNavigationDeparture(argument: string, helpers: read
     ({ conjoinsNavigationAndOrigin, name, originInput }) =>
       conjoinsNavigationAndOrigin &&
       originInput === "request" &&
-      new RegExp(`\\b${name}\\s*\\(\\s*${callback.parameter}\\s*\\)`, "u").test(callback.body)
+      hasRequiredPositiveCondition(callback.body, new RegExp(`^${name}\\s*\\(\\s*${callback.parameter}\\s*\\)$`, "u"))
   );
   if (conjoinedHelper) return true;
   const navigation =
     isNavigationRequestExpression(callback.body, callback.parameter) ||
     helpers.some(
       ({ name, navigation: helperNavigation }) =>
-        helperNavigation && new RegExp(`\\b${name}\\s*\\(\\s*${callback.parameter}\\s*\\)`, "u").test(callback.body)
+        helperNavigation && hasRequiredPositiveCondition(callback.body, new RegExp(`^${name}\\s*\\(\\s*${callback.parameter}\\s*\\)$`, "u"))
     );
   const originDeparture =
     originDepartureInput(callback.body, callback.parameter, originName) === "request" ||
-    helpers.some(({ name, originInput }) => {
+    helpers.some(({ name, originInput, originRequired }) => {
       const argumentPattern = originInput === "request" ? callback.parameter : `${callback.parameter}\\.url\\(\\)`;
-      return originInput !== undefined && new RegExp(`\\b${name}\\s*\\(\\s*${argumentPattern}\\s*\\)`, "u").test(callback.body);
+      return (
+        originRequired &&
+        originInput !== undefined &&
+        hasRequiredPositiveCondition(callback.body, new RegExp(`^${name}\\s*\\(\\s*${argumentPattern}\\s*\\)$`, "u"))
+      );
     });
-  return navigation && originDeparture && isUnambiguousConjunction(callback.body);
+  return navigation && originDeparture;
 }
 
-function isUnambiguousConjunction(expression: string) {
-  return expression.includes("&&") && hasRequiredPositiveConditions(expression);
-}
-
-function hasRequiredPositiveConditions(expression: string) {
-  return !expression.includes("||") && !expression.includes("?") && !expression.replaceAll("!==", "").includes("!");
+function hasRequiredPositiveCondition(expression: string, condition: RegExp): boolean {
+  // Only prove required conjuncts. Disjunctions, ternaries, and statement bodies remain conflicts.
+  if (expression.includes("||") || expression.includes("?") || expression.includes("{")) return false;
+  const body = expression.trim();
+  let depth = 0;
+  let wrapped = body.startsWith("(");
+  for (let index = 0; index < body.length; index += 1) {
+    const character = body[index];
+    if (character === "(") depth += 1;
+    if (character === ")") depth -= 1;
+    if (depth === 0 && body.slice(index, index + 2) === "&&")
+      return (
+        hasRequiredPositiveCondition(body.slice(0, index), condition) || hasRequiredPositiveCondition(body.slice(index + 2), condition)
+      );
+    if (index === body.length - 1 && character === ")" && depth === 0 && wrapped)
+      return hasRequiredPositiveCondition(body.slice(1, -1), condition);
+    // The first opening parenthesis must wrap the entire expression before it can be removed.
+    if (character === ")" && depth === 0 && index < body.length - 1) wrapped = false;
+  }
+  return condition.test(body);
 }
 
 function parseWaitCallback(argument: string) {
@@ -476,17 +430,23 @@ function parseWaitCallback(argument: string) {
 
 function isNavigationRequestExpression(expression: string, inputName: string) {
   const escapedInput = inputName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
-  return new RegExp(`(?:^|&&)\\s*\\(*\\s*${escapedInput}\\.isNavigationRequest\\(\\)\\s*\\)*(?=\\s*(?:&&|$))`, "u").test(expression);
+  return hasRequiredPositiveCondition(expression, new RegExp(`^${escapedInput}\\.isNavigationRequest\\(\\)$`, "u"));
 }
 
 function originDepartureInput(expression: string, inputName: string, originName: string): "request" | "url" | undefined {
   const escapedInput = inputName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
   const escapedOrigin = originName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
-  if (new RegExp(`new URL\\(\\s*${escapedInput}\\.url\\(\\)\\s*\\)\\.origin\\s*!==\\s*${escapedOrigin}`, "u").test(expression))
+  if (
+    hasRequiredPositiveCondition(
+      expression,
+      new RegExp(`^new URL\\(\\s*${escapedInput}\\.url\\(\\)\\s*\\)\\.origin\\s*!==\\s*${escapedOrigin}$`, "u")
+    )
+  )
     return "request";
   if (
-    new RegExp(`(?:new URL\\(\\s*${escapedInput}\\s*\\)\\.origin|${escapedInput}\\.origin)\\s*!==\\s*${escapedOrigin}`, "u").test(
-      expression
+    hasRequiredPositiveCondition(
+      expression,
+      new RegExp(`^(?:new URL\\(\\s*${escapedInput}\\s*\\)\\.origin|${escapedInput}\\.origin)\\s*!==\\s*${escapedOrigin}$`, "u")
     )
   )
     return "url";

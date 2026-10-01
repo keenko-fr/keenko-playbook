@@ -98,17 +98,17 @@ describe("1.0.2 application-workspace migration", () => {
     await migration(tree);
 
     expect(readJson<{ plugins: { exclude: string[] }[] }>(tree, "nx.json").plugins[0]?.exclude).toEqual(["apps/*/vite.config.ts"]);
-    const { scripts } = readJson<{ scripts: { "boundaries:check": string; check: string } }>(tree, "package.json");
+    const { scripts } = readJson<{ scripts: { "boundaries:check"?: string; check: string } }>(tree, "package.json");
     expect(scripts.check).toContain(":(glob)apps/*/src/routeTree.gen.ts");
-    expect(scripts.check).toContain("bun run boundaries:check");
-    expect(scripts["boundaries:check"]).toBe("keenko-verify-boundaries");
+    expect(scripts.check).not.toContain("bun run boundaries:check");
+    expect(scripts["boundaries:check"]).toBeUndefined();
     for (const path of ["apps/web/package.json", "apps/admin/package.json", "packages/backend/package.json"])
       expect(readJson<{ nx: { targets: { dev: { continuous: boolean } } } }>(tree, path).nx.targets.dev.continuous).toBe(true);
     expect(readJson<{ nx: { tags: string[] } }>(tree, "apps/web/package.json").nx.tags).toEqual(["type:app", "scope:web"]);
     expect(readJson<{ nx: { tags: string[] } }>(tree, "apps/admin/package.json").nx.tags).toEqual(["scope:admin", "type:app"]);
-    expect(tree.read("oxlint.config.ts", "utf-8")).toContain("depConstraints: dependencyConstraints");
-    expect(tree.read("oxlint.config.ts", "utf-8")).not.toContain("onlyDependOnLibsWithTags");
-    expect(tree.read("tools/dependency-boundaries.ts", "utf-8")).toContain("sourceTag: 'type:app'");
+    expect(tree.read("oxlint.config.ts", "utf-8")).toContain("depConstraints: [");
+    expect(tree.read("oxlint.config.ts", "utf-8")).toContain("sourceTag: 'type:app'");
+    expect(tree.exists("tools/dependency-boundaries.ts")).toBe(false);
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).not.toContain("authkit|workos");
   });
 
@@ -322,6 +322,29 @@ describe("1.0.2 application-workspace migration", () => {
     expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins[0]).toEqual(projectRegistration);
   });
 
+  test.each([
+    { patterns: ["apps/pro*/vite.config.ts", "!apps/pro-admin/vite.config.ts"] },
+    { patterns: ["!apps/pro-admin/vite.config.ts", "apps/pro*/vite.config.ts"] },
+    { patterns: ["apps/pro*/vite.config.ts", "!apps/pro*/vite.config.ts", "apps/pro-admin/vite.config.ts"] },
+  ])("treats identical ordered include/exclude matchers as harmless: %j", async ({ patterns: orderedPatterns }) => {
+    const patterns = [...orderedPatterns];
+    const tree = makeTree();
+    const projectRegistration = {
+      exclude: patterns,
+      include: patterns,
+      options: { testMode: "watch", testTargetName: "other-test" },
+      plugin: "@nx/vitest",
+    };
+    const configs = ["apps/pro/vite.config.ts", "apps/pro-admin/vite.config.ts", "apps/web/vite.config.ts"];
+    expect(findMatchingConfigFiles(configs, patterns, patterns)).toEqual([]);
+    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
+    await migration(tree);
+    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins[0]).toEqual(projectRegistration);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
   test("keeps coverage when a broad include has a narrower exclude", () => {
     const tree = makeTree();
     tree.write(
@@ -470,7 +493,7 @@ describe("1.0.2 application-workspace migration", () => {
 
     await migration(tree);
 
-    const source = tree.read("tools/dependency-boundaries.ts", "utf-8") ?? "";
+    const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
     expect(source).toContain("onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'scope:web'");
     expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(1);
   });
@@ -484,7 +507,7 @@ describe("1.0.2 application-workspace migration", () => {
 
     await migration(tree);
 
-    const source = tree.read("tools/dependency-boundaries.ts", "utf-8") ?? "";
+    const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
     expect(source).toContain("onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'type:app'");
     expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(2);
   });
@@ -499,57 +522,23 @@ describe("1.0.2 application-workspace migration", () => {
 
     await migration(tree);
 
-    const source = tree.read("tools/dependency-boundaries.ts", "utf-8") ?? "";
+    const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
     expect(source).toContain("onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'scope:web'");
     expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(1);
   });
 
-  test("leaves an already-shared policy with a valid narrow project constraint unchanged", async () => {
+  test.each([
+    '{ allSourceTags: ["type:app"], onlyDependOnLibsWithTags: ["scope:shared"] }',
+    '{ sourceTag: "scope:admin", notDependOnLibsWithTags: ["scope:ui"] }',
+    '{ sourceTag: "scope:admin", allowedExternalImports: ["example"] }',
+    '{ sourceTag: "scope:admin", bannedExternalImports: ["example"] }',
+  ])("preserves native Nx constraint customization: %s", async (constraint) => {
     const tree = makeTree();
+    addInlineConstraint(tree, constraint);
     await migration(tree);
-    const policy = tree.read("tools/dependency-boundaries.ts", "utf-8") ?? "";
-    tree.write(
-      "tools/dependency-boundaries.ts",
-      policy.replace(
-        "export const dependencyConstraints = [",
-        "export const dependencyConstraints = [\n  { onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'scope:admin' },"
-      )
-    );
+    expect(tree.read("oxlint.config.ts", "utf-8")).toContain(constraint.replaceAll('"', "'"));
     const before = snapshotChanges(tree);
-
     await migration(tree);
-
-    expect(snapshotChanges(tree)).toEqual(before);
-    expect(tree.read("tools/dependency-boundaries.ts", "utf-8")).toContain("sourceTag: 'scope:admin'");
-  });
-
-  test("rejects allSourceTags policy customization without mutation", () => {
-    const tree = makeTree();
-    addInlineConstraint(tree, '{ allSourceTags: ["type:app"], onlyDependOnLibsWithTags: ["scope:shared"] }');
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("dependency constraints");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("rejects notDependOnLibsWithTags policy customization without mutation", () => {
-    const tree = makeTree();
-    addInlineConstraint(
-      tree,
-      '{ sourceTag: "scope:admin", onlyDependOnLibsWithTags: ["scope:shared"], notDependOnLibsWithTags: ["scope:ui"] }'
-    );
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("dependency constraints");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test.each(["allowedExternalImports", "bannedExternalImports"])("rejects %s policy customization without mutation", (field) => {
-    const tree = makeTree();
-    addInlineConstraint(tree, `{ sourceTag: "scope:admin", onlyDependOnLibsWithTags: ["scope:shared"], ${field}: ["example"] }`);
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("dependency constraints");
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
@@ -609,6 +598,41 @@ await page.waitForURL((url) => url.origin !== appOrigin && anotherRequiredCondit
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin && anotherRequiredCondition");
   });
 
+  test.each([
+    "url.origin !== appOrigin && !isBlocked(url)",
+    "!isBlocked(url) && (url.origin !== appOrigin)",
+    "(url.origin !== appOrigin && !isBlocked(url))",
+    "((url.origin !== appOrigin) && !(isBlocked(url)))",
+  ])("preserves required origin departure with unrelated negation: %s", async (predicate) => {
+    const tree = makeTree();
+    const smoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+await page.waitForURL((url) => ${predicate});\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", smoke);
+    await migration(tree);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("!isBlocked(url)");
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("preserves unrelated negation in origin and navigation helpers", async () => {
+    const tree = makeTree();
+    tree.write(
+      "apps/web/e2e/auth.e2e.ts",
+      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
+const appOrigin = new URL(baseUrl).origin;
+const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin && !isBlocked(url);
+const isNavigation = (request) => request.isNavigationRequest() && !isBlocked(request);
+await page.waitForRequest((request) => isNavigation(request) && isOutsideApp(request.url()) && !isBlocked(request));\n`
+    );
+    await migration(tree);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
   test("recognizes a directly passed helper that requires origin departure", async () => {
     const tree = makeTree();
     const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
@@ -640,6 +664,7 @@ await page.waitForURL((url) => isOutsideApp(url) && anotherRequiredCondition);\n
     "otherCondition || url.origin !== appOrigin",
     "condition ? url.origin !== appOrigin : true",
     "!(url.origin !== appOrigin) && anotherCondition",
+    "!(url.origin !== appOrigin && anotherCondition)",
   ])("rejects optional or negated URL origin departure: %s", (predicate) => {
     const tree = makeTree();
     const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
