@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+// oxlint-disable-next-line effect/noNodeBuiltinImport -- Native Nx migration fixtures read the packaged release baselines.
+import { readFileSync } from "node:fs";
 
 /* oxlint-disable effect/noAsyncFunction, effect/noGlobals -- Native Nx migration fixtures exercise promise-returning formatFiles and serialize virtual-tree JSON directly. */
-import { readJson, readJsonFile } from "@nx/devkit";
+import { formatFiles, readJson, readJsonFile } from "@nx/devkit";
 import { findMatchingConfigFiles } from "@nx/devkit/internal";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-line/migrate/migrate";
@@ -32,10 +34,8 @@ export default defineConfig({
     }],
   },
 });\n`;
-const oldSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
-const request = (request: { isNavigationRequest(): boolean; url(): string }) => request.isNavigationRequest() && /(?:authkit|workos)/u.test(request.url());
-page.waitForURL(/(?:authkit|workos)/u);
-await expect(page).toHaveURL(/(?:authkit|workos)/u);\n`;
+const oldSmoke = readFileSync(new URL("files/application-workspaces-1-0-2/auth.e2e.1-0-1.ts.template", import.meta.url), "utf-8");
+const targetSmoke = readFileSync(new URL("files/application-workspaces-1-0-2/auth.e2e.1-0-2.ts.template", import.meta.url), "utf-8");
 
 const vitestRegistration = (exclude: string[]) => ({
   exclude,
@@ -597,630 +597,108 @@ describe("1.0.2 application-workspace migration", () => {
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
-  test("rejects a customized old auth smoke without partially rewriting it", () => {
+  test("migrates the complete 1.0.1 smoke to the current generated 1.0.2 baseline", async () => {
+    const generated = readFileSync(new URL("../generators/preset/files/web/e2e/auth.e2e.ts.template", import.meta.url), "utf-8");
+    expect(targetSmoke).toBe(generated);
+    const expected = makeTree();
+    expected.write("apps/web/e2e/auth.e2e.ts", targetSmoke);
+    await formatFiles(expected);
     const tree = makeTree();
-    const customizedSmoke = oldSmoke.replace("http://localhost:3210", "http://localhost:4173");
-    tree.write("apps/web/e2e/auth.e2e.ts", customizedSmoke);
-    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(customizedSmoke);
-    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+    await migration(tree);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(expected.read("apps/web/e2e/auth.e2e.ts", "utf-8"));
   });
 
-  test("rejects customized provider-hostname AuthKit detection without mutation", () => {
+  test("recognizes the formatted 1.0.1 smoke without semantic interpretation", async () => {
     const tree = makeTree();
-    const customizedSmoke = oldSmoke.replaceAll("/(?:authkit|workos)/u", "/login\\.workos\\.com/u");
-    tree.write("apps/web/e2e/auth.e2e.ts", customizedSmoke);
-    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
-  });
-
-  test.each([
-    'url.hostname === "login.workos.com"',
-    'url.origin === "https://login.workos.com"',
-    // oxlint-disable-next-line eslint/no-template-curly-in-string -- Literal fixture source tests a dynamic provider hostname.
-    "url.origin === `https://login.${providerName}.example`",
-    '"https://login.acme.example" === url.origin',
-    'url["origin"] === "https://login.authkit.com"',
-    'url.origin.startsWith("https://login.acme.example")',
-    'url.origin === new URL("https://login.acme.example").origin',
-    'url.toString().startsWith("https://login.workos.com")',
-    'url["toString"]() === "https://login.acme.example/"',
-    'url.toJSON().includes("login.authkit.com")',
-    'String(url).startsWith("https://login.acme.example")',
-    "/login\\.workos\\.com/u.test(url.toString())",
-
-    '"login.workos.com" === url.hostname',
-    'url.hostname !== "login.workos.com"',
-    'url.host == "login.authkit.com"',
-    'url["hostname"] === "login.acme.example"',
-    "url.hostname === providerHost",
-    "isAllowedHost(url.hostname)",
-    "url.hostname === process.env.WORKOS_HOST",
-    "url.host === configuredHost",
-    "url.origin === provider.origin",
-    "someRuntimeValue === url.hostname",
-    "url.hostname.toLowerCase() === configuredHost",
-    "url.hostname.endsWith(config.authHost)",
-  ])("rejects hostname-coupled URL predicates regardless of comparison: %s", (condition) => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-const providerHost = "login.acme.example";
-const configuredHost = config.authHost;
-const isAllowedHost = (hostname) => hostname === providerHost;
-await page.waitForURL((url) => url.origin !== appOrigin && ${condition});\n`
-    );
+    await formatFiles(tree);
+    await migration(tree);
     const before = snapshotChanges(tree);
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    await migration(tree);
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
-  test.each([
-    "url.hostname.length > 0",
-    'url.host !== ""',
-    "/\\S/u.test(url.hostname)",
-    'url.toString().includes("/authorize")',
-    'diagnostic.toString() === "https://login.workos.com"',
-    "hasHostname(url.hostname)",
-  ])("preserves provider-independent transition conditions: %s", async (condition) => {
+  test("leaves the recognized 1.0.2 target smoke unchanged", async () => {
     const tree = makeTree();
-    const source = `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-const diagnostic = { toString: () => "https://login.workos.com" };
-const hasHostname = (hostname) => hostname.length > 0;
-await page.waitForURL((url) => url.origin !== appOrigin && ${condition});\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", targetSmoke);
+    await formatFiles(tree);
+    const original = tree.read("apps/web/e2e/auth.e2e.ts", "utf-8");
+    await migration(tree);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(original);
+  });
+
+  test("supports a repository without the optional AuthKit smoke", async () => {
+    const tree = makeTree();
+    tree.delete("apps/web/e2e/auth.e2e.ts");
+    await migration(tree);
+    expect(tree.exists("apps/web/e2e/auth.e2e.ts")).toBe(false);
+  });
+
+  test.each([
+    ["customized old base URL", oldSmoke.replace("http://localhost:3210", "http://localhost:4173")],
+    ["partial old baseline", oldSmoke.replace("await expect(page).toHaveURL(/(?:authkit|workos)/u);", "")],
+    [
+      "mixed old and target detection",
+      oldSmoke.replace("page.waitForURL(/(?:authkit|workos)/u)", "page.waitForURL(url => url.origin !== applicationOrigin)"),
+    ],
+    ["customized return-route assertion", targetSmoke.replace("/mon-espace", "/dashboard")],
+    ["customized identity assertion", targetSmoke.replace("convex-authenticated", "custom-authenticated")],
+    [
+      "behaviorally compatible callback",
+      targetSmoke.replace(
+        "(url) => url.origin !== applicationOrigin",
+        "url => { if (url.origin !== applicationOrigin) return true; return false; }"
+      ),
+    ],
+    [
+      "behaviorally compatible multi-return helper",
+      targetSmoke.replace(
+        "(url) => url.origin !== applicationOrigin",
+        "url => { if (ready) return url.origin !== applicationOrigin; return url.origin !== applicationOrigin; }"
+      ),
+    ],
+    ["custom helper graph", targetSmoke.replace("(url) => url.origin !== applicationOrigin", "isOutsideApp")],
+    [
+      "dynamic provider configuration",
+      targetSmoke.replace(
+        "(url) => url.origin !== applicationOrigin",
+        "url => url.origin !== applicationOrigin && url.hostname === process.env.WORKOS_HOST"
+      ),
+    ],
+    ["added diagnostics", `${oldSmoke}const diagnosticHost = new URL(baseUrl).hostname;\n`],
+    ["malformed target", targetSmoke.slice(0, -4)],
+    ["empty smoke", ""],
+  ])("requires manual reconciliation for unrecognized AuthKit state: %s", (_name, source) => {
+    const tree = makeTree();
     tree.write("apps/web/e2e/auth.e2e.ts", source);
-    await migration(tree);
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
     const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("rejects hostname coupling inside a request helper", () => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-const isHostedUi = (request) => request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin && new URL(request.url()).hostname === "login.acme.example";
-await page.waitForRequest(isHostedUi);\n`
-    );
-    const before = snapshotChanges(tree);
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("rejects additional hostname coupling in the legacy smoke without mutation", () => {
-    const tree = makeTree();
-    tree.write("apps/web/e2e/auth.e2e.ts", `${oldSmoke}await page.waitForURL((url) => url.hostname === "login.workos.com");\n`);
-    const before = snapshotChanges(tree);
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(() => migration(tree)).toThrow("Reconcile the customization manually, then rerun the Keenko migration");
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
   test.each([
-    "const diagnosticHost = new URL(baseUrl).hostname;",
-    "const diagnosticHost = new URL(baseUrl).host;",
-    'const providerDocumentation = "https://login.workos.com";',
-    'const unusedHostPredicate = (url) => url.hostname === "login.workos.com";',
-    'const unusedOriginPredicate = (url) => url.origin === "https://login.workos.com";',
-    "const unusedHostPattern = /login\\.workos\\.com/u;",
-  ])("preserves unrelated hostname diagnostics and unused provider references: %s", async (diagnostic) => {
+    ["nx.json", JSON.stringify({ plugins: [vitestRegistration(["apps/custom/vite.config.ts"])] }), "nx.json"],
+    ["package.json", JSON.stringify({ scripts: { check: "custom check" } }), "scripts.check generated route-tree path"],
+    [
+      "oxlint.config.ts",
+      oldOxlint.replace('"scope:backend", "scope:ui", "scope:shared"', '"scope:ui", "scope:shared"'),
+      "application dependency constraint",
+    ],
+    [
+      "apps/admin/package.json",
+      JSON.stringify({ nx: { tags: ["type:package", "scope:admin"] }, scripts: { dev: "vite dev" } }),
+      "nx.tags application classification",
+    ],
+    [
+      "packages/backend/package.json",
+      JSON.stringify({ nx: { tags: ["scope:backend"], targets: { dev: { continuous: false } } }, scripts: { dev: "confect dev" } }),
+      "nx.targets.dev.continuous",
+    ],
+  ])("fails atomically when a later surface conflicts: %s", (path, source, message) => {
     const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-${diagnostic}
-await page.waitForURL((url) => url.origin !== appOrigin);\n`
-    );
-    await migration(tree);
+    tree.write(path, source);
     const before = snapshotChanges(tree);
-    await migration(tree);
+    expect(() => migration(tree)).toThrow(message);
     expect(snapshotChanges(tree)).toEqual(before);
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
-  });
-
-  test.each([
-    '(process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173")',
-    'process.env["AUTH_E2E_BASE_URL"] ?? "http://localhost:4173"',
-    '(process.env.AUTH_E2E_BASE_URL) ?? "http://localhost:4173"',
-  ])("preserves application-derived origin authority: %s", async (authority) => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = ${authority};
-const appOrigin = new URL(baseUrl).origin;
-await page.waitForURL((url) => url.origin !== appOrigin);\n`
-    );
-    await migration(tree);
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("preserves diagnostic statements inside a called helper", async () => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-function isReady(url) {
-  console.log(url.hostname);
-  const diagnosticHost = url.host;
-  return true;
-}
-await page.waitForURL((url) => url.origin !== appOrigin && isReady(url));\n`
-    );
-    await migration(tree);
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("resolves helper names in the transition's lexical scope", async () => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-const isReady = (url) => url.hostname === "login.workos.com";
-{
-  const isReady = (url) => true;
-  await page.waitForURL((url) => url.origin !== appOrigin && isReady(url));
-}\n`
-    );
-    await migration(tree);
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test.each([
-    'const providerOrigin = "https://login.workos.com";\nawait page.waitForURL((url) => url.origin !== appOrigin && url.origin === providerOrigin);',
-    'const isProvider = (url) => url.origin === "https://login.workos.com" && process.env.AUTH_E2E_BASE_URL;\nawait page.waitForURL((url) => url.origin !== appOrigin && isProvider(url));',
-    'const expectedOrigin = new URL("https://login.acme.example").origin;\nconst isProvider = (url) => url.origin === expectedOrigin;\nawait page.waitForURL((url) => url.origin !== appOrigin && isProvider(url));',
-    'function isProvider(url) { return url.origin === "https://login.workos.com"; }\nawait page.waitForURL((url) => url.origin !== appOrigin && isProvider(url));',
-    'function isProvider(url) { const origin = url.origin; return origin === "https://login.acme.example"; }\nawait page.waitForURL((url) => url.origin !== appOrigin && isProvider(url));',
-    'await page.waitForRequest((request) => request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin && request.url().startsWith("https://login.acme.example"));',
-  ])("rejects provider origins through actual predicate bindings without mutation: %s", (transition) => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-${transition}\n`
-    );
-    const before = snapshotChanges(tree);
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("preserves unrelated hostname diagnostics while migrating the legacy smoke", async () => {
-    const tree = makeTree();
-    tree.write("apps/web/e2e/auth.e2e.ts", `${oldSmoke}const diagnosticHost = new URL(baseUrl).hostname;\n`);
-    await migration(tree);
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("new URL(baseUrl).hostname");
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== applicationOrigin");
-  });
-
-  test("recognizes a direct origin-based waitForURL transition", async () => {
-    const tree = makeTree();
-    const compliantSmoke = `const startUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const localOrigin = new URL(startUrl).origin;
-await page.waitForURL((location) => location.origin !== localOrigin);\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
-
-    await migration(tree);
-
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("page.waitForURL((location) => location.origin !== localOrigin)");
-  });
-
-  test.each([
-    "await page.waitForURL(url => url.origin !== appOrigin);",
-    "await page.waitForURL((url: URL) => url.origin !== appOrigin);",
-    "await page.waitForURL(url => { return url.origin !== appOrigin; });",
-    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
-    "await page.waitForURL(url => { if (ready) { return url.origin !== appOrigin; } else { return url.origin !== appOrigin; } });",
-    "await page.waitForURL(url => { { if (ready) return url.origin !== appOrigin; } return url.origin !== appOrigin; });",
-    "const isHostedUi = request => { if (ready) { return request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin; } return request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin; };\nawait page.waitForRequest(isHostedUi);",
-    'await page.waitForURL(url => { return url.origin !== appOrigin; return url.hostname === "login.workos.com"; });',
-    "const isOutsideApp = url => { return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
-    "async function smoke() { const appOrigin = new URL(baseUrl).origin; const isOutsideApp = url => { const departed = url.origin !== appOrigin; return departed; }; await page.waitForURL(isOutsideApp); }",
-    "const isOutsideApp = url => true;\n{ const isOutsideApp = url => url.origin !== appOrigin; await page.waitForURL(isOutsideApp); }",
-    "function isOutsideApp(url: URL) { const departed = url.origin !== appOrigin; return departed; }\nawait page.waitForURL(isOutsideApp);",
-    "await page.waitForRequest(request => request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin);",
-    "await page.waitForRequest(request => { return request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin; });",
-    "const isOutsideApp = url => url.origin !== appOrigin;\nawait page.waitForURL(isOutsideApp);",
-    "const isOutsideApp = url => url.origin !== appOrigin;\nawait page.waitForURL(url => isOutsideApp(url) && !isBlocked(url));",
-    "const isHostedUi = request => request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin;\nawait page.waitForRequest(isHostedUi);",
-    "const isNavigation = request => request.isNavigationRequest();\nconst isOutsideApp = url => new URL(url).origin !== appOrigin;\nawait page.waitForRequest(request => isNavigation(request) && isOutsideApp(request.url()));",
-  ])("preserves AST-recognized callbacks and directly used helpers: %s", async (transition) => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-${transition}\n`
-    );
-    await migration(tree);
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("appOrigin");
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test.each([
-    "await page.waitForURL(url => url.origin !== appOrigin || true);",
-    "const isOutsideApp = url => url.origin !== appOrigin;\n{ const isOutsideApp = url => true; await page.waitForURL(isOutsideApp); }",
-    "const isOutsideApp = url => url.origin !== appOrigin;\nfunction check(isOutsideApp) { await page.waitForURL(isOutsideApp); }",
-    "const isOutsideApp = url => url.origin !== appOrigin;\nfunction check({ isOutsideApp }) { await page.waitForURL(isOutsideApp); }",
-    "const isOutsideApp = url => url.origin !== appOrigin;\nfunction check() { function isOutsideApp(url) { return true; } await page.waitForURL(isOutsideApp); }",
-    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; return true; };\nawait page.waitForURL(isOutsideApp);",
-    "const isOutsideApp = url => { if (ready) return true; return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
-    "const isHostedUi = request => { if (ready) return new URL(request.url()).origin !== appOrigin; return request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin; };\nawait page.waitForRequest(isHostedUi);",
-    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; return url.origin !== appOrigin && url.hostname === process.env.WORKOS_HOST; };\nawait page.waitForURL(isOutsideApp);",
-    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
-    "const isOutsideApp = url => { let departed = url.origin !== appOrigin; departed = true; return departed; };\nawait page.waitForURL(isOutsideApp);",
-    'const isOutsideApp = url => { const ignored = (url.hostname = "login.example"); return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);',
-    "const isProvider = url => { while (ready) { return url.hostname === process.env.WORKOS_HOST; } return true; };\nawait page.waitForURL(url => url.origin !== appOrigin && isProvider(url));",
-    "{ const appOrigin = otherOrigin; await page.waitForURL(url => url.origin !== appOrigin); }",
-    "await page.waitForRequest(request => new URL(request.url()).origin !== appOrigin);",
-    "await page.waitForRequest(request => request.isNavigationRequest() || new URL(request.url()).origin !== appOrigin);",
-    "const isOutsideApp = url => url.origin !== appOrigin || true;\nawait page.waitForURL(isOutsideApp);",
-  ])("rejects bypassable parenthesis-free predicates without mutation: %s", (transition) => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-${transition}\n`
-    );
-    const before = snapshotChanges(tree);
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test.each([
-    'url.toString().toLowerCase().includes("login.workos.com")',
-    'url.toString().toUpperCase().startsWith("HTTPS://LOGIN.WORKOS.COM")',
-    'url.href.toLowerCase().endsWith("login.authkit.com")',
-    "String(url).toLowerCase().match(/login\\.workos\\.com/u)",
-    'url.href.toUpperCase().search("LOGIN.AUTHKIT.COM") >= 0',
-    'url.toString().trim().indexOf("login.workos.com") >= 0',
-    'url.toString().normalize().lastIndexOf("login.authkit.com") >= 0',
-    'url.toString().customTransform().includes("login.workos.com")',
-    'url.toString().slice(0, 40).includes("login.workos.com")',
-    'url.href.substring(0, 40) === "https://login.authkit.com"',
-    'url.toString().replace("HTTPS", "https").includes("login.workos.com")',
-    "/provider\\.example/u.test(url.toString().slice(0))",
-    'transform(url).includes("login.workos.com")',
-    "isProvider(url)",
-  ])("rejects transformed navigation URL coupling without mutation: %s", (condition) => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-const providerHost = "login.workos.com";
-const transform = value => value.toString().slice(0);
-const isProvider = url => {
-  const address = url.toString();
-  const normalized = address.toLowerCase();
-  return normalized.includes(providerHost);
-};
-await page.waitForURL(url => url.origin !== appOrigin && ${condition});\n`
-    );
-    const before = snapshotChanges(tree);
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test.each([
-    "url.origin !== appOrigin",
-    'url.origin !== appOrigin && url.toString().toLowerCase().includes("/authorize")',
-    'url.origin !== appOrigin && url.toString().slice(0, 8) === "https://"',
-    'url.origin !== appOrigin && url.toString().customTransform() === "https://"',
-    'url.origin !== appOrigin && transform(url).substring(0, 8) === "https://"',
-    'url.origin !== appOrigin && diagnostic.toLowerCase().includes("login.workos.com")',
-  ])("preserves provider-independent predicates with unrelated transformations: %s", async (predicate) => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-const transform = value => value.toString().slice(0);
-const diagnostic = "LOGIN.WORKOS.COM".toUpperCase();
-const unusedProvider = "LOGIN.AUTHKIT.COM".toLowerCase();
-await page.waitForURL(url => ${predicate});\n`
-    );
-    await migration(tree);
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test.each([
-    'const { AUTH_E2E_BASE_URL } = process.env;\nconst appOrigin = new URL(AUTH_E2E_BASE_URL ?? "http://localhost:4173").origin;',
-    'const { AUTH_E2E_BASE_URL: baseUrl } = process.env;\nconst appOrigin = new URL(baseUrl ?? "http://localhost:4173").origin;',
-    'const environment = process.env;\nconst { AUTH_E2E_BASE_URL: configuredBase } = environment;\nconst baseUrl = configuredBase ?? "http://localhost:4173";\nconst appOrigin = new URL(baseUrl).origin;',
-  ])("preserves destructured application authority: %s", async (authority) => {
-    const tree = makeTree();
-    tree.write("apps/web/e2e/auth.e2e.ts", `${authority}\nawait page.waitForURL(url => url.origin !== appOrigin);\n`);
-    await migration(tree);
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test.each([
-    'const { OTHER_URL: baseUrl } = process.env;\nconst appOrigin = new URL(baseUrl ?? "http://localhost:4173").origin;',
-    'const { AUTH_E2E_BASE_URL: baseUrl } = config;\nconst appOrigin = new URL(baseUrl ?? "http://localhost:4173").origin;',
-    "const { AUTH_E2E_BASE_URL: baseUrl } = process.env;\n{ const baseUrl = otherUrl; const appOrigin = new URL(baseUrl).origin; await page.waitForURL(url => url.origin !== appOrigin); }",
-  ])("rejects unrelated or shadowed destructured authority without mutation: %s", (authority) => {
-    const tree = makeTree();
-    tree.write("apps/web/e2e/auth.e2e.ts", `${authority}\nawait page.waitForURL(url => url.origin !== appOrigin);\n`);
-    const before = snapshotChanges(tree);
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("recognizes origin departure in a required URL conjunction", async () => {
-    const tree = makeTree();
-    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-await page.waitForURL((url) => url.origin !== appOrigin && anotherRequiredCondition);\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
-
-    await migration(tree);
-
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin && anotherRequiredCondition");
-  });
-
-  test.each([
-    "url.origin !== appOrigin && !isBlocked(url)",
-    "!isBlocked(url) && (url.origin !== appOrigin)",
-    "(url.origin !== appOrigin && !isBlocked(url))",
-    "((url.origin !== appOrigin) && !(isBlocked(url)))",
-  ])("preserves required origin departure with unrelated negation: %s", async (predicate) => {
-    const tree = makeTree();
-    const smoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-await page.waitForURL((url) => ${predicate});\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", smoke);
-    await migration(tree);
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("!isBlocked(url)");
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("preserves unrelated negation in origin and navigation helpers", async () => {
-    const tree = makeTree();
-    tree.write(
-      "apps/web/e2e/auth.e2e.ts",
-      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin && !isBlocked(url);
-const isNavigation = (request) => request.isNavigationRequest() && !isBlocked(request);
-await page.waitForRequest((request) => isNavigation(request) && isOutsideApp(request.url()) && !isBlocked(request));\n`
-    );
-    await migration(tree);
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("recognizes a directly passed helper that requires origin departure", async () => {
-    const tree = makeTree();
-    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: URL) => url.origin !== appOrigin;
-await page.waitForURL(isOutsideApp);\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
-
-    await migration(tree);
-
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("page.waitForURL(isOutsideApp)");
-  });
-
-  test("recognizes an origin helper in a required URL conjunction", async () => {
-    const tree = makeTree();
-    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: URL) => url.origin !== appOrigin;
-await page.waitForURL((url) => isOutsideApp(url) && anotherRequiredCondition);\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
-
-    await migration(tree);
-
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("isOutsideApp(url) && anotherRequiredCondition");
-  });
-
-  test.each([
-    "url.origin !== appOrigin || true",
-    "otherCondition || url.origin !== appOrigin",
-    "condition ? url.origin !== appOrigin : true",
-    "!(url.origin !== appOrigin) && anotherCondition",
-    "!(url.origin !== appOrigin && anotherCondition)",
-  ])("rejects optional or negated URL origin departure: %s", (predicate) => {
-    const tree = makeTree();
-    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-await page.waitForURL((url) => ${predicate});\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("rejects a directly passed helper with optional origin departure", () => {
-    const tree = makeTree();
-    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: URL) => url.origin !== appOrigin || true;
-await page.waitForURL(isOutsideApp);\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("recognizes an origin helper used by the actual waitForRequest transition", async () => {
-    const tree = makeTree();
-    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
-await page.waitForRequest((request) => request.isNavigationRequest() && isOutsideApp(request.url()));\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
-
-    await migration(tree);
-
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("isOutsideApp(request.url())");
-  });
-
-  test("recognizes reordered navigation and origin checks in the request predicate", async () => {
-    const tree = makeTree();
-    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
-await page.waitForRequest((request) => isOutsideApp(request.url()) && request.isNavigationRequest());\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
-
-    await migration(tree);
-
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("request.isNavigationRequest()");
-  });
-
-  test("rejects waitForRequest with origin departure but no navigation check", () => {
-    const tree = makeTree();
-    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
-await page.waitForRequest((request) => isOutsideApp(request.url()));\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("rejects waitForRequest with navigation but no origin departure", () => {
-    const tree = makeTree();
-    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-await page.waitForRequest((request) => request.isNavigationRequest());\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("rejects ambiguous request logic that does not require both navigation and origin departure", () => {
-    const tree = makeTree();
-    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
-await page.waitForRequest((request) => request.isNavigationRequest() || (isOutsideApp(request.url()) && otherCondition));\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("rejects a negated navigation check even when origin departure is required", () => {
-    const tree = makeTree();
-    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
-await page.waitForRequest((request) => !request.isNavigationRequest() && isOutsideApp(request.url()));\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("recognizes a helper that enforces navigation and origin departure", async () => {
-    const tree = makeTree();
-    const compliantSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isHostedUiNavigation = (request) =>
-  request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin;
-await page.waitForRequest(isHostedUiNavigation);\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", compliantSmoke);
-
-    await migration(tree);
-
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("page.waitForRequest(isHostedUiNavigation)");
-  });
-
-  test("does not borrow an unrelated navigation check for an unsafe request wait", () => {
-    const tree = makeTree();
-    const unsafeSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
-const appOrigin = new URL(baseUrl).origin;
-const isOutsideApp = (url: string) => new URL(url).origin !== appOrigin;
-const unrelatedNavigation = (request) => request.isNavigationRequest();
-await page.waitForRequest((request) => isOutsideApp(request.url()));\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", unsafeSmoke);
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("rejects a fixed-hostname transition despite unrelated origin markers", () => {
-    const tree = makeTree();
-    const customizedSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
-const applicationOrigin = new URL(baseUrl).origin;
-const unrelated = new URL(otherUrl).origin !== applicationOrigin;
-expect(new URL(otherUrl).origin).not.toBe(applicationOrigin);
-await page.waitForURL("https://login.acme.example/authorize");\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", customizedSmoke);
-    const before = snapshotChanges(tree);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test.each(['"https://login.acme.example/authorize"', "/login\\.acme\\.example/u"])(
-    "rejects provider-hostname transition %s without mutation",
-    (transition) => {
-      const tree = makeTree();
-      const customizedSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";\nawait page.waitForURL(${transition});\n`;
-      tree.write("apps/web/e2e/auth.e2e.ts", customizedSmoke);
-      const before = snapshotChanges(tree);
-
-      expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-      expect(snapshotChanges(tree)).toEqual(before);
-    }
-  );
-
-  test("rejects transition logic comparing an origin unrelated to AUTH_E2E_BASE_URL", () => {
-    const tree = makeTree();
-    const unrelatedOriginSmoke = `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";
-const unrelatedOrigin = new URL("https://example.com").origin;
-page.waitForURL((url) => url.origin !== unrelatedOrigin);
-expect(new URL(page.url()).origin).not.toBe(unrelatedOrigin);\n`;
-    tree.write("apps/web/e2e/auth.e2e.ts", unrelatedOriginSmoke);
-    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
-
-    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
-    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
   });
 
   test("leaves already compliant state unchanged", async () => {
