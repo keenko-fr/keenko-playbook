@@ -150,7 +150,7 @@ describe("generated Nx/Oxlint module boundaries", () => {
       ).pipe(E.provide(platformLayer))
     );
 
-  test.todo("rejects manifest-only sibling-application dependencies (Griller decision; KEE-45 acceptance unmet)", () =>
+  test.todo("rejects manifest-only sibling-application dependencies (blocked on upstream Nx; Enterprise ruled out)", () =>
     verifySiblingApplicationBoundary(true));
 
   test("discovers two applications sharing one backend and rejects sibling application source imports", () =>

@@ -627,6 +627,11 @@ describe("1.0.2 application-workspace migration", () => {
     'url["origin"] === "https://login.authkit.com"',
     'url.origin.startsWith("https://login.acme.example")',
     'url.origin === new URL("https://login.acme.example").origin',
+    'url.toString().startsWith("https://login.workos.com")',
+    'url["toString"]() === "https://login.acme.example/"',
+    'url.toJSON().includes("login.authkit.com")',
+    'String(url).startsWith("https://login.acme.example")',
+    "/login\\.workos\\.com/u.test(url.toString())",
 
     '"login.workos.com" === url.hostname',
     'url.hostname !== "login.workos.com"',
@@ -640,10 +645,34 @@ describe("1.0.2 application-workspace migration", () => {
       "apps/web/e2e/auth.e2e.ts",
       `const baseUrl = process.env.AUTH_E2E_BASE_URL;
 const appOrigin = new URL(baseUrl).origin;
+const providerHost = "login.acme.example";
+const isAllowedHost = (hostname) => hostname === providerHost;
 await page.waitForURL((url) => url.origin !== appOrigin && ${condition});\n`
     );
     const before = snapshotChanges(tree);
     expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    "url.hostname.length > 0",
+    'url.host !== ""',
+    "/\\S/u.test(url.hostname)",
+    'url.toString().includes("/authorize")',
+    'diagnostic.toString() === "https://login.workos.com"',
+    "hasHostname(url.hostname)",
+  ])("preserves provider-independent transition conditions: %s", async (condition) => {
+    const tree = makeTree();
+    const source = `const baseUrl = process.env.AUTH_E2E_BASE_URL;
+const appOrigin = new URL(baseUrl).origin;
+const diagnostic = { toString: () => "https://login.workos.com" };
+const hasHostname = (hostname) => hostname.length > 0;
+await page.waitForURL((url) => url.origin !== appOrigin && ${condition});\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", source);
+    await migration(tree);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
+    const before = snapshotChanges(tree);
+    await migration(tree);
     expect(snapshotChanges(tree)).toEqual(before);
   });
 

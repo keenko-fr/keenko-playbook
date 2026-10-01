@@ -569,11 +569,24 @@ function hasProviderHostnameInspection(source: string) {
     seen.add(node);
     if (ts.isIdentifier(node)) {
       const value = binding(node);
-      return value !== undefined && address(value, seen);
+      if (value !== undefined) return address(value, seen);
+      for (let scope = node.parent; scope !== undefined; scope = scope.parent) {
+        if (ts.isFunctionLike(scope)) return scope.parameters.some(({ name }) => ts.isIdentifier(name) && name.text === node.text);
+      }
+      return false;
     }
     if (ts.isParenthesizedExpression(node)) return address(node.expression, seen);
     if (["origin", "host", "hostname", "href"].includes(propertyName(node))) return true;
-    return ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "url";
+    if (ts.isNewExpression(node) && node.expression.getText() === "URL")
+      return node.arguments?.some((argument) => address(argument, seen)) ?? false;
+    if (!ts.isCallExpression(node)) return false;
+    if (ts.isIdentifier(node.expression) && node.expression.text === "String")
+      return node.arguments.some((argument) => address(argument, seen));
+    if (!ts.isPropertyAccessExpression(node.expression) && !ts.isElementAccessExpression(node.expression)) return false;
+    return (
+      propertyName(node.expression) === "url" ||
+      (["toString", "toJSON"].includes(propertyName(node.expression)) && address(node.expression.expression, seen))
+    );
   }
 
   function fixedHost(node: ts.Node, seen = new Set<ts.Node>()): boolean {
@@ -614,12 +627,29 @@ function hasProviderHostnameInspection(source: string) {
         ) === true
       );
     }
-    if (["host", "hostname"].includes(propertyName(node))) return true;
-    if (ts.isBinaryExpression(node) && ((address(node.left) && fixedHost(node.right)) || (address(node.right) && fixedHost(node.left))))
+    if (
+      ts.isBinaryExpression(node) &&
+      [
+        ts.SyntaxKind.EqualsEqualsToken,
+        ts.SyntaxKind.EqualsEqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsEqualsToken,
+        ts.SyntaxKind.LessThanToken,
+        ts.SyntaxKind.LessThanEqualsToken,
+        ts.SyntaxKind.GreaterThanToken,
+        ts.SyntaxKind.GreaterThanEqualsToken,
+      ].includes(node.operatorToken.kind) &&
+      ((address(node.left) && fixedHost(node.right)) || (address(node.right) && fixedHost(node.left)))
+    )
       return true;
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const receiver = node.expression.expression;
-      if (address(receiver) && node.arguments.some((argument) => fixedHost(argument))) return true;
+      if (
+        ["includes", "startsWith", "endsWith", "match", "search", "indexOf", "lastIndexOf"].includes(node.expression.name.text) &&
+        address(receiver) &&
+        node.arguments.some((argument) => fixedHost(argument))
+      )
+        return true;
       if (node.expression.name.text === "test" && node.arguments.some((argument) => address(argument)) && fixedHost(receiver)) return true;
     }
     if (ts.isPropertyAccessExpression(node)) return coupled(node.expression);
