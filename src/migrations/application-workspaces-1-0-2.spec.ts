@@ -819,7 +819,13 @@ await page.waitForURL((location) => location.origin !== localOrigin);\n`;
   test.each([
     "await page.waitForURL(url => url.origin !== appOrigin);",
     "await page.waitForURL((url: URL) => url.origin !== appOrigin);",
+    "await page.waitForURL(url => { return url.origin !== appOrigin; });",
+    "const isOutsideApp = url => { return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
+    "async function smoke() { const appOrigin = new URL(baseUrl).origin; const isOutsideApp = url => { const departed = url.origin !== appOrigin; return departed; }; await page.waitForURL(isOutsideApp); }",
+    "const isOutsideApp = url => true;\n{ const isOutsideApp = url => url.origin !== appOrigin; await page.waitForURL(isOutsideApp); }",
+    "function isOutsideApp(url: URL) { const departed = url.origin !== appOrigin; return departed; }\nawait page.waitForURL(isOutsideApp);",
     "await page.waitForRequest(request => request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin);",
+    "await page.waitForRequest(request => { return request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin; });",
     "const isOutsideApp = url => url.origin !== appOrigin;\nawait page.waitForURL(isOutsideApp);",
     "const isOutsideApp = url => url.origin !== appOrigin;\nawait page.waitForURL(url => isOutsideApp(url) && !isBlocked(url));",
     "const isHostedUi = request => request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin;\nawait page.waitForRequest(isHostedUi);",
@@ -841,6 +847,15 @@ ${transition}\n`
 
   test.each([
     "await page.waitForURL(url => url.origin !== appOrigin || true);",
+    "const isOutsideApp = url => url.origin !== appOrigin;\n{ const isOutsideApp = url => true; await page.waitForURL(isOutsideApp); }",
+    "const isOutsideApp = url => url.origin !== appOrigin;\nfunction check(isOutsideApp) { await page.waitForURL(isOutsideApp); }",
+    "const isOutsideApp = url => url.origin !== appOrigin;\nfunction check({ isOutsideApp }) { await page.waitForURL(isOutsideApp); }",
+    "const isOutsideApp = url => url.origin !== appOrigin;\nfunction check() { function isOutsideApp(url) { return true; } await page.waitForURL(isOutsideApp); }",
+    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; return true; };\nawait page.waitForURL(isOutsideApp);",
+    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
+    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
+    "const isOutsideApp = url => { let departed = url.origin !== appOrigin; departed = true; return departed; };\nawait page.waitForURL(isOutsideApp);",
+    "{ const appOrigin = otherOrigin; await page.waitForURL(url => url.origin !== appOrigin); }",
     "await page.waitForRequest(request => new URL(request.url()).origin !== appOrigin);",
     "await page.waitForRequest(request => request.isNavigationRequest() || new URL(request.url()).origin !== appOrigin);",
     "const isOutsideApp = url => url.origin !== appOrigin || true;\nawait page.waitForURL(isOutsideApp);",
@@ -866,6 +881,11 @@ ${transition}\n`
     'url.toString().trim().indexOf("login.workos.com") >= 0',
     'url.toString().normalize().lastIndexOf("login.authkit.com") >= 0',
     'url.toString().customTransform().includes("login.workos.com")',
+    'url.toString().slice(0, 40).includes("login.workos.com")',
+    'url.href.substring(0, 40) === "https://login.authkit.com"',
+    'url.toString().replace("HTTPS", "https").includes("login.workos.com")',
+    "/provider\\.example/u.test(url.toString().slice(0))",
+    'transform(url).includes("login.workos.com")',
     "isProvider(url)",
   ])("rejects transformed navigation URL coupling without mutation: %s", (condition) => {
     const tree = makeTree();
@@ -874,6 +894,7 @@ ${transition}\n`
       `const baseUrl = process.env.AUTH_E2E_BASE_URL;
 const appOrigin = new URL(baseUrl).origin;
 const providerHost = "login.workos.com";
+const transform = value => value.toString().slice(0);
 const isProvider = url => {
   const address = url.toString();
   const normalized = address.toLowerCase();
@@ -889,6 +910,9 @@ await page.waitForURL(url => url.origin !== appOrigin && ${condition});\n`
   test.each([
     "url.origin !== appOrigin",
     'url.origin !== appOrigin && url.toString().toLowerCase().includes("/authorize")',
+    'url.origin !== appOrigin && url.toString().slice(0, 8) === "https://"',
+    'url.origin !== appOrigin && url.toString().customTransform() === "https://"',
+    'url.origin !== appOrigin && transform(url).substring(0, 8) === "https://"',
     'url.origin !== appOrigin && diagnostic.toLowerCase().includes("login.workos.com")',
   ])("preserves provider-independent predicates with unrelated transformations: %s", async (predicate) => {
     const tree = makeTree();
@@ -896,6 +920,7 @@ await page.waitForURL(url => url.origin !== appOrigin && ${condition});\n`
       "apps/web/e2e/auth.e2e.ts",
       `const baseUrl = process.env.AUTH_E2E_BASE_URL;
 const appOrigin = new URL(baseUrl).origin;
+const transform = value => value.toString().slice(0);
 const diagnostic = "LOGIN.WORKOS.COM".toUpperCase();
 const unusedProvider = "LOGIN.AUTHKIT.COM".toLowerCase();
 await page.waitForURL(url => ${predicate});\n`

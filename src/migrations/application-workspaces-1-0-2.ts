@@ -309,10 +309,11 @@ function planAuthSmokeMigration(tree: Tree) {
   const path = "apps/web/e2e/auth.e2e.ts";
   const source = tree.read(path, "utf-8");
   if (source === null) return;
-  if (isOriginBasedHostedUiDetection(source)) return;
+  const current = analyzeAuthTransitions(source);
+  if (current.compliant && !current.providerCoupled) return;
   if (!source.includes(oldHostedUiWait)) return conflict(path, "Hosted UI transition detection");
   if (
-    hasProviderHostnameInspection(source.replaceAll(oldHostedUi, "")) ||
+    analyzeAuthTransitions(source.replaceAll(oldHostedUi, "")).providerCoupled ||
     !oldBaseUrl.test(source) ||
     !oldHostedUiRequest.test(source) ||
     !source.includes(oldHostedUiWait) ||
@@ -328,187 +329,21 @@ function planAuthSmokeMigration(tree: Tree) {
     .replace(oldHostedUiRequest, hostedUiRequestByOrigin)
     .replace(oldHostedUiWait, hostedUiWaitByOrigin)
     .replace(oldHostedUiExpectation, hostedUiExpectationByOrigin);
-  if (hasProviderHostnameInspection(migrated)) return conflict(path, "Hosted UI transition detection");
+  const result = analyzeAuthTransitions(migrated);
+  if (!result.compliant || result.providerCoupled) return conflict(path, "Hosted UI transition detection");
   return { path, source: migrated };
 }
 
-function isOriginBasedHostedUiDetection(source: string) {
-  if (!source.includes("AUTH_E2E_BASE_URL") || hasProviderHostnameInspection(source)) return false;
-  const baseUrlNames = [...source.matchAll(/const\s+([\w$]+)\s*=\s*[^;\n]*AUTH_E2E_BASE_URL[^;\n]*;/gu)].map((match) => match[1]);
-  const originNames = [...source.matchAll(/const\s+([\w$]+)\s*=\s*new URL\(([^;\n]+)\)\.origin\s*;/gu)]
-    .filter((match) => {
-      const input = match[2] ?? "";
-      return input.includes("AUTH_E2E_BASE_URL") || baseUrlNames.some((name) => name !== undefined && input.trim() === name);
-    })
-    .map((match) => match[1]);
-  return originNames.some((originName) => {
-    if (originName === undefined) return false;
-    const helpers = findTransitionHelpers(source, originName);
-    const urlTransition = findCallArguments(source, "waitForURL").some((argument) =>
-      waitForUrlProvesOriginDeparture(argument, helpers, originName)
-    );
-    const requestTransition = findCallArguments(source, "waitForRequest").some((argument) =>
-      waitForRequestProvesNavigationDeparture(argument, helpers, originName)
-    );
-    return urlTransition || requestTransition;
-  });
+interface AuthFacts {
+  readonly source?: "request" | "url" | "origin" | "string" | undefined;
+  readonly application?: "base" | "url" | "origin" | undefined;
+  readonly fixedHost?: boolean;
+  readonly departure?: boolean;
+  readonly navigation?: boolean;
+  readonly coupled?: boolean;
 }
 
-interface TransitionHelper {
-  readonly conjoinsNavigationAndOrigin: boolean;
-  readonly name: string;
-  readonly navigation: boolean;
-  readonly originInput: "request" | "url" | undefined;
-  readonly originRequired: boolean;
-}
-
-function findTransitionHelpers(source: string, originName: string) {
-  const file = ts.createSourceFile("auth.e2e.ts", source, ts.ScriptTarget.Latest, true);
-  const helpers: TransitionHelper[] = [];
-  function visit(node: ts.Node) {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) {
-      const callback = parseWaitCallback(node.initializer.getText(file));
-      if (callback !== undefined) {
-        const { body, parameter } = callback;
-        const navigation = isNavigationRequestExpression(body, parameter);
-        const originInput = originDepartureInput(body, parameter, originName);
-        helpers.push({
-          conjoinsNavigationAndOrigin: navigation && originInput !== undefined,
-          name: node.name.text,
-          navigation,
-          originInput,
-          originRequired: originInput !== undefined,
-        });
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(file);
-  return helpers;
-}
-
-function waitForUrlProvesOriginDeparture(argument: string, helpers: readonly TransitionHelper[], originName: string) {
-  const callback = parseWaitCallback(argument);
-  if (callback === undefined)
-    return helpers.some(({ name, originInput, originRequired }) => argument.trim() === name && originInput === "url" && originRequired);
-  if (originDepartureInput(callback.body, callback.parameter, originName) === "url") return true;
-  return helpers.some(
-    ({ name, originInput, originRequired }) =>
-      originInput === "url" &&
-      originRequired &&
-      hasRequiredPositiveCondition(callback.body, new RegExp(`^${name}\\s*\\(\\s*${callback.parameter}\\s*\\)$`, "u"))
-  );
-}
-
-function waitForRequestProvesNavigationDeparture(argument: string, helpers: readonly TransitionHelper[], originName: string) {
-  const callback = parseWaitCallback(argument);
-  if (callback === undefined)
-    return helpers.some(
-      ({ conjoinsNavigationAndOrigin, name, originInput }) =>
-        argument.trim() === name && conjoinsNavigationAndOrigin && originInput === "request"
-    );
-  const conjoinedHelper = helpers.some(
-    ({ conjoinsNavigationAndOrigin, name, originInput }) =>
-      conjoinsNavigationAndOrigin &&
-      originInput === "request" &&
-      hasRequiredPositiveCondition(callback.body, new RegExp(`^${name}\\s*\\(\\s*${callback.parameter}\\s*\\)$`, "u"))
-  );
-  if (conjoinedHelper) return true;
-  const navigation =
-    isNavigationRequestExpression(callback.body, callback.parameter) ||
-    helpers.some(
-      ({ name, navigation: helperNavigation }) =>
-        helperNavigation && hasRequiredPositiveCondition(callback.body, new RegExp(`^${name}\\s*\\(\\s*${callback.parameter}\\s*\\)$`, "u"))
-    );
-  const originDeparture =
-    originDepartureInput(callback.body, callback.parameter, originName) === "request" ||
-    helpers.some(({ name, originInput, originRequired }) => {
-      const argumentPattern = originInput === "request" ? callback.parameter : `${callback.parameter}\\.url\\(\\)`;
-      return (
-        originRequired &&
-        originInput !== undefined &&
-        hasRequiredPositiveCondition(callback.body, new RegExp(`^${name}\\s*\\(\\s*${argumentPattern}\\s*\\)$`, "u"))
-      );
-    });
-  return navigation && originDeparture;
-}
-
-function hasRequiredPositiveCondition(expression: string, condition: RegExp): boolean {
-  // Only prove required conjuncts. Disjunctions, ternaries, and statement bodies remain conflicts.
-  if (expression.includes("||") || expression.includes("?") || expression.includes("{")) return false;
-  const body = expression.trim();
-  let depth = 0;
-  let wrapped = body.startsWith("(");
-  for (let index = 0; index < body.length; index += 1) {
-    const character = body[index];
-    if (character === "(") depth += 1;
-    if (character === ")") depth -= 1;
-    if (depth === 0 && body.slice(index, index + 2) === "&&")
-      return (
-        hasRequiredPositiveCondition(body.slice(0, index), condition) || hasRequiredPositiveCondition(body.slice(index + 2), condition)
-      );
-    if (index === body.length - 1 && character === ")" && depth === 0 && wrapped)
-      return hasRequiredPositiveCondition(body.slice(1, -1), condition);
-    // The first opening parenthesis must wrap the entire expression before it can be removed.
-    if (character === ")" && depth === 0 && index < body.length - 1) wrapped = false;
-  }
-  return condition.test(body);
-}
-
-function parseWaitCallback(argument: string) {
-  const file = ts.createSourceFile("predicate.ts", `(${argument});`, ts.ScriptTarget.Latest, true);
-  const statement = file.statements[0];
-  if (statement === undefined || !ts.isExpressionStatement(statement)) return;
-  let expression = statement.expression;
-  while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
-  if (!ts.isArrowFunction(expression) || expression.parameters.length !== 1 || ts.isBlock(expression.body)) return;
-  const parameter = expression.parameters[0]?.name;
-  if (parameter === undefined || !ts.isIdentifier(parameter)) return;
-  return { body: expression.body.getText(file), parameter: parameter.text };
-}
-
-function isNavigationRequestExpression(expression: string, inputName: string) {
-  const escapedInput = inputName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
-  return hasRequiredPositiveCondition(expression, new RegExp(`^${escapedInput}\\.isNavigationRequest\\(\\)$`, "u"));
-}
-
-function originDepartureInput(expression: string, inputName: string, originName: string): "request" | "url" | undefined {
-  const escapedInput = inputName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
-  const escapedOrigin = originName.replaceAll(/[$()*+.?[\]^{|}]/gu, "\\$&");
-  if (
-    hasRequiredPositiveCondition(
-      expression,
-      new RegExp(`^new URL\\(\\s*${escapedInput}\\.url\\(\\)\\s*\\)\\.origin\\s*!==\\s*${escapedOrigin}$`, "u")
-    )
-  )
-    return "request";
-  if (
-    hasRequiredPositiveCondition(
-      expression,
-      new RegExp(`^(?:new URL\\(\\s*${escapedInput}\\s*\\)\\.origin|${escapedInput}\\.origin)\\s*!==\\s*${escapedOrigin}$`, "u")
-    )
-  )
-    return "url";
-  return undefined;
-}
-
-function findCallArguments(source: string, method: string) {
-  const file = ts.createSourceFile("auth.e2e.ts", source, ts.ScriptTarget.Latest, true);
-  const arguments_: string[] = [];
-  function visit(node: ts.Node) {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.expression.getText(file) === "page" &&
-      node.expression.name.text === method &&
-      node.arguments[0] !== undefined
-    )
-      arguments_.push(node.arguments[0].getText(file));
-    ts.forEachChild(node, visit);
-  }
-  visit(file);
-  return arguments_;
-}
+type AuthFunction = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration;
 
 function propertyName(node: ts.Node) {
   if (ts.isPropertyAccessExpression(node)) return node.name.text;
@@ -516,117 +351,169 @@ function propertyName(node: ts.Node) {
   return "";
 }
 
-function isApplicationBaseUrl(expression: ts.Expression) {
-  // AUTH_E2E_BASE_URL is application authority, including its project-owned fallback.
-  let authority = expression;
-  while (ts.isParenthesizedExpression(authority)) authority = authority.expression;
-  if (
-    ts.isBinaryExpression(authority) &&
-    [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken].includes(authority.operatorToken.kind)
-  )
-    authority = authority.left;
-  while (ts.isParenthesizedExpression(authority)) authority = authority.expression;
+function unwrap(node: ts.Node): ts.Node {
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node) || ts.isSatisfiesExpression(node))
+    return unwrap(node.expression);
+  return node;
+}
+
+function bindsName(name: ts.BindingName, identifier: string): boolean {
+  if (ts.isIdentifier(name)) return name.text === identifier;
+  return name.elements.some((element) => ts.isBindingElement(element) && bindsName(element.name, identifier));
+}
+
+function binding(identifier: ts.Identifier): ts.VariableDeclaration | ts.ParameterDeclaration | AuthFunction | undefined {
+  for (let scope: ts.Node | undefined = identifier.parent; scope !== undefined; scope = scope.parent) {
+    if (ts.isFunctionLike(scope)) {
+      const parameter = scope.parameters.find(({ name }) => bindsName(name, identifier.text));
+      if (parameter !== undefined) return parameter;
+      if ((ts.isFunctionExpression(scope) || ts.isFunctionDeclaration(scope)) && scope.name?.text === identifier.text) return scope;
+    }
+    if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
+    for (const statement of scope.statements) {
+      if (ts.isFunctionDeclaration(statement) && statement.name?.text === identifier.text) return statement;
+      if (!ts.isVariableStatement(statement)) continue;
+      const declaration = statement.declarationList.declarations.find(({ name }) => bindsName(name, identifier.text));
+      if (declaration !== undefined) return declaration;
+    }
+  }
+  return undefined;
+}
+
+function isConstant(declaration: ts.VariableDeclaration) {
+  // oxlint-disable-next-line eslint/no-bitwise -- TypeScript combines declaration modifiers and async context in a native bit mask.
+  return ts.isVariableDeclarationList(declaration.parent) && Boolean(declaration.parent.flags & ts.NodeFlags.Const);
+}
+
+function fixedText(text: string) {
   return (
-    (ts.isPropertyAccessExpression(authority) || ts.isElementAccessExpression(authority)) &&
-    propertyName(authority) === "AUTH_E2E_BASE_URL" &&
-    authority.expression.getText() === "process.env"
+    (URL.canParse(text) && new URL(text).hostname !== "") || /^(?:[\w-]+\.)+[\w-]+(?::\d+)?$/u.test(text) || /authkit|workos/iu.test(text)
   );
 }
 
-function hasProviderHostnameInspection(source: string) {
+function analyzeAuthTransitions(source: string) {
   const file = ts.createSourceFile("auth.e2e.ts", source, ts.ScriptTarget.Latest, true);
-  const visited = new Set<ts.Node>();
-  const stringTransformations = ["toString", "toJSON", "toLowerCase", "toUpperCase", "trim", "trimStart", "trimEnd", "normalize"];
-  const stringMatches = ["includes", "startsWith", "endsWith", "match", "search", "indexOf", "lastIndexOf"];
+  const active = new Set<ts.Node>();
+  const matches = new Set(["includes", "startsWith", "endsWith", "match", "search", "indexOf", "lastIndexOf"]);
+  let compliant = false;
+  let providerCoupled = false;
 
-  function binding(identifier: ts.Identifier): ts.Node | undefined {
-    for (let scope: ts.Node | undefined = identifier.parent; scope !== undefined; scope = scope.parent) {
-      if (
-        (ts.isArrowFunction(scope) || ts.isFunctionExpression(scope) || ts.isFunctionDeclaration(scope)) &&
-        scope.parameters.some(({ name }) => ts.isIdentifier(name) && name.text === identifier.text)
-      )
-        return undefined;
-      if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
-      for (const statement of scope.statements) {
-        if (ts.isFunctionDeclaration(statement) && statement.name?.text === identifier.text) return statement;
-        if (!ts.isVariableStatement(statement)) continue;
-        const declaration = statement.declarationList.declarations.find(
-          ({ name }) => ts.isIdentifier(name) && name.text === identifier.text
-        );
-        if (declaration?.initializer === undefined) continue;
-        if (isApplicationBaseUrl(declaration.initializer)) return undefined;
-        return declaration.initializer;
-      }
-    }
+  function callable(input: ts.Node, seen = new Set<ts.Node>()): AuthFunction | undefined {
+    const node = unwrap(input);
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)) return node;
+    if (!ts.isIdentifier(node)) return;
+    const declaration = binding(node);
+    if (declaration !== undefined && (ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration))) return declaration;
+    if (
+      declaration !== undefined &&
+      ts.isVariableDeclaration(declaration) &&
+      declaration.initializer !== undefined &&
+      isConstant(declaration)
+    )
+      return callable(declaration.initializer, seen);
     return undefined;
   }
 
-  function address(node: ts.Node, seen = new Set<ts.Node>()): boolean {
-    if (seen.has(node)) return false;
-    seen.add(node);
-    if (ts.isIdentifier(node)) {
-      const value = binding(node);
-      if (value !== undefined) return address(value, seen);
-      for (let scope = node.parent; scope !== undefined; scope = scope.parent) {
-        if (ts.isFunctionLike(scope)) return scope.parameters.some(({ name }) => ts.isIdentifier(name) && name.text === node.text);
-      }
-      return false;
-    }
-    if (ts.isParenthesizedExpression(node)) return address(node.expression, seen);
-    if (["origin", "host", "hostname", "href"].includes(propertyName(node))) return true;
-    if (ts.isNewExpression(node) && node.expression.getText() === "URL")
-      return node.arguments?.some((argument) => address(argument, seen)) ?? false;
-    if (!ts.isCallExpression(node)) return false;
-    if (ts.isIdentifier(node.expression) && node.expression.text === "String")
-      return node.arguments.some((argument) => address(argument, seen));
-    if (!ts.isPropertyAccessExpression(node.expression) && !ts.isElementAccessExpression(node.expression)) return false;
-    return (
-      propertyName(node.expression) === "url" ||
-      (stringTransformations.includes(propertyName(node.expression)) && address(node.expression.expression, seen))
-    );
+  function invoke(
+    fn: AuthFunction,
+    arguments_: readonly AuthFacts[],
+    parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>
+  ): AuthFacts {
+    if (fn.body === undefined || active.has(fn)) return {};
+    active.add(fn);
+    const bindings = new Map(parameters);
+    for (const [index, parameter] of fn.parameters.entries()) bindings.set(parameter, arguments_[index] ?? {});
+    const result = returnedFacts(fn.body, bindings);
+    active.delete(fn);
+    return result;
   }
 
-  function fixedHost(node: ts.Node, seen = new Set<ts.Node>()): boolean {
-    if (seen.has(node)) return false;
-    seen.add(node);
-    if (ts.isIdentifier(node)) {
-      const value = binding(node);
-      return value !== undefined && fixedHost(value, seen);
+  function returnedFacts(body: ts.ConciseBody, parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>): AuthFacts {
+    if (!ts.isBlock(body)) return evaluate(body, parameters);
+    const statements = body.statements;
+    const last = statements.at(-1);
+    const simple =
+      last !== undefined &&
+      ts.isReturnStatement(last) &&
+      statements
+        .slice(0, -1)
+        .every((statement) => ts.isVariableStatement(statement) && statement.declarationList.declarations.every(isConstant));
+    if (simple && last.expression !== undefined) return evaluate(last.expression, parameters);
+    // Competing paths cannot certify required conditions. Inspect only returned values for coupling/provenance.
+    const returned: AuthFacts[] = [];
+    function visitReturns(node: ts.Node) {
+      if (ts.isFunctionLike(node)) return;
+      if (ts.isReturnStatement(node) && node.expression !== undefined) returned.push(evaluate(node.expression, parameters));
+      else ts.forEachChild(node, visitReturns);
     }
-    if (ts.isStringLiteralLike(node))
-      return (
-        (URL.canParse(node.text) && new URL(node.text).hostname !== "") ||
-        /^(?:[\w-]+\.)+[\w-]+(?::\d+)?$/u.test(node.text) ||
-        /authkit|workos/iu.test(node.text)
-      );
-    if (ts.isTemplateExpression(node) && /^[a-z][\w+.-]*:\/\//iu.test(node.head.text)) return true;
-    if (ts.isRegularExpressionLiteral(node)) return /authkit|workos|\\\./iu.test(node.text);
-    if (ts.isPropertyAccessExpression(node)) return fixedHost(node.expression, seen);
-    return ts.forEachChild(node, (child) => fixedHost(child, seen) || undefined) === true;
+    visitReturns(body);
+    return { coupled: returned.some((facts) => facts.coupled), source: returned.find((facts) => facts.source !== undefined)?.source };
   }
 
-  // oxlint-disable-next-line eslint/complexity -- The syntax walk explicitly handles lexical bindings, returned predicates, and each supported URL comparison form.
-  function coupled(node: ts.Node): boolean {
-    if (visited.has(node)) return false;
-    visited.add(node);
+  function evaluate(input: ts.Node, parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>): AuthFacts {
+    const node = unwrap(input);
+    if (active.has(node)) return {};
+    active.add(node);
+    const result = expressionFacts(node, parameters);
+    active.delete(node);
+    return result;
+  }
+
+  // oxlint-disable-next-line eslint/complexity -- One AST evaluator shares lexical resolution and provenance across predicate, origin, and host analysis.
+  function expressionFacts(node: ts.Node, parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>): AuthFacts {
     if (ts.isIdentifier(node)) {
-      const value = binding(node);
-      return value !== undefined && coupled(value);
+      const declaration = binding(node);
+      if (declaration !== undefined && ts.isParameter(declaration)) return parameters.get(declaration) ?? {};
+      if (
+        declaration !== undefined &&
+        ts.isVariableDeclaration(declaration) &&
+        declaration.initializer !== undefined &&
+        isConstant(declaration)
+      )
+        return evaluate(declaration.initializer, parameters);
+      return {};
     }
-    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node))
-      return node.body !== undefined && coupled(node.body);
-    if (ts.isBlock(node)) {
-      // Inspect returned predicates, not diagnostic statements or unused declarations in a helper.
-      return (
-        ts.forEachChild(
-          node,
-          (child) => (!ts.isVariableStatement(child) && !ts.isExpressionStatement(child) && coupled(child)) || undefined
-        ) === true
-      );
+    if (ts.isStringLiteralLike(node)) return { fixedHost: fixedText(node.text) };
+    if (ts.isRegularExpressionLiteral(node)) return { fixedHost: /authkit|workos|\\\./iu.test(node.text) };
+    if (ts.isTemplateExpression(node)) {
+      const values = node.templateSpans.map((span) => evaluate(span.expression, parameters));
+      return {
+        coupled: values.some((facts) => facts.coupled),
+        fixedHost: /^[a-z][\w+.-]*:\/\//iu.test(node.head.text) || values.some((facts) => facts.fixedHost),
+        source: values.find((facts) => facts.source !== undefined)?.source,
+      };
     }
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) return propertyFacts(node, parameters);
     if (
-      ts.isBinaryExpression(node) &&
-      [
+      ts.isNewExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "URL" &&
+      binding(node.expression) === undefined
+    ) {
+      const value = node.arguments?.[0];
+      const facts = value === undefined ? {} : evaluate(value, parameters);
+      return {
+        ...facts,
+        application: facts.application === "base" ? "url" : undefined,
+        source: facts.source === undefined ? undefined : "url",
+      };
+    }
+    if (ts.isCallExpression(node)) return callFacts(node, parameters);
+    if (ts.isBinaryExpression(node)) {
+      const left = evaluate(node.left, parameters);
+      const right = evaluate(node.right, parameters);
+      const coupled = left.coupled === true || right.coupled === true;
+      const operator = node.operatorToken.kind;
+      if ([ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken].includes(operator) && left.application === "base") return left;
+      if (operator === ts.SyntaxKind.AmpersandAmpersandToken)
+        return {
+          coupled,
+          departure: left.departure === true || right.departure === true,
+          navigation: left.navigation === true || right.navigation === true,
+        };
+      const comparison = [
         ts.SyntaxKind.EqualsEqualsToken,
         ts.SyntaxKind.EqualsEqualsEqualsToken,
         ts.SyntaxKind.ExclamationEqualsToken,
@@ -635,44 +522,102 @@ function hasProviderHostnameInspection(source: string) {
         ts.SyntaxKind.LessThanEqualsToken,
         ts.SyntaxKind.GreaterThanToken,
         ts.SyntaxKind.GreaterThanEqualsToken,
-      ].includes(node.operatorToken.kind) &&
-      ((address(node.left) && fixedHost(node.right)) || (address(node.right) && fixedHost(node.left)))
-    )
-      return true;
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-      const receiver = node.expression.expression;
-      if (stringMatches.includes(node.expression.name.text) && address(receiver) && node.arguments.some((argument) => fixedHost(argument)))
-        return true;
-      if (node.expression.name.text === "test" && node.arguments.some((argument) => address(argument)) && fixedHost(receiver)) return true;
-      // Unknown transformations of navigation data cannot establish provider independence.
-      if (
-        address(receiver) &&
-        ![...stringTransformations, ...stringMatches, "url", "isNavigationRequest"].includes(node.expression.name.text)
-      )
-        return true;
+      ].includes(operator);
+      return {
+        coupled:
+          coupled ||
+          (comparison &&
+            ((left.source !== undefined && right.fixedHost === true) || (right.source !== undefined && left.fixedHost === true))),
+        departure:
+          operator === ts.SyntaxKind.ExclamationEqualsEqualsToken &&
+          ((left.source === "origin" && right.application === "origin") || (right.source === "origin" && left.application === "origin")),
+      };
     }
-    if (ts.isPropertyAccessExpression(node)) return coupled(node.expression);
-    return ts.forEachChild(node, (child) => coupled(child) || undefined) === true;
+    // Negation, disjunction, and conditional expressions do not certify positive required conjuncts.
+    let coupled = false;
+    ts.forEachChild(node, (child) => {
+      coupled ||= Boolean(evaluate(child, parameters).coupled);
+    });
+    return { coupled };
   }
 
-  function transition(node: ts.Node): boolean {
+  function propertyFacts(
+    node: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+    parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>
+  ): AuthFacts {
+    const name = propertyName(node);
+    const receiver = unwrap(node.expression);
+    if (
+      name === "AUTH_E2E_BASE_URL" &&
+      propertyName(receiver) === "env" &&
+      (ts.isPropertyAccessExpression(receiver) || ts.isElementAccessExpression(receiver)) &&
+      ts.isIdentifier(receiver.expression) &&
+      receiver.expression.text === "process" &&
+      binding(receiver.expression) === undefined
+    )
+      return { application: "base" };
+    const value = evaluate(receiver, parameters);
+    if (name === "origin")
+      return {
+        ...value,
+        application: value.application === "url" ? "origin" : undefined,
+        source: value.source === "url" ? "origin" : undefined,
+      };
+    return {
+      coupled: Boolean(value.coupled),
+      fixedHost: Boolean(value.fixedHost),
+      source: ["href", "host", "hostname"].includes(name) && value.source === "url" ? "string" : undefined,
+    };
+  }
+
+  function callFacts(node: ts.CallExpression, parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>): AuthFacts {
+    const arguments_ = node.arguments.map((argument) => evaluate(argument, parameters));
+    const fn = callable(node.expression);
+    if (fn !== undefined) return invoke(fn, arguments_, parameters);
+    const method = propertyName(node.expression);
+    const receiver =
+      ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
+        ? evaluate(node.expression.expression, parameters)
+        : {};
+    if (method === "isNavigationRequest" && receiver.source === "request") return { navigation: true };
+    if (method === "url" && receiver.source === "request") return { source: "string" };
+    const coupled =
+      Boolean(receiver.coupled) ||
+      arguments_.some((facts) => facts.coupled) ||
+      (matches.has(method) && receiver.source !== undefined && arguments_.some((facts) => facts.fixedHost)) ||
+      (method === "test" && Boolean(receiver.fixedHost) && arguments_.some((facts) => facts.source !== undefined));
+    // Preserve URL provenance through transformations, including unknown helpers; only fixed-host comparisons/matches couple it.
+    return {
+      coupled,
+      fixedHost: Boolean(receiver.fixedHost) || arguments_.some((facts) => facts.fixedHost),
+      source: receiver.source !== undefined || arguments_.some((facts) => facts.source !== undefined) ? "string" : undefined,
+    };
+  }
+
+  function visit(node: ts.Node) {
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.expression.getText(file) === "page" &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "page" &&
       ["waitForURL", "waitForRequest"].includes(node.expression.name.text)
     ) {
       const predicate = node.arguments[0];
-      if (
-        predicate !== undefined &&
-        ((fixedHost(predicate) && (ts.isStringLiteralLike(predicate) || ts.isRegularExpressionLiteral(predicate))) || coupled(predicate))
-      )
-        return true;
+      if (predicate !== undefined) {
+        const fn = callable(predicate);
+        const parameters = new Map<ts.ParameterDeclaration, AuthFacts>();
+        const facts =
+          fn === undefined
+            ? evaluate(predicate, parameters)
+            : invoke(fn, [{ source: node.expression.name.text === "waitForURL" ? "url" : "request" }], parameters);
+        compliant ||= Boolean(facts.departure && (node.expression.name.text === "waitForURL" || facts.navigation));
+        providerCoupled ||= facts.coupled === true || (fn === undefined && facts.fixedHost === true);
+      }
     }
-    return ts.forEachChild(node, (child) => transition(child) || undefined) === true;
+    ts.forEachChild(node, visit);
   }
-
-  return transition(file);
+  visit(file);
+  return { compliant, providerCoupled };
 }
 
 function isContinuousWorkspace(tags: unknown) {
