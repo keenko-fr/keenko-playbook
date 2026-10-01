@@ -639,6 +639,12 @@ describe("1.0.2 application-workspace migration", () => {
     'url["hostname"] === "login.acme.example"',
     "url.hostname === providerHost",
     "isAllowedHost(url.hostname)",
+    "url.hostname === process.env.WORKOS_HOST",
+    "url.host === configuredHost",
+    "url.origin === provider.origin",
+    "someRuntimeValue === url.hostname",
+    "url.hostname.toLowerCase() === configuredHost",
+    "url.hostname.endsWith(config.authHost)",
   ])("rejects hostname-coupled URL predicates regardless of comparison: %s", (condition) => {
     const tree = makeTree();
     tree.write(
@@ -646,6 +652,7 @@ describe("1.0.2 application-workspace migration", () => {
       `const baseUrl = process.env.AUTH_E2E_BASE_URL;
 const appOrigin = new URL(baseUrl).origin;
 const providerHost = "login.acme.example";
+const configuredHost = config.authHost;
 const isAllowedHost = (hostname) => hostname === providerHost;
 await page.waitForURL((url) => url.origin !== appOrigin && ${condition});\n`
     );
@@ -820,6 +827,11 @@ await page.waitForURL((location) => location.origin !== localOrigin);\n`;
     "await page.waitForURL(url => url.origin !== appOrigin);",
     "await page.waitForURL((url: URL) => url.origin !== appOrigin);",
     "await page.waitForURL(url => { return url.origin !== appOrigin; });",
+    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
+    "await page.waitForURL(url => { if (ready) { return url.origin !== appOrigin; } else { return url.origin !== appOrigin; } });",
+    "await page.waitForURL(url => { { if (ready) return url.origin !== appOrigin; } return url.origin !== appOrigin; });",
+    "const isHostedUi = request => { if (ready) { return request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin; } return request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin; };\nawait page.waitForRequest(isHostedUi);",
+    'await page.waitForURL(url => { return url.origin !== appOrigin; return url.hostname === "login.workos.com"; });',
     "const isOutsideApp = url => { return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
     "async function smoke() { const appOrigin = new URL(baseUrl).origin; const isOutsideApp = url => { const departed = url.origin !== appOrigin; return departed; }; await page.waitForURL(isOutsideApp); }",
     "const isOutsideApp = url => true;\n{ const isOutsideApp = url => url.origin !== appOrigin; await page.waitForURL(isOutsideApp); }",
@@ -852,9 +864,13 @@ ${transition}\n`
     "const isOutsideApp = url => url.origin !== appOrigin;\nfunction check({ isOutsideApp }) { await page.waitForURL(isOutsideApp); }",
     "const isOutsideApp = url => url.origin !== appOrigin;\nfunction check() { function isOutsideApp(url) { return true; } await page.waitForURL(isOutsideApp); }",
     "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; return true; };\nawait page.waitForURL(isOutsideApp);",
-    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
+    "const isOutsideApp = url => { if (ready) return true; return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
+    "const isHostedUi = request => { if (ready) return new URL(request.url()).origin !== appOrigin; return request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin; };\nawait page.waitForRequest(isHostedUi);",
+    "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; return url.origin !== appOrigin && url.hostname === process.env.WORKOS_HOST; };\nawait page.waitForURL(isOutsideApp);",
     "const isOutsideApp = url => { if (ready) return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);",
     "const isOutsideApp = url => { let departed = url.origin !== appOrigin; departed = true; return departed; };\nawait page.waitForURL(isOutsideApp);",
+    'const isOutsideApp = url => { const ignored = (url.hostname = "login.example"); return url.origin !== appOrigin; };\nawait page.waitForURL(isOutsideApp);',
+    "const isProvider = url => { while (ready) { return url.hostname === process.env.WORKOS_HOST; } return true; };\nawait page.waitForURL(url => url.origin !== appOrigin && isProvider(url));",
     "{ const appOrigin = otherOrigin; await page.waitForURL(url => url.origin !== appOrigin); }",
     "await page.waitForRequest(request => new URL(request.url()).origin !== appOrigin);",
     "await page.waitForRequest(request => request.isNavigationRequest() || new URL(request.url()).origin !== appOrigin);",
@@ -929,6 +945,32 @@ await page.waitForURL(url => ${predicate});\n`
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
     const before = snapshotChanges(tree);
     await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    'const { AUTH_E2E_BASE_URL } = process.env;\nconst appOrigin = new URL(AUTH_E2E_BASE_URL ?? "http://localhost:4173").origin;',
+    'const { AUTH_E2E_BASE_URL: baseUrl } = process.env;\nconst appOrigin = new URL(baseUrl ?? "http://localhost:4173").origin;',
+    'const environment = process.env;\nconst { AUTH_E2E_BASE_URL: configuredBase } = environment;\nconst baseUrl = configuredBase ?? "http://localhost:4173";\nconst appOrigin = new URL(baseUrl).origin;',
+  ])("preserves destructured application authority: %s", async (authority) => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", `${authority}\nawait page.waitForURL(url => url.origin !== appOrigin);\n`);
+    await migration(tree);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    'const { OTHER_URL: baseUrl } = process.env;\nconst appOrigin = new URL(baseUrl ?? "http://localhost:4173").origin;',
+    'const { AUTH_E2E_BASE_URL: baseUrl } = config;\nconst appOrigin = new URL(baseUrl ?? "http://localhost:4173").origin;',
+    "const { AUTH_E2E_BASE_URL: baseUrl } = process.env;\n{ const baseUrl = otherUrl; const appOrigin = new URL(baseUrl).origin; await page.waitForURL(url => url.origin !== appOrigin); }",
+  ])("rejects unrelated or shadowed destructured authority without mutation: %s", (authority) => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", `${authority}\nawait page.waitForURL(url => url.origin !== appOrigin);\n`);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
     expect(snapshotChanges(tree)).toEqual(before);
   });
 

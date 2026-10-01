@@ -335,15 +335,25 @@ function planAuthSmokeMigration(tree: Tree) {
 }
 
 interface AuthFacts {
-  readonly source?: "request" | "url" | "origin" | "string" | undefined;
+  readonly source?: "request" | "url" | "origin" | "host" | "string" | undefined;
   readonly application?: "base" | "url" | "origin" | undefined;
+  readonly derived?: boolean;
+  readonly identity?: boolean;
   readonly fixedHost?: boolean;
+  readonly environment?: boolean;
+  readonly knownNonHost?: boolean;
   readonly departure?: boolean;
   readonly navigation?: boolean;
   readonly coupled?: boolean;
 }
 
 type AuthFunction = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration;
+
+interface AuthReturnPaths {
+  readonly fallsThrough: boolean;
+  readonly uncertain: boolean;
+  readonly values: AuthFacts[];
+}
 
 function propertyName(node: ts.Node) {
   if (ts.isPropertyAccessExpression(node)) return node.name.text;
@@ -385,9 +395,65 @@ function isConstant(declaration: ts.VariableDeclaration) {
   return ts.isVariableDeclarationList(declaration.parent) && Boolean(declaration.parent.flags & ts.NodeFlags.Const);
 }
 
+function hasMutation(node: ts.Node): boolean {
+  if (ts.isFunctionLike(node)) return false;
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+    node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+  )
+    return true;
+  if (ts.isPostfixUnaryExpression(node) || ts.isDeleteExpression(node)) return true;
+  if (ts.isPrefixUnaryExpression(node) && [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator)) return true;
+  return ts.forEachChild(node, (child) => hasMutation(child) || undefined) === true;
+}
+
 function fixedText(text: string) {
   return (
     (URL.canParse(text) && new URL(text).hostname !== "") || /^(?:[\w-]+\.)+[\w-]+(?::\d+)?$/u.test(text) || /authkit|workos/iu.test(text)
+  );
+}
+
+function boundFacts(name: ts.BindingName, identifier: string, value: AuthFacts): AuthFacts {
+  if (ts.isIdentifier(name)) return value;
+  if (!ts.isObjectBindingPattern(name)) return {};
+  const element = name.elements.find((item) => bindsName(item.name, identifier));
+  if (element === undefined || element.dotDotDotToken !== undefined || !ts.isIdentifier(element.name)) return {};
+  const key = element.propertyName ?? element.name;
+  return memberFacts(value, ts.isIdentifier(key) || ts.isStringLiteralLike(key) ? key.text : "");
+}
+
+function memberFacts(value: AuthFacts, name: string): AuthFacts {
+  if (value.environment && name === "AUTH_E2E_BASE_URL") return { application: "base" };
+  if (name === "origin")
+    return {
+      ...value,
+      application: value.application === "url" ? "origin" : undefined,
+      identity: value.source === "url",
+      source: value.source === "url" ? "origin" : undefined,
+    };
+  let source: AuthFacts["source"];
+  if (value.source === "url") {
+    if (["host", "hostname"].includes(name)) source = "host";
+    else if (name === "href") source = "string";
+  }
+  return {
+    coupled: Boolean(value.coupled),
+    fixedHost: Boolean(value.fixedHost),
+    identity: source === "host",
+    source,
+  };
+}
+
+function navigationDerived(value: AuthFacts) {
+  return value.source !== undefined || value.derived === true;
+}
+
+function externalIdentity(value: AuthFacts, other: AuthFacts) {
+  return (
+    (value.identity === true || ["host", "origin"].includes(value.source ?? "")) &&
+    other.knownNonHost !== true &&
+    other.application !== "origin"
   );
 }
 
@@ -409,6 +475,7 @@ function analyzeAuthTransitions(source: string) {
     if (
       declaration !== undefined &&
       ts.isVariableDeclaration(declaration) &&
+      ts.isIdentifier(declaration.name) &&
       declaration.initializer !== undefined &&
       isConstant(declaration)
     )
@@ -432,24 +499,73 @@ function analyzeAuthTransitions(source: string) {
 
   function returnedFacts(body: ts.ConciseBody, parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>): AuthFacts {
     if (!ts.isBlock(body)) return evaluate(body, parameters);
-    const statements = body.statements;
-    const last = statements.at(-1);
-    const simple =
-      last !== undefined &&
-      ts.isReturnStatement(last) &&
-      statements
-        .slice(0, -1)
-        .every((statement) => ts.isVariableStatement(statement) && statement.declarationList.declarations.every(isConstant));
-    if (simple && last.expression !== undefined) return evaluate(last.expression, parameters);
-    // Competing paths cannot certify required conditions. Inspect only returned values for coupling/provenance.
-    const returned: AuthFacts[] = [];
+    const paths = returnPaths(body, parameters);
+    const values = paths.fallsThrough ? [...paths.values, {}] : paths.values;
+    const first = values[0];
+    return {
+      application: values.every((facts) => facts.application === first?.application) ? first?.application : undefined,
+      coupled: values.some((facts) => facts.coupled),
+      departure: !paths.uncertain && values.length > 0 && values.every((facts) => facts.departure),
+      derived: values.some(navigationDerived),
+      fixedHost: values.some((facts) => facts.fixedHost),
+      identity: values.some((facts) => facts.identity),
+      knownNonHost: values.length > 0 && values.every((facts) => facts.knownNonHost),
+      navigation: !paths.uncertain && values.length > 0 && values.every((facts) => facts.navigation),
+      source: values.every((facts) => facts.source === first?.source) ? first?.source : undefined,
+    };
+  }
+
+  function returnPaths(statement: ts.Statement, parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>): AuthReturnPaths {
+    if (ts.isReturnStatement(statement))
+      return {
+        fallsThrough: false,
+        uncertain: false,
+        values: [statement.expression === undefined ? {} : evaluate(statement.expression, parameters)],
+      };
+    if (ts.isBlock(statement)) {
+      const values: AuthFacts[] = [];
+      const paths = { fallsThrough: true, uncertain: false, values };
+      for (const child of statement.statements) {
+        if (!paths.fallsThrough) break;
+        const next = returnPaths(child, parameters);
+        paths.values.push(...next.values);
+        paths.fallsThrough = next.fallsThrough;
+        paths.uncertain ||= next.uncertain;
+      }
+      return paths;
+    }
+    if (ts.isIfStatement(statement)) {
+      const condition = evaluate(statement.expression, parameters);
+      const yes = returnPaths(statement.thenStatement, parameters);
+      const no =
+        statement.elseStatement === undefined
+          ? { fallsThrough: true, uncertain: false, values: [] }
+          : returnPaths(statement.elseStatement, parameters);
+      return {
+        fallsThrough: yes.fallsThrough || no.fallsThrough,
+        uncertain: yes.uncertain || no.uncertain || hasMutation(statement.expression),
+        values: [...yes.values, ...no.values].map((facts) => ({ ...facts, coupled: facts.coupled === true || condition.coupled === true })),
+      };
+    }
+    const values: AuthFacts[] = [];
     function visitReturns(node: ts.Node) {
       if (ts.isFunctionLike(node)) return;
-      if (ts.isReturnStatement(node) && node.expression !== undefined) returned.push(evaluate(node.expression, parameters));
+      if (ts.isReturnStatement(node)) values.push(node.expression === undefined ? {} : evaluate(node.expression, parameters));
       else ts.forEachChild(node, visitReturns);
     }
-    visitReturns(body);
-    return { coupled: returned.some((facts) => facts.coupled), source: returned.find((facts) => facts.source !== undefined)?.source };
+    visitReturns(statement);
+    return {
+      fallsThrough: true,
+      uncertain: !(
+        ts.isEmptyStatement(statement) ||
+        ts.isFunctionDeclaration(statement) ||
+        (ts.isVariableStatement(statement) &&
+          statement.declarationList.declarations.every(
+            (declaration) => isConstant(declaration) && declaration.initializer !== undefined && !hasMutation(declaration.initializer)
+          ))
+      ),
+      values,
+    };
   }
 
   function evaluate(input: ts.Node, parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>): AuthFacts {
@@ -465,17 +581,20 @@ function analyzeAuthTransitions(source: string) {
   function expressionFacts(node: ts.Node, parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>): AuthFacts {
     if (ts.isIdentifier(node)) {
       const declaration = binding(node);
-      if (declaration !== undefined && ts.isParameter(declaration)) return parameters.get(declaration) ?? {};
+      if (declaration !== undefined && ts.isParameter(declaration))
+        return boundFacts(declaration.name, node.text, parameters.get(declaration) ?? {});
       if (
         declaration !== undefined &&
         ts.isVariableDeclaration(declaration) &&
         declaration.initializer !== undefined &&
         isConstant(declaration)
       )
-        return evaluate(declaration.initializer, parameters);
+        return boundFacts(declaration.name, node.text, evaluate(declaration.initializer, parameters));
       return {};
     }
-    if (ts.isStringLiteralLike(node)) return { fixedHost: fixedText(node.text) };
+    if (ts.isStringLiteralLike(node)) return { fixedHost: fixedText(node.text), knownNonHost: !fixedText(node.text) };
+    if (ts.isNumericLiteral(node) || [ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword, ts.SyntaxKind.NullKeyword].includes(node.kind))
+      return { knownNonHost: true };
     if (ts.isRegularExpressionLiteral(node)) return { fixedHost: /authkit|workos|\\\./iu.test(node.text) };
     if (ts.isTemplateExpression(node)) {
       const values = node.templateSpans.map((span) => evaluate(span.expression, parameters));
@@ -527,7 +646,10 @@ function analyzeAuthTransitions(source: string) {
         coupled:
           coupled ||
           (comparison &&
-            ((left.source !== undefined && right.fixedHost === true) || (right.source !== undefined && left.fixedHost === true))),
+            ((navigationDerived(left) && right.fixedHost === true) ||
+              (navigationDerived(right) && left.fixedHost === true) ||
+              externalIdentity(left, right) ||
+              externalIdentity(right, left))),
         departure:
           operator === ts.SyntaxKind.ExclamationEqualsEqualsToken &&
           ((left.source === "origin" && right.application === "origin") || (right.source === "origin" && left.application === "origin")),
@@ -547,27 +669,10 @@ function analyzeAuthTransitions(source: string) {
   ): AuthFacts {
     const name = propertyName(node);
     const receiver = unwrap(node.expression);
-    if (
-      name === "AUTH_E2E_BASE_URL" &&
-      propertyName(receiver) === "env" &&
-      (ts.isPropertyAccessExpression(receiver) || ts.isElementAccessExpression(receiver)) &&
-      ts.isIdentifier(receiver.expression) &&
-      receiver.expression.text === "process" &&
-      binding(receiver.expression) === undefined
-    )
-      return { application: "base" };
+    if (name === "env" && ts.isIdentifier(receiver) && receiver.text === "process" && binding(receiver) === undefined)
+      return { environment: true };
     const value = evaluate(receiver, parameters);
-    if (name === "origin")
-      return {
-        ...value,
-        application: value.application === "url" ? "origin" : undefined,
-        source: value.source === "url" ? "origin" : undefined,
-      };
-    return {
-      coupled: Boolean(value.coupled),
-      fixedHost: Boolean(value.fixedHost),
-      source: ["href", "host", "hostname"].includes(name) && value.source === "url" ? "string" : undefined,
-    };
+    return memberFacts(value, name);
   }
 
   function callFacts(node: ts.CallExpression, parameters: ReadonlyMap<ts.ParameterDeclaration, AuthFacts>): AuthFacts {
@@ -584,12 +689,16 @@ function analyzeAuthTransitions(source: string) {
     const coupled =
       Boolean(receiver.coupled) ||
       arguments_.some((facts) => facts.coupled) ||
-      (matches.has(method) && receiver.source !== undefined && arguments_.some((facts) => facts.fixedHost)) ||
-      (method === "test" && Boolean(receiver.fixedHost) && arguments_.some((facts) => facts.source !== undefined));
-    // Preserve URL provenance through transformations, including unknown helpers; only fixed-host comparisons/matches couple it.
+      (matches.has(method) &&
+        navigationDerived(receiver) &&
+        arguments_.some((facts) => facts.fixedHost === true || externalIdentity(receiver, facts))) ||
+      (method === "test" && Boolean(receiver.fixedHost) && arguments_.some(navigationDerived));
+    // Preserve URL provenance through transformations; comparisons/matches against external host identity couple it.
     return {
       coupled,
+      derived: navigationDerived(receiver) || arguments_.some(navigationDerived),
       fixedHost: Boolean(receiver.fixedHost) || arguments_.some((facts) => facts.fixedHost),
+      identity: !matches.has(method) && (receiver.identity === true || arguments_.some((facts) => facts.identity)),
       source: receiver.source !== undefined || arguments_.some((facts) => facts.source !== undefined) ? "string" : undefined,
     };
   }
