@@ -4,18 +4,10 @@ import { readFileSync } from "node:fs";
 
 /* oxlint-disable effect/noAsyncFunction, effect/noGlobals -- Native Nx migration fixtures exercise promise-returning formatFiles and serialize virtual-tree JSON directly. */
 import { formatFiles, readJson, readJsonFile } from "@nx/devkit";
-import { findMatchingConfigFiles } from "@nx/devkit/internal";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-line/migrate/migrate";
 
 import migration from "./application-workspaces-1-0-2.js";
-
-interface VitestPluginRegistration {
-  exclude?: string[];
-  include?: string[];
-  options: { testMode: string; testTargetName: string };
-  plugin: string;
-}
 
 const oldCheck = "nx sync:check && git status --porcelain -- apps/web/src/routeTree.gen.ts";
 const oldOxlint = `import { defineConfig } from "oxlint";
@@ -112,420 +104,101 @@ describe("1.0.2 application-workspace migration", () => {
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).not.toContain("authkit|workos");
   });
 
-  test("preserves unrelated exclusions while replacing the legacy application exclusion", async () => {
+  test("recognizes the target Vitest registration as a no-op", async () => {
     const tree = makeTree();
-    tree.write(
-      "nx.json",
-      JSON.stringify({
-        plugins: [vitestRegistration(["tools/foo/vite.config.ts", "apps/web/vite.config.ts", "examples/**"])],
-      })
-    );
-
+    const nxJson = { analytics: false, plugins: [vitestRegistration(["apps/*/vite.config.ts"])] };
+    tree.write("nx.json", JSON.stringify(nxJson));
     await migration(tree);
-
-    expect(readJson<{ plugins: { exclude: string[] }[] }>(tree, "nx.json").plugins[0]?.exclude).toEqual([
-      "tools/foo/vite.config.ts",
-      "apps/*/vite.config.ts",
-      "examples/**",
-    ]);
+    expect(readJson(tree, "nx.json")).toEqual(nxJson);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
   });
 
-  test("preserves an already-compliant customized exclusion list", async () => {
-    const tree = makeTree();
-    const exclusions = ["tools/foo/vite.config.ts", "apps/*/vite.config.ts", "examples/**"];
-    tree.write("nx.json", JSON.stringify({ plugins: [vitestRegistration(exclusions)] }));
-
-    await migration(tree);
-
-    expect(readJson<{ plugins: { exclude: string[] }[] }>(tree, "nx.json").plugins[0]?.exclude).toEqual(exclusions);
-  });
-
-  test("migrates the generated Vitest registration independently of project-owned registration order", async () => {
-    const tree = makeTree();
-    const projectRegistration = {
-      exclude: ["tools/**"],
-      include: ["tools/*/vite.config.ts"],
-      options: { testMode: "run", testTargetName: "test" },
+  test.each([
+    { exclude: ["apps/pro*/vite.config.ts"], include: ["apps/pro?/vite.config.ts"], plugin: "@nx/vitest" },
+    { include: ["apps/**/vite.config.ts"], plugin: "@nx/vitest" },
+    { include: ["apps/**/vite.config.ts"], options: { testMode: "run", testTargetName: "test" }, plugin: "@nx/vitest" },
+    { options: { testMode: "watch", testTargetName: "custom-test" }, plugin: "@nx/vitest" },
+    { include: ["tools/**"], options: { testMode: "run", testTargetName: "test" }, plugin: "@nx/vitest" },
+    {
+      exclude: ["apps/*/vite.config.ts"],
+      include: ["apps/**"],
+      options: { testMode: "run", testTargetName: "custom-test" },
       plugin: "@nx/vitest",
+    },
+  ])("preserves unrelated Vitest registrations regardless of application coverage: %j", async (projectRegistration) => {
+    const tree = makeTree();
+    const nxJson = {
+      analytics: false,
+      plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])],
+      targetDefaults: { build: { cache: true } },
     };
-    tree.write(
-      "nx.json",
-      JSON.stringify({
-        plugins: [projectRegistration, vitestRegistration(["examples/**", "apps/web/vite.config.ts"])],
-      })
-    );
-
+    tree.write("nx.json", JSON.stringify(nxJson));
     await migration(tree);
+    expect(readJson(tree, "nx.json")).toEqual({ ...nxJson, plugins: [projectRegistration, vitestRegistration(["apps/*/vite.config.ts"])] });
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
 
-    const { plugins } = readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json");
-    expect(plugins[0]).toEqual(projectRegistration);
-    expect(plugins[1]?.exclude).toEqual(["examples/**", "apps/*/vite.config.ts"]);
+  test("preserves multiple unrelated registrations and fields outside the owned scope", async () => {
+    const tree = makeTree();
+    const unrelated = [
+      "@nx/js/typescript",
+      { exclude: ["apps/pro*/vite.config.ts"], include: ["apps/pro?/vite.config.ts"], plugin: "@nx/vitest" },
+      { include: ["apps/**/vite.config.ts"], options: { testMode: "run", testTargetName: "product-test" }, plugin: "@nx/vitest" },
+      { include: ["tools/**"], options: { testMode: "run", testTargetName: "test" }, plugin: "@nx/vitest" },
+    ];
+    const owned = {
+      ...vitestRegistration(["apps/web/vite.config.ts"]),
+      options: { ciTargetName: "test-ci", testMode: "run", testTargetName: "test" },
+    };
+    const nxJson = { plugins: [unrelated[0], owned, ...unrelated.slice(1)], sync: { globalGenerators: ["keenko:sync"] } };
+    tree.write("nx.json", JSON.stringify(nxJson));
+    await migration(tree);
+    expect(readJson(tree, "nx.json")).toEqual({
+      ...nxJson,
+      plugins: [unrelated[0], { ...owned, exclude: ["apps/*/vite.config.ts"] }, ...unrelated.slice(1)],
+    });
+  });
+
+  test.each([
+    { ...vitestRegistration(["apps/custom/vite.config.ts"]) },
+    { ...vitestRegistration(["apps/**/vite.config.ts"]) },
+    { ...vitestRegistration(["apps/web/vite.config.ts", "tools/**"]) },
+    { ...vitestRegistration(["apps/*/vite.config.ts", "!apps/admin/vite.config.ts"]) },
+    { ...vitestRegistration(["apps/web/vite.config.ts"]), include: ["apps/**"] },
+    { ...vitestRegistration(["apps/*/vite.config.ts"]), include: [] },
+    { options: { testMode: "run", testTargetName: "test" }, plugin: "@nx/vitest" },
+    { ...vitestRegistration([]), exclude: "apps/web/vite.config.ts" },
+  ])("rejects customized owned Vitest include/exclude state atomically: %j", (registration) => {
+    const tree = makeTree();
+    tree.write("nx.json", JSON.stringify({ plugins: [registration] }));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Reconcile the customization manually, then rerun the Keenko migration");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects customized owned include scope even alongside unrelated registrations", () => {
+    const tree = makeTree();
+    const unrelated = { include: ["tools/**"], plugin: "@nx/vitest" };
+    const owned = { ...vitestRegistration(["apps/web/vite.config.ts"]), include: ["apps/**"] };
+    tree.write("nx.json", JSON.stringify({ plugins: [unrelated, owned] }));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+    expect(snapshotChanges(tree)).toEqual(before);
   });
 
   test("rejects ambiguous duplicate Keenko-shaped Vitest registrations without mutation", () => {
     const tree = makeTree();
-    const plugins = [vitestRegistration(["apps/web/vite.config.ts"]), vitestRegistration(["examples/**", "apps/web/vite.config.ts"])];
-    tree.write("nx.json", JSON.stringify({ plugins }));
-    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
-
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
-  });
-
-  test("preserves a compliant Vitest exclusion with customized options", async () => {
-    const tree = makeTree();
-    const plugins = [
-      {
-        exclude: ["tools/foo/vite.config.ts", "apps/*/vite.config.ts"],
-        options: { testMode: "watch", testTargetName: "test" },
-        plugin: "@nx/vitest",
-      },
-    ];
-    tree.write("nx.json", JSON.stringify({ plugins }));
-
-    await migration(tree);
-
-    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins).toEqual(plugins);
-  });
-
-  test("preserves a Vitest registration whose ordered include scope excludes applications", async () => {
-    const tree = makeTree();
-    const projectRegistration = {
-      exclude: ["tools/legacy/**"],
-      include: ["!apps/**", "tools/**"],
-      options: { testMode: "watch", testTargetName: "test" },
-      plugin: "@nx/vitest",
-    };
-    const plugins = [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])];
-    tree.write("nx.json", JSON.stringify({ plugins }));
-
-    await migration(tree);
-
-    const migrated = readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins;
-    expect(migrated[0]).toEqual(projectRegistration);
-    expect(migrated[1]?.exclude).toEqual(["apps/*/vite.config.ts"]);
-  });
-
-  test("rejects a second Vitest registration that still covers application configs", () => {
-    const tree = makeTree();
-    const plugins = [
-      { options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
-      vitestRegistration(["apps/web/vite.config.ts"]),
-    ];
-    tree.write("nx.json", JSON.stringify({ plugins }));
-    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
-
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
-  });
-
-  test("rejects an application-name glob without relying on sampled names", () => {
-    const tree = makeTree();
-    const plugins = [
-      { include: ["apps/pro*/vite.config.ts"], options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
-      vitestRegistration(["apps/web/vite.config.ts"]),
-    ];
-    tree.write("nx.json", JSON.stringify({ plugins }));
-    const before = snapshotChanges(tree);
-
-    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], ["apps/pro*/vite.config.ts"], [])).toEqual(["apps/pro/vite.config.ts"]);
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("treats an identical ordered partial inclusion and negation as harmless", async () => {
-    const tree = makeTree();
-    const projectRegistration = {
-      include: ["apps/pro*/vite.config.ts", "!apps/pro*/vite.config.ts"],
-      options: { testMode: "watch", testTargetName: "other-test" },
-      plugin: "@nx/vitest",
-    };
-    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
-
-    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], projectRegistration.include, [])).toEqual([]);
-    await migration(tree);
-
-    const { plugins } = readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json");
-    expect(plugins[0]).toEqual(projectRegistration);
-    expect(plugins[1]?.exclude).toEqual(["apps/*/vite.config.ts"]);
-  });
-
-  test("treats identical partial include and exclude scopes as harmless", async () => {
-    const tree = makeTree();
-    const projectRegistration = {
-      exclude: ["apps/pro*/vite.config.ts"],
-      include: ["apps/pro*/vite.config.ts"],
-      options: { testMode: "watch", testTargetName: "other-test" },
-      plugin: "@nx/vitest",
-    };
-    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
-
-    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], projectRegistration.include, projectRegistration.exclude)).toEqual([]);
-    await migration(tree);
-
-    const { plugins } = readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json");
-    expect(plugins[0]).toEqual(projectRegistration);
-    expect(plugins[1]?.exclude).toEqual(["apps/*/vite.config.ts"]);
-  });
-
-  test("leaves an already-compliant registration with cancelled partial scope unchanged", async () => {
-    const tree = makeTree();
-    await migration(tree);
-    const plugins = [
-      {
-        exclude: ["apps/pro*/vite.config.ts"],
-        include: ["apps/pro*/vite.config.ts"],
-        options: { testMode: "watch", testTargetName: "other-test" },
-        plugin: "@nx/vitest",
-      },
-      vitestRegistration(["apps/*/vite.config.ts"]),
-    ];
-    tree.write("nx.json", JSON.stringify({ plugins }));
-
-    await migration(tree);
-
-    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins).toEqual(plugins);
-  });
-
-  test("keeps coverage when the exclude removes only part of the include", () => {
-    const tree = makeTree();
-    const include = ["apps/pro*/vite.config.ts"];
-    const exclude = ["apps/pro-admin/vite.config.ts"];
     tree.write(
       "nx.json",
-      JSON.stringify({
-        plugins: [
-          { exclude, include, options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
-          vitestRegistration(["apps/web/vite.config.ts"]),
-        ],
-      })
+      JSON.stringify({ plugins: [vitestRegistration(["apps/web/vite.config.ts"]), vitestRegistration(["apps/*/vite.config.ts"])] })
     );
-    const before = snapshotChanges(tree);
-
-    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], include, exclude)).toEqual(["apps/pro/vite.config.ts"]);
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("treats whole-class include and exclude scopes as harmless", async () => {
-    const tree = makeTree();
-    const projectRegistration = {
-      exclude: ["apps/*/vite.config.ts"],
-      include: ["apps/*/vite.config.ts"],
-      options: { testMode: "watch", testTargetName: "other-test" },
-      plugin: "@nx/vitest",
-    };
-    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
-
-    await migration(tree);
-
-    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins[0]).toEqual(projectRegistration);
-  });
-
-  test.each([
-    { patterns: ["apps/pro*/vite.config.ts", "!apps/pro-admin/vite.config.ts"] },
-    { patterns: ["!apps/pro-admin/vite.config.ts", "apps/pro*/vite.config.ts"] },
-    { patterns: ["apps/pro*/vite.config.ts", "!apps/pro*/vite.config.ts", "apps/pro-admin/vite.config.ts"] },
-  ])("treats identical ordered include/exclude matchers as harmless: %j", async ({ patterns: orderedPatterns }) => {
-    const patterns = [...orderedPatterns];
-    const tree = makeTree();
-    const projectRegistration = {
-      exclude: patterns,
-      include: patterns,
-      options: { testMode: "watch", testTargetName: "other-test" },
-      plugin: "@nx/vitest",
-    };
-    const configs = ["apps/pro/vite.config.ts", "apps/pro-admin/vite.config.ts", "apps/web/vite.config.ts"];
-    expect(findMatchingConfigFiles(configs, patterns, patterns)).toEqual([]);
-    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
-    await migration(tree);
-    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins[0]).toEqual(projectRegistration);
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test.each([
-    { exclude: ["apps/pr[o]/vite.config.ts"], include: ["apps/pro/vite.config.ts"] },
-    { exclude: ["apps/pr[o]*/vite.config.ts"], include: ["apps/pro*/vite.config.ts"] },
-    { exclude: ["apps/pro**/vite.config.ts"], include: ["apps/pro*/vite.config.ts"] },
-    { exclude: ["apps/pro/vite.config.ts"], include: ["apps/pr[o]/vite.config.ts"] },
-    { exclude: ["apps/@(pro|admin)/vite.config.ts"], include: ["apps/{pro,admin}/vite.config.ts"] },
-    { exclude: ["apps/{admin,pro}/vite.config.ts"], include: ["apps/{pro,admin}/vite.config.ts"] },
-    { exclude: ["apps/pr[o]/vite.config.ts", "!apps/admin/vite.config.ts"], include: ["apps/pro/vite.config.ts"] },
-  ])("uses Nx matching for equivalent finite scopes and compiled patterns: %j", async ({ exclude, include }) => {
-    const tree = makeTree();
-    const registration = {
-      exclude: [...exclude],
-      include: [...include],
-      options: { testMode: "watch", testTargetName: "custom-test" },
-      plugin: "@nx/vitest",
-    };
-    expect(
-      findMatchingConfigFiles(["apps/pro/vite.config.ts", "apps/admin/vite.config.ts"], registration.include, registration.exclude)
-    ).toEqual([]);
-    tree.write("nx.json", JSON.stringify({ plugins: [registration, vitestRegistration(["apps/web/vite.config.ts"])] }));
-    await migration(tree);
-    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins[0]).toEqual(registration);
-    const before = snapshotChanges(tree);
-    await migration(tree);
-    expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("rejects a finite include scope when Nx still matches one application", () => {
-    const tree = makeTree();
-    const registration = {
-      exclude: ["apps/pr[o]/vite.config.ts"],
-      include: ["apps/{pro,admin}/vite.config.ts"],
-      options: { testMode: "watch", testTargetName: "custom-test" },
-      plugin: "@nx/vitest",
-    };
-    tree.write("nx.json", JSON.stringify({ plugins: [registration, vitestRegistration(["apps/web/vite.config.ts"])] }));
-    expect(
-      findMatchingConfigFiles(["apps/pro/vite.config.ts", "apps/admin/vite.config.ts"], registration.include, registration.exclude)
-    ).toEqual(["apps/admin/vite.config.ts"]);
     const before = snapshotChanges(tree);
     expect(() => migration(tree)).toThrow("@nx/vitest application scope");
     expect(snapshotChanges(tree)).toEqual(before);
-  });
-
-  test("keeps coverage when a broad include has a narrower exclude", () => {
-    const tree = makeTree();
-    tree.write(
-      "nx.json",
-      JSON.stringify({
-        plugins: [
-          {
-            exclude: ["apps/pro*/vite.config.ts"],
-            include: ["apps/**/vite.config.ts"],
-            options: { testMode: "watch", testTargetName: "other-test" },
-            plugin: "@nx/vitest",
-          },
-          vitestRegistration(["apps/web/vite.config.ts"]),
-        ],
-      })
-    );
-
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-  });
-
-  test("keeps coverage when an ordered exclusion re-enables a partial region", () => {
-    const tree = makeTree();
-    const exclude = ["apps/pro*/vite.config.ts", "!apps/pro*/vite.config.ts"];
-    tree.write(
-      "nx.json",
-      JSON.stringify({
-        plugins: [
-          {
-            exclude,
-            include: ["apps/pro*/vite.config.ts"],
-            options: { testMode: "watch", testTargetName: "other-test" },
-            plugin: "@nx/vitest",
-          },
-          vitestRegistration(["apps/web/vite.config.ts"]),
-        ],
-      })
-    );
-
-    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], ["apps/pro*/vite.config.ts"], exclude)).toEqual([
-      "apps/pro/vite.config.ts",
-    ]);
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-  });
-
-  test("leaves compliant state with a cancelled partial application scope semantically unchanged", async () => {
-    const tree = makeTree();
-    await migration(tree);
-    const plugins = [
-      {
-        include: ["apps/pro*/vite.config.ts", "!apps/pro*/vite.config.ts"],
-        options: { testMode: "watch", testTargetName: "other-test" },
-        plugin: "@nx/vitest",
-      },
-      vitestRegistration(["apps/*/vite.config.ts"]),
-    ];
-    tree.write("nx.json", JSON.stringify({ plugins }));
-
-    await migration(tree);
-
-    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins).toEqual(plugins);
-  });
-
-  test("treats the reversed partial negation as covering", () => {
-    const tree = makeTree();
-    const include = ["!apps/pro*/vite.config.ts", "apps/pro*/vite.config.ts"];
-    tree.write(
-      "nx.json",
-      JSON.stringify({
-        plugins: [
-          { include, options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
-          vitestRegistration(["apps/web/vite.config.ts"]),
-        ],
-      })
-    );
-
-    expect(findMatchingConfigFiles(["apps/pro/vite.config.ts"], include, [])).toEqual(["apps/pro/vite.config.ts"]);
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-  });
-
-  test("treats an exact class inclusion followed by exclusion as harmless", async () => {
-    const tree = makeTree();
-    const projectRegistration = {
-      include: ["apps/*/vite.config.ts", "!apps/*/vite.config.ts"],
-      options: { testMode: "watch", testTargetName: "other-test" },
-      plugin: "@nx/vitest",
-    };
-    tree.write("nx.json", JSON.stringify({ plugins: [projectRegistration, vitestRegistration(["apps/web/vite.config.ts"])] }));
-
-    await migration(tree);
-
-    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins[0]).toEqual(projectRegistration);
-  });
-
-  test("keeps covering when a different partial negation cannot prove cancellation", () => {
-    const tree = makeTree();
-    tree.write(
-      "nx.json",
-      JSON.stringify({
-        plugins: [
-          {
-            include: ["apps/pro*/vite.config.ts", "!apps/pro-admin/vite.config.ts"],
-            options: { testMode: "watch", testTargetName: "other-test" },
-            plugin: "@nx/vitest",
-          },
-          vitestRegistration(["apps/web/vite.config.ts"]),
-        ],
-      })
-    );
-
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-  });
-
-  test("rejects a broad application Vitest registration", () => {
-    const tree = makeTree();
-    const plugins = [
-      { include: ["apps/**/vite.config.ts"], options: { testMode: "watch", testTargetName: "other-test" }, plugin: "@nx/vitest" },
-      vitestRegistration(["apps/web/vite.config.ts"]),
-    ];
-    tree.write("nx.json", JSON.stringify({ plugins }));
-
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-  });
-
-  test("rejects an ordered Vitest exclusion that re-enables an application config", () => {
-    const tree = makeTree();
-    const plugins = [
-      {
-        exclude: ["apps/*/vite.config.ts", "!apps/admin/vite.config.ts"],
-        options: { testMode: "watch", testTargetName: "test" },
-        plugin: "@nx/vitest",
-      },
-    ];
-    tree.write("nx.json", JSON.stringify({ plugins }));
-    const before = tree.listChanges().map(({ path, content }) => [path, content?.toString()]);
-
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-    expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
   });
 
   test("migrates only the complete legacy application boundary after a stricter scope rule", async () => {

@@ -3,8 +3,6 @@
 import { readFileSync } from "node:fs";
 
 import { formatFiles, updateJson, type Tree } from "@nx/devkit";
-import { findMatchingConfigFiles } from "@nx/devkit/internal";
-import { Minimatch } from "minimatch";
 import { FsTree } from "nx/src/generators/tree";
 import * as ts from "typescript";
 
@@ -68,111 +66,33 @@ function migrateVitestDiscovery(tree: Tree) {
   updateJson<JsonObject>(tree, "nx.json", (nxJson) => {
     const plugins = nxJson.plugins;
     if (!Array.isArray(plugins)) return conflict("nx.json", "@nx/vitest plugin configuration");
-    const registrations = plugins.filter((entry) => isObject(entry) && entry.plugin === "@nx/vitest");
-    for (const registration of registrations) {
-      if (!isOptionalStringArray(registration.include) || !isOptionalStringArray(registration.exclude))
-        return conflict("nx.json", "@nx/vitest include/exclude scope");
-    }
-    const coveringRegistrations = registrations.filter(registrationCoversApplicationViteConfig);
-    if (coveringRegistrations.length === 0) return nxJson;
-    const legacyRegistrations = coveringRegistrations.filter(
-      ({ exclude }) => Array.isArray(exclude) && exclude.includes("apps/web/vite.config.ts")
+    const oldExclusion = "apps/web/vite.config.ts";
+    const targetExclusion = "apps/*/vite.config.ts";
+    // The 1.0.1 preset registered run/test with no include scope. Explicitly scoped project
+    // registrations are unrelated unless they retain an owned old/target exclusion marker.
+    const candidates = plugins.filter(
+      (entry) =>
+        isObject(entry) &&
+        entry.plugin === "@nx/vitest" &&
+        isObject(entry.options) &&
+        entry.options.testMode === "run" &&
+        entry.options.testTargetName === "test" &&
+        (entry.include === undefined ||
+          (Array.isArray(entry.exclude) && (entry.exclude.includes(oldExclusion) || entry.exclude.includes(targetExclusion))))
     );
-    if (legacyRegistrations.length !== 1 || coveringRegistrations.length !== 1) return conflict("nx.json", "@nx/vitest application scope");
-    const plugin = legacyRegistrations[0];
-    if (plugin === undefined || !Array.isArray(plugin.exclude)) return conflict("nx.json", "@nx/vitest application scope");
-    const exclusions = plugin.exclude;
-    const legacyIndex = exclusions.indexOf("apps/web/vite.config.ts");
-    if (legacyIndex === -1) return conflict("nx.json", "@nx/vitest application scope");
-    exclusions[legacyIndex] = "apps/*/vite.config.ts";
+    if (candidates.length !== 1) return conflict("nx.json", "@nx/vitest application scope");
+    const registration = candidates[0];
+    if (
+      !isObject(registration) ||
+      registration.include !== undefined ||
+      !Array.isArray(registration.exclude) ||
+      registration.exclude.length !== 1 ||
+      (registration.exclude[0] !== oldExclusion && registration.exclude[0] !== targetExclusion)
+    )
+      return conflict("nx.json", "@nx/vitest application scope");
+    registration.exclude[0] = targetExclusion;
     return nxJson;
   });
-}
-
-function registrationCoversApplicationViteConfig(registration: JsonObject) {
-  const inclusions = isStringArray(registration.include) ? registration.include : [];
-  const exclusions = isStringArray(registration.exclude) ? registration.exclude : [];
-  const included = applicationMatcherConditions(inclusions, true, true);
-  const notExcluded = applicationMatcherConditions(exclusions, false, false);
-  return included.some((include) =>
-    notExcluded.some((exclude) => {
-      const conditions = [...include, ...exclude];
-      // A positive finite matcher bounds the entire intersection, not a sample of application names.
-      // Let Nx evaluate every candidate against both ordered arrays, including differently spelled patterns.
-      for (const [pattern, matches] of conditions) {
-        if (!matches) continue;
-        const paths = finitePatternPaths(pattern);
-        if (paths !== undefined)
-          return (
-            findMatchingConfigFiles(
-              paths.filter((path) => /^apps\/[^/]+\/vite\.config\.ts$/u.test(path)),
-              inclusions,
-              exclusions
-            ).length > 0
-          );
-      }
-      const compiledConditions = new Map<string, boolean>();
-      for (const [pattern, matches] of conditions) {
-        const matcher = new Minimatch(pattern, { dot: true }).makeRe().toString();
-        if (compiledConditions.has(matcher) && compiledConditions.get(matcher) !== matches) return false;
-        compiledConditions.set(matcher, matches);
-      }
-      return true;
-    })
-  );
-}
-
-function finitePatternPaths(pattern: string) {
-  const alternatives = new Minimatch(pattern, { dot: true }).set;
-  if (!alternatives.every((parts) => parts.every((part) => typeof part === "string"))) return;
-  return alternatives.map((parts) => parts.join("/"));
-}
-
-// Each outcome requires its last matching pattern and no later matches, exactly as Nx's ordered matcher does.
-// Preserve shared pattern identities across include/exclude; unknown glob overlaps remain conservative conflicts.
-function applicationMatcherConditions(patterns: readonly string[], outcome: boolean, emptyValue: boolean) {
-  const conditions: Map<string, boolean>[] = [];
-  const initial = patterns.length === 0 ? emptyValue : (patterns[0]?.startsWith("!") ?? false);
-  for (let lastMatch = -1; lastMatch < patterns.length; lastMatch += 1) {
-    const value = lastMatch === -1 ? initial : !patterns[lastMatch]?.startsWith("!");
-    if (value !== outcome) continue;
-    const condition = new Map<string, boolean>();
-    let possible = true;
-    for (let index = Math.max(0, lastMatch); index < patterns.length; index += 1) {
-      const pattern = patterns[index] ?? "";
-      const matches = index === lastMatch;
-      const relation = applicationClassRelation(pattern);
-      if (relation !== "some") {
-        if ((relation === "all") !== matches) possible = false;
-        continue;
-      }
-      const normalized = pattern.startsWith("!") ? pattern.slice(1) : pattern;
-      if (condition.has(normalized) && condition.get(normalized) !== matches) possible = false;
-      condition.set(normalized, matches);
-    }
-    if (possible) conditions.push(condition);
-  }
-  return conditions;
-}
-
-type ApplicationClassRelation = "all" | "none" | "some";
-
-function applicationClassRelation(pattern: string): ApplicationClassRelation {
-  const normalized = pattern.startsWith("!") ? pattern.slice(1) : pattern;
-  if (["apps/*/vite.config.ts", "apps/**/vite.config.ts", "apps/**"].includes(normalized)) return "all";
-  const literalPrefix = /^[^*?[{!(]+/u.exec(normalized)?.[0] ?? "";
-  if (literalPrefix !== "" && !"apps/".startsWith(literalPrefix) && !literalPrefix.startsWith("apps/")) return "none";
-  if (!/[*?[{!(]/u.test(normalized)) return /^apps\/[^/]+\/vite\.config\.ts$/u.test(normalized) ? "some" : "none";
-  // Nx owns actual matching. Any glob whose intersection cannot be disproved is conservatively covering.
-  return "some";
-}
-
-function isOptionalStringArray(value: unknown) {
-  return value === undefined || isStringArray(value);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
 function migrateRootVerification(tree: Tree) {
