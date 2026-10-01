@@ -64,7 +64,7 @@ describe("generated Nx/Oxlint module boundaries", () => {
       ).pipe(E.provide(platformLayer))
     ));
 
-  test("discovers two applications sharing one backend and rejects sibling application source imports", () =>
+  const verifySiblingApplicationBoundary = (manifestOnly: boolean) =>
     E.runPromise(
       E.acquireUseRelease(
         E.sync(() => mkdtempSync(path.join(tmpdir(), "keenko-multi-app-boundaries-"))),
@@ -131,16 +131,12 @@ describe("generated Nx/Oxlint module boundaries", () => {
 
             const probe = path.join(workspace, "apps/admin/src/boundary-probe.ts");
             mkdirSync(path.dirname(probe), { recursive: true });
-            writeFileSync(probe, "export const boundaryProbe = true;\n");
             const lintProbe = () =>
               Bun.spawnSync([path.join(repository, "node_modules/.bin/oxlint"), "apps/admin/src/boundary-probe.ts"], {
                 cwd: workspace,
                 env: nxEnvironment,
               });
-            // Nx 23.2.1's Oxlint bridge visits source imports; the manifest-only edge above is not enforced.
-            const manifestOnly = lintProbe();
-            expect(manifestOnly.exitCode, manifestOnly.stderr.toString()).toBe(0);
-            writeFileSync(probe, 'import "@multi-app-test/web/boundary-target";\n');
+            writeFileSync(probe, manifestOnly ? "export const boundaryProbe = true;\n" : 'import "@multi-app-test/web/boundary-target";\n');
             const result = lintProbe();
             const output = `${result.stdout.toString()}\n${result.stderr.toString()}`;
             expect(result.exitCode).not.toBe(0);
@@ -152,5 +148,11 @@ describe("generated Nx/Oxlint module boundaries", () => {
             rmSync(workspace, { force: true, recursive: true });
           })
       ).pipe(E.provide(platformLayer))
-    ));
+    );
+
+  test.todo("rejects manifest-only sibling-application dependencies (Griller decision; KEE-45 acceptance unmet)", () =>
+    verifySiblingApplicationBoundary(true));
+
+  test("discovers two applications sharing one backend and rejects sibling application source imports", () =>
+    verifySiblingApplicationBoundary(false));
 });

@@ -54,6 +54,7 @@
     "@nx/devkit": "23.2.1",
     "@tanstack/create": "0.70.1",
     "effect": "4.0.0",
+    "minimatch": "10.2.5",
     "tslib": "2.8.1",
     "validate-npm-package-name": "8.0.0"
   },

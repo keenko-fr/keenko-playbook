@@ -19,8 +19,10 @@ Shared packages are earned by genuine reuse. Do not introduce a shared applicati
 
 ## Verification
 
-Run `bun run codegen` and `bun run check` from the repository root. The Nx graph must discover every application without evaluating its Vite config through the Vitest plugin, generated route trees under every `apps/*` workspace must remain clean after codegen, and module boundaries must reject application-to-application dependencies across the complete Nx project graph, including dependencies declared only in workspace manifests.
+Run `bun run codegen` and `bun run check` from the repository root. The Nx graph must discover every application without evaluating its Vite config through the Vitest plugin, and generated route trees under every `apps/*` workspace must remain clean after codegen. The current Nx/Oxlint gate rejects application-to-application source imports.
 
-Manifest-only boundary enforcement remains an architecture decision for Griller: the pinned Nx 23.2.1 Oxlint bridge does not reject an unused sibling-application dependency declared only in a workspace manifest. Nx remains the sole boundary implementation; do not add a Keenko-owned evaluator to close this gap.
+**KEE-45 acceptance criterion not met:** dependency boundaries must also reject forbidden edges across the complete Nx graph, including unused sibling-application dependencies declared only in workspace manifests. The pinned Nx 23.2.1 Oxlint bridge does not enforce those unused manifest edges. A passing `bun run check` does not establish this acceptance criterion.
+
+The Griller decision remains open. Nx's native complete-graph option is [Conformance](https://nx.dev/docs/enterprise/conformance), which requires an Enterprise license and is not included in the generated stack. Decide how Keenko will provide Nx-owned manifest-edge enforcement before claiming KEE-45 acceptance. Do not add a Keenko-owned dependency-boundary evaluator.
 
 If an application cannot be discovered or verified, compare its package-owned Nx metadata and targets with this contract. Correct project-owned application configuration; do not add a second registry or hard-code its name into root Keenko tooling.

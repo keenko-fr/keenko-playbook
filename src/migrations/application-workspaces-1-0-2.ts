@@ -1,5 +1,7 @@
 /* oxlint-disable effect/maxCognitiveComplexity, effect/noNewError, effect/noNullish, effect/noRuntimeTypeof, effect/noThrowStatement, effect/noUnknownParameters, effect/noUnsafeDictionaryType, eslint/curly, eslint/prefer-destructuring, eslint/prefer-named-capture-group, typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access, typescript/strict-boolean-expressions -- Native Nx migrations are synchronous Tree transforms over untyped project state and report deliberate conflicts by throwing. */
 import { formatFiles, updateJson, type Tree } from "@nx/devkit";
+import { findMatchingConfigFiles } from "@nx/devkit/internal";
+import { Minimatch } from "minimatch";
 
 type JsonObject = Record<string, unknown>;
 
@@ -85,8 +87,37 @@ function registrationCoversApplicationViteConfig(registration: JsonObject) {
   const included = applicationMatcherConditions(inclusions, true, true);
   const notExcluded = applicationMatcherConditions(exclusions, false, false);
   return included.some((include) =>
-    notExcluded.some((exclude) => [...include].every(([pattern, matches]) => !exclude.has(pattern) || exclude.get(pattern) === matches))
+    notExcluded.some((exclude) => {
+      const conditions = [...include, ...exclude];
+      // A positive finite matcher bounds the entire intersection, not a sample of application names.
+      // Let Nx evaluate every candidate against both ordered arrays, including differently spelled patterns.
+      for (const [pattern, matches] of conditions) {
+        if (!matches) continue;
+        const paths = finitePatternPaths(pattern);
+        if (paths !== undefined)
+          return (
+            findMatchingConfigFiles(
+              paths.filter((path) => /^apps\/[^/]+\/vite\.config\.ts$/u.test(path)),
+              inclusions,
+              exclusions
+            ).length > 0
+          );
+      }
+      const compiledConditions = new Map<string, boolean>();
+      for (const [pattern, matches] of conditions) {
+        const matcher = new Minimatch(pattern, { dot: true }).makeRe().toString();
+        if (compiledConditions.has(matcher) && compiledConditions.get(matcher) !== matches) return false;
+        compiledConditions.set(matcher, matches);
+      }
+      return true;
+    })
   );
+}
+
+function finitePatternPaths(pattern: string) {
+  const alternatives = new Minimatch(pattern, { dot: true }).set;
+  if (!alternatives.every((parts) => parts.every((part) => typeof part === "string"))) return;
+  return alternatives.map((parts) => parts.join("/"));
 }
 
 // Each outcome requires its last matching pattern and no later matches, exactly as Nx's ordered matcher does.
@@ -282,6 +313,7 @@ function planAuthSmokeMigration(tree: Tree) {
     return conflict(path, "Hosted UI transition detection");
   }
   if (
+    hasProviderHostnameInspection(source.replaceAll(oldHostedUi, "")) ||
     !oldBaseUrl.test(source) ||
     !oldHostedUiRequest.test(source) ||
     !source.includes(oldHostedUiWait) ||
@@ -485,7 +517,10 @@ function findCallArguments(source: string, callPattern: RegExp) {
 }
 
 function hasProviderHostnameInspection(source: string) {
-  return /\/[^/\n]*(?:authkit|workos)[^/\n]*\/[a-z]*|(?:includes|startsWith|endsWith)\([^)]*["'][^"']*(?:authkit|workos)/iu.test(source);
+  return (
+    /\.\s*(?:hostname|host)\b|\[\s*["'`](?:hostname|host)["'`]\s*\]/u.test(source) ||
+    /\/[^/\n]*(?:authkit|workos)[^/\n]*\/[a-z]*|(?:includes|startsWith|endsWith)\([^)]*["'][^"']*(?:authkit|workos)/iu.test(source)
+  );
 }
 
 function isContinuousWorkspace(tags: unknown) {

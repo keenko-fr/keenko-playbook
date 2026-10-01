@@ -345,6 +345,50 @@ describe("1.0.2 application-workspace migration", () => {
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
+  test.each([
+    { exclude: ["apps/pr[o]/vite.config.ts"], include: ["apps/pro/vite.config.ts"] },
+    { exclude: ["apps/pr[o]*/vite.config.ts"], include: ["apps/pro*/vite.config.ts"] },
+    { exclude: ["apps/pro**/vite.config.ts"], include: ["apps/pro*/vite.config.ts"] },
+    { exclude: ["apps/pro/vite.config.ts"], include: ["apps/pr[o]/vite.config.ts"] },
+    { exclude: ["apps/@(pro|admin)/vite.config.ts"], include: ["apps/{pro,admin}/vite.config.ts"] },
+    { exclude: ["apps/{admin,pro}/vite.config.ts"], include: ["apps/{pro,admin}/vite.config.ts"] },
+    { exclude: ["apps/pr[o]/vite.config.ts", "!apps/admin/vite.config.ts"], include: ["apps/pro/vite.config.ts"] },
+  ])("uses Nx matching for equivalent finite scopes and compiled patterns: %j", async ({ exclude, include }) => {
+    const tree = makeTree();
+    const registration = {
+      exclude: [...exclude],
+      include: [...include],
+      options: { testMode: "watch", testTargetName: "custom-test" },
+      plugin: "@nx/vitest",
+    };
+    expect(
+      findMatchingConfigFiles(["apps/pro/vite.config.ts", "apps/admin/vite.config.ts"], registration.include, registration.exclude)
+    ).toEqual([]);
+    tree.write("nx.json", JSON.stringify({ plugins: [registration, vitestRegistration(["apps/web/vite.config.ts"])] }));
+    await migration(tree);
+    expect(readJson<{ plugins: VitestPluginRegistration[] }>(tree, "nx.json").plugins[0]).toEqual(registration);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects a finite include scope when Nx still matches one application", () => {
+    const tree = makeTree();
+    const registration = {
+      exclude: ["apps/pr[o]/vite.config.ts"],
+      include: ["apps/{pro,admin}/vite.config.ts"],
+      options: { testMode: "watch", testTargetName: "custom-test" },
+      plugin: "@nx/vitest",
+    };
+    tree.write("nx.json", JSON.stringify({ plugins: [registration, vitestRegistration(["apps/web/vite.config.ts"])] }));
+    expect(
+      findMatchingConfigFiles(["apps/pro/vite.config.ts", "apps/admin/vite.config.ts"], registration.include, registration.exclude)
+    ).toEqual(["apps/admin/vite.config.ts"]);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
   test("keeps coverage when a broad include has a narrower exclude", () => {
     const tree = makeTree();
     tree.write(
@@ -572,6 +616,49 @@ describe("1.0.2 application-workspace migration", () => {
 
     expect(() => migration(tree)).toThrow("Hosted UI transition detection");
     expect(tree.listChanges().map(({ path, content }) => [path, content?.toString()])).toEqual(before);
+  });
+
+  test.each([
+    'url.hostname === "login.workos.com"',
+    '"login.workos.com" === url.hostname',
+    'url.hostname !== "login.workos.com"',
+    'url.host == "login.authkit.com"',
+    'url["hostname"] === "login.acme.example"',
+    "url.hostname === providerHost",
+    "isAllowedHost(url.hostname)",
+  ])("rejects hostname-coupled URL predicates regardless of comparison: %s", (condition) => {
+    const tree = makeTree();
+    tree.write(
+      "apps/web/e2e/auth.e2e.ts",
+      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
+const appOrigin = new URL(baseUrl).origin;
+await page.waitForURL((url) => url.origin !== appOrigin && ${condition});\n`
+    );
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects hostname coupling inside a request helper", () => {
+    const tree = makeTree();
+    tree.write(
+      "apps/web/e2e/auth.e2e.ts",
+      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
+const appOrigin = new URL(baseUrl).origin;
+const isHostedUi = (request) => request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin && new URL(request.url()).hostname === "login.acme.example";
+await page.waitForRequest(isHostedUi);\n`
+    );
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects additional hostname coupling in the legacy smoke without mutation", () => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", `${oldSmoke}await page.waitForURL((url) => url.hostname === "login.workos.com");\n`);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
   });
 
   test("recognizes a direct origin-based waitForURL transition", async () => {
