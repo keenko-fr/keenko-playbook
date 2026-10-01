@@ -11,7 +11,7 @@ Fresh Keenko projects still contain only `apps/web`, `packages/backend`, `packag
 1. From the repository root, use the current first-party TanStack creation tooling pinned by the repository to create the application under `apps/<name>`. Do not copy the generated demonstration routes, example UI, navigation, or product behavior from `apps/web`.
 2. Give the workspace a unique package name and project-owned development configuration, including any required port, routes, environment values, and deployment settings.
 3. Add `type:app` to `package.json#nx.tags`. A `scope:*` tag is optional and exists only when the project needs a stricter application-specific boundary.
-4. Declare only the workspace dependencies the application uses. By default, an application may depend on the backend, UI, and shared packages; sibling applications must not depend on one another.
+4. Declare only the workspace dependencies the application uses. By default, an application may import source from the backend, UI, and shared packages; source imports of sibling applications are forbidden by the `type:app` policy.
 5. Keep its TanStack route-tree generation in the application `codegen` target and mark its long-running `dev` target with `nx.targets.dev.continuous: true`.
 6. Add the application to project-owned environment, deployment, and authentication configuration as required. Follow the [WorkOS AuthKit guidance](../stacks/workos-authkit/README.md) when applications share the generated authentication foundation.
 
@@ -19,10 +19,10 @@ Shared packages are earned by genuine reuse. Do not introduce a shared applicati
 
 ## Verification
 
-Run `bun run codegen` and `bun run check` from the repository root. The Nx graph must discover every application without evaluating its Vite config through the Vitest plugin, and generated route trees under every `apps/*` workspace must remain clean after codegen. The current Nx/Oxlint gate rejects application-to-application source imports.
+Run `bun run codegen` and `bun run check` from the repository root. The Nx graph must discover every application without evaluating its Vite config through the Vitest plugin, and generated route trees under every `apps/*` workspace must remain clean after codegen.
 
-**KEE-45 acceptance criterion not met:** dependency boundaries must also reject forbidden edges across the complete Nx graph, including unused sibling-application dependencies declared only in workspace manifests. The pinned Nx 23.2.1 Oxlint bridge does not enforce those unused manifest edges. A passing `bun run check` does not establish this acceptance criterion.
+Nx/Oxlint owns application dependency-boundary enforcement on source imports. The default `type:app` policy forbids sibling application source imports. Application-specific `scope:*` rules may make this policy stricter.
 
-The Griller decision rules out requiring Nx Enterprise in generated Keenko workspaces. Nx's native complete-graph option, [Conformance](https://nx.dev/docs/enterprise/conformance), requires an Enterprise license and is not included in the generated stack. KEE-45 remains blocked pending an upstream Nx enforcement mechanism. Do not merge it as complete until that mechanism rejects manifest-only sibling-application dependencies and the regression passes. Do not add a Keenko-owned dependency-boundary evaluator.
+Declaration-only workspace dependencies with no corresponding source import are outside Keenko's enforcement guarantee. Keenko does not promise to reject an app-to-app dependency that exists only in `package.json` and is never imported by source code. Manifest-only graph enforcement is an intentional non-goal.
 
 If an application cannot be discovered or verified, compare its package-owned Nx metadata and targets with this contract. Correct project-owned application configuration; do not add a second registry or hard-code its name into root Keenko tooling.

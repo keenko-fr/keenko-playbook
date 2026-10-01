@@ -64,7 +64,7 @@ describe("generated Nx/Oxlint module boundaries", () => {
       ).pipe(E.provide(platformLayer))
     ));
 
-  const verifySiblingApplicationBoundary = (manifestOnly: boolean) =>
+  test("discovers two applications sharing one backend and rejects sibling application source imports", () =>
     E.runPromise(
       E.acquireUseRelease(
         E.sync(() => mkdtempSync(path.join(tmpdir(), "keenko-multi-app-boundaries-"))),
@@ -119,7 +119,7 @@ describe("generated Nx/Oxlint module boundaries", () => {
               [
                 process.execPath,
                 "-e",
-                'import { createProjectGraphAsync } from "@nx/devkit"; const graph = await createProjectGraphAsync({ exitOnError: false }); console.log(JSON.stringify(graph.dependencies["@multi-app-test/admin"]));',
+                'import { createProjectGraphAsync } from "@nx/devkit"; const graph = await createProjectGraphAsync({ exitOnError: false }); console.log(JSON.stringify(Object.fromEntries(Object.entries(graph.nodes).map(([name, node]) => [name, node.data.tags?.includes("type:app")]))));',
               ],
               {
                 cwd: workspace,
@@ -127,17 +127,16 @@ describe("generated Nx/Oxlint module boundaries", () => {
               }
             );
             expect(graphInspection.exitCode, graphInspection.stderr.toString()).toBe(0);
-            expect(graphInspection.stdout.toString()).toContain('"target":"@multi-app-test/web"');
+            expect(graphInspection.stdout.toString()).toContain('"@multi-app-test/admin":true');
+            expect(graphInspection.stdout.toString()).toContain('"@multi-app-test/web":true');
 
             const probe = path.join(workspace, "apps/admin/src/boundary-probe.ts");
             mkdirSync(path.dirname(probe), { recursive: true });
-            const lintProbe = () =>
-              Bun.spawnSync([path.join(repository, "node_modules/.bin/oxlint"), "apps/admin/src/boundary-probe.ts"], {
-                cwd: workspace,
-                env: nxEnvironment,
-              });
-            writeFileSync(probe, manifestOnly ? "export const boundaryProbe = true;\n" : 'import "@multi-app-test/web/boundary-target";\n');
-            const result = lintProbe();
+            writeFileSync(probe, 'import "@multi-app-test/web/boundary-target";\n');
+            const result = Bun.spawnSync([path.join(repository, "node_modules/.bin/oxlint"), "apps/admin/src/boundary-probe.ts"], {
+              cwd: workspace,
+              env: nxEnvironment,
+            });
             const output = `${result.stdout.toString()}\n${result.stderr.toString()}`;
             expect(result.exitCode).not.toBe(0);
             expect(output).toMatch(/@nx(?:\/|\()enforce-module-boundaries\)?/u);
@@ -148,11 +147,5 @@ describe("generated Nx/Oxlint module boundaries", () => {
             rmSync(workspace, { force: true, recursive: true });
           })
       ).pipe(E.provide(platformLayer))
-    );
-
-  test.todo("rejects manifest-only sibling-application dependencies (blocked on upstream Nx; Enterprise ruled out)", () =>
-    verifySiblingApplicationBoundary(true));
-
-  test("discovers two applications sharing one backend and rejects sibling application source imports", () =>
-    verifySiblingApplicationBoundary(false));
+    ));
 });

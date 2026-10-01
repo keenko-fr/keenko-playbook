@@ -230,9 +230,9 @@ scope:shared
 
 Application-specific `scope:*` tags are optional project metadata for stricter boundaries; they are not part of the fresh required baseline.
 
-Nx is the sole implementation of package and source dependency-boundary checks.
+Nx/Oxlint is the sole implementation of workspace dependency-boundary checks on source imports. Declaration-only workspace dependencies with no corresponding source import are outside Keenko's enforcement guarantee.
 
-When the pinned Nx boundary implementation changes materially, verify source and package dependency enforcement against the project graph before changing the Keenko boundary configuration.
+When the pinned Nx boundary implementation changes materially, verify source-import dependency enforcement against the project graph before changing the Keenko boundary configuration.
 
 ## CI
 

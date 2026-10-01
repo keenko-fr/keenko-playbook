@@ -344,10 +344,10 @@ function isOriginBasedHostedUiDetection(source: string) {
   return originNames.some((originName) => {
     if (originName === undefined) return false;
     const helpers = findTransitionHelpers(source, originName);
-    const urlTransition = findCallArguments(source, /page\.waitForURL\s*\(/gu).some((argument) =>
+    const urlTransition = findCallArguments(source, "waitForURL").some((argument) =>
       waitForUrlProvesOriginDeparture(argument, helpers, originName)
     );
-    const requestTransition = findCallArguments(source, /page\.waitForRequest\s*\(/gu).some((argument) =>
+    const requestTransition = findCallArguments(source, "waitForRequest").some((argument) =>
       waitForRequestProvesNavigationDeparture(argument, helpers, originName)
     );
     return urlTransition || requestTransition;
@@ -363,25 +363,28 @@ interface TransitionHelper {
 }
 
 function findTransitionHelpers(source: string, originName: string) {
-  return [...source.matchAll(/const\s+([\w$]+)\s*=\s*\(\s*([\w$]+)(?:\s*:[^)]*)?\)\s*=>\s*([^;]+);/gu)].flatMap(
-    (match): TransitionHelper[] => {
-      const name = match[1];
-      const parameter = match[2];
-      const body = match[3] ?? "";
-      if (name === undefined || parameter === undefined) return [];
-      const navigation = isNavigationRequestExpression(body, parameter);
-      const originInput = originDepartureInput(body, parameter, originName);
-      return [
-        {
+  const file = ts.createSourceFile("auth.e2e.ts", source, ts.ScriptTarget.Latest, true);
+  const helpers: TransitionHelper[] = [];
+  function visit(node: ts.Node) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) {
+      const callback = parseWaitCallback(node.initializer.getText(file));
+      if (callback !== undefined) {
+        const { body, parameter } = callback;
+        const navigation = isNavigationRequestExpression(body, parameter);
+        const originInput = originDepartureInput(body, parameter, originName);
+        helpers.push({
           conjoinsNavigationAndOrigin: navigation && originInput !== undefined,
-          name,
+          name: node.name.text,
           navigation,
           originInput,
           originRequired: originInput !== undefined,
-        },
-      ];
+        });
+      }
     }
-  );
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+  return helpers;
 }
 
 function waitForUrlProvesOriginDeparture(argument: string, helpers: readonly TransitionHelper[], originName: string) {
@@ -453,10 +456,15 @@ function hasRequiredPositiveCondition(expression: string, condition: RegExp): bo
 }
 
 function parseWaitCallback(argument: string) {
-  const callback = /(?:async\s*)?\(\s*([\w$]+)(?:\s*:[^)]*)?\)\s*=>\s*([\s\S]*)/u.exec(argument);
-  const parameter = callback?.[1];
-  const body = callback?.[2];
-  return parameter === undefined || body === undefined ? undefined : { body, parameter };
+  const file = ts.createSourceFile("predicate.ts", `(${argument});`, ts.ScriptTarget.Latest, true);
+  const statement = file.statements[0];
+  if (statement === undefined || !ts.isExpressionStatement(statement)) return;
+  let expression = statement.expression;
+  while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+  if (!ts.isArrowFunction(expression) || expression.parameters.length !== 1 || ts.isBlock(expression.body)) return;
+  const parameter = expression.parameters[0]?.name;
+  if (parameter === undefined || !ts.isIdentifier(parameter)) return;
+  return { body: expression.body.getText(file), parameter: parameter.text };
 }
 
 function isNavigationRequestExpression(expression: string, inputName: string) {
@@ -484,34 +492,21 @@ function originDepartureInput(expression: string, inputName: string, originName:
   return undefined;
 }
 
-function findCallArguments(source: string, callPattern: RegExp) {
+function findCallArguments(source: string, method: string) {
+  const file = ts.createSourceFile("auth.e2e.ts", source, ts.ScriptTarget.Latest, true);
   const arguments_: string[] = [];
-  for (const match of source.matchAll(callPattern)) {
-    if (match.index === undefined) continue;
-    const open = source.indexOf("(", match.index);
-    let depth = 0;
-    let quote = "";
-    let escaped = false;
-    for (let index = open; index < source.length; index += 1) {
-      const character = source[index] ?? "";
-      if (quote !== "") {
-        if (escaped) escaped = false;
-        else if (character === "\\") escaped = true;
-        else if (character === quote) quote = "";
-        continue;
-      }
-      if (character === '"' || character === "'" || character === "`") {
-        quote = character;
-        continue;
-      }
-      if (character === "(") depth += 1;
-      if (character !== ")") continue;
-      depth -= 1;
-      if (depth !== 0) continue;
-      arguments_.push(source.slice(open + 1, index));
-      break;
-    }
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.expression.getText(file) === "page" &&
+      node.expression.name.text === method &&
+      node.arguments[0] !== undefined
+    )
+      arguments_.push(node.arguments[0].getText(file));
+    ts.forEachChild(node, visit);
   }
+  visit(file);
   return arguments_;
 }
 
@@ -541,6 +536,8 @@ function isApplicationBaseUrl(expression: ts.Expression) {
 function hasProviderHostnameInspection(source: string) {
   const file = ts.createSourceFile("auth.e2e.ts", source, ts.ScriptTarget.Latest, true);
   const visited = new Set<ts.Node>();
+  const stringTransformations = ["toString", "toJSON", "toLowerCase", "toUpperCase", "trim", "trimStart", "trimEnd", "normalize"];
+  const stringMatches = ["includes", "startsWith", "endsWith", "match", "search", "indexOf", "lastIndexOf"];
 
   function binding(identifier: ts.Identifier): ts.Node | undefined {
     for (let scope: ts.Node | undefined = identifier.parent; scope !== undefined; scope = scope.parent) {
@@ -585,7 +582,7 @@ function hasProviderHostnameInspection(source: string) {
     if (!ts.isPropertyAccessExpression(node.expression) && !ts.isElementAccessExpression(node.expression)) return false;
     return (
       propertyName(node.expression) === "url" ||
-      (["toString", "toJSON"].includes(propertyName(node.expression)) && address(node.expression.expression, seen))
+      (stringTransformations.includes(propertyName(node.expression)) && address(node.expression.expression, seen))
     );
   }
 
@@ -644,13 +641,15 @@ function hasProviderHostnameInspection(source: string) {
       return true;
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const receiver = node.expression.expression;
-      if (
-        ["includes", "startsWith", "endsWith", "match", "search", "indexOf", "lastIndexOf"].includes(node.expression.name.text) &&
-        address(receiver) &&
-        node.arguments.some((argument) => fixedHost(argument))
-      )
+      if (stringMatches.includes(node.expression.name.text) && address(receiver) && node.arguments.some((argument) => fixedHost(argument)))
         return true;
       if (node.expression.name.text === "test" && node.arguments.some((argument) => address(argument)) && fixedHost(receiver)) return true;
+      // Unknown transformations of navigation data cannot establish provider independence.
+      if (
+        address(receiver) &&
+        ![...stringTransformations, ...stringMatches, "url", "isNavigationRequest"].includes(node.expression.name.text)
+      )
+        return true;
     }
     if (ts.isPropertyAccessExpression(node)) return coupled(node.expression);
     return ts.forEachChild(node, (child) => coupled(child) || undefined) === true;
