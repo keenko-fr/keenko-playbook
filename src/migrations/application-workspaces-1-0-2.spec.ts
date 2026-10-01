@@ -620,6 +620,14 @@ describe("1.0.2 application-workspace migration", () => {
 
   test.each([
     'url.hostname === "login.workos.com"',
+    'url.origin === "https://login.workos.com"',
+    // oxlint-disable-next-line eslint/no-template-curly-in-string -- Literal fixture source tests a dynamic provider hostname.
+    "url.origin === `https://login.${providerName}.example`",
+    '"https://login.acme.example" === url.origin',
+    'url["origin"] === "https://login.authkit.com"',
+    'url.origin.startsWith("https://login.acme.example")',
+    'url.origin === new URL("https://login.acme.example").origin',
+
     '"login.workos.com" === url.hostname',
     'url.hostname !== "login.workos.com"',
     'url.host == "login.authkit.com"',
@@ -659,6 +667,112 @@ await page.waitForRequest(isHostedUi);\n`
     const before = snapshotChanges(tree);
     expect(() => migration(tree)).toThrow("Hosted UI transition detection");
     expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    "const diagnosticHost = new URL(baseUrl).hostname;",
+    "const diagnosticHost = new URL(baseUrl).host;",
+    'const providerDocumentation = "https://login.workos.com";',
+    'const unusedHostPredicate = (url) => url.hostname === "login.workos.com";',
+    'const unusedOriginPredicate = (url) => url.origin === "https://login.workos.com";',
+    "const unusedHostPattern = /login\\.workos\\.com/u;",
+  ])("preserves unrelated hostname diagnostics and unused provider references: %s", async (diagnostic) => {
+    const tree = makeTree();
+    tree.write(
+      "apps/web/e2e/auth.e2e.ts",
+      `const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173";
+const appOrigin = new URL(baseUrl).origin;
+${diagnostic}
+await page.waitForURL((url) => url.origin !== appOrigin);\n`
+    );
+    await migration(tree);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== appOrigin");
+  });
+
+  test.each([
+    '(process.env.AUTH_E2E_BASE_URL ?? "http://localhost:4173")',
+    'process.env["AUTH_E2E_BASE_URL"] ?? "http://localhost:4173"',
+    '(process.env.AUTH_E2E_BASE_URL) ?? "http://localhost:4173"',
+  ])("preserves application-derived origin authority: %s", async (authority) => {
+    const tree = makeTree();
+    tree.write(
+      "apps/web/e2e/auth.e2e.ts",
+      `const baseUrl = ${authority};
+const appOrigin = new URL(baseUrl).origin;
+await page.waitForURL((url) => url.origin !== appOrigin);\n`
+    );
+    await migration(tree);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("preserves diagnostic statements inside a called helper", async () => {
+    const tree = makeTree();
+    tree.write(
+      "apps/web/e2e/auth.e2e.ts",
+      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
+const appOrigin = new URL(baseUrl).origin;
+function isReady(url) {
+  console.log(url.hostname);
+  const diagnosticHost = url.host;
+  return true;
+}
+await page.waitForURL((url) => url.origin !== appOrigin && isReady(url));\n`
+    );
+    await migration(tree);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("resolves helper names in the transition's lexical scope", async () => {
+    const tree = makeTree();
+    tree.write(
+      "apps/web/e2e/auth.e2e.ts",
+      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
+const appOrigin = new URL(baseUrl).origin;
+const isReady = (url) => url.hostname === "login.workos.com";
+{
+  const isReady = (url) => true;
+  await page.waitForURL((url) => url.origin !== appOrigin && isReady(url));
+}\n`
+    );
+    await migration(tree);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    'const providerOrigin = "https://login.workos.com";\nawait page.waitForURL((url) => url.origin !== appOrigin && url.origin === providerOrigin);',
+    'const isProvider = (url) => url.origin === "https://login.workos.com" && process.env.AUTH_E2E_BASE_URL;\nawait page.waitForURL((url) => url.origin !== appOrigin && isProvider(url));',
+    'const expectedOrigin = new URL("https://login.acme.example").origin;\nconst isProvider = (url) => url.origin === expectedOrigin;\nawait page.waitForURL((url) => url.origin !== appOrigin && isProvider(url));',
+    'function isProvider(url) { return url.origin === "https://login.workos.com"; }\nawait page.waitForURL((url) => url.origin !== appOrigin && isProvider(url));',
+    'function isProvider(url) { const origin = url.origin; return origin === "https://login.acme.example"; }\nawait page.waitForURL((url) => url.origin !== appOrigin && isProvider(url));',
+    'await page.waitForRequest((request) => request.isNavigationRequest() && new URL(request.url()).origin !== appOrigin && request.url().startsWith("https://login.acme.example"));',
+  ])("rejects provider origins through actual predicate bindings without mutation: %s", (transition) => {
+    const tree = makeTree();
+    tree.write(
+      "apps/web/e2e/auth.e2e.ts",
+      `const baseUrl = process.env.AUTH_E2E_BASE_URL;
+const appOrigin = new URL(baseUrl).origin;
+${transition}\n`
+    );
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("preserves unrelated hostname diagnostics while migrating the legacy smoke", async () => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", `${oldSmoke}const diagnosticHost = new URL(baseUrl).hostname;\n`);
+    await migration(tree);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("new URL(baseUrl).hostname");
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toContain("url.origin !== applicationOrigin");
   });
 
   test("recognizes a direct origin-based waitForURL transition", async () => {

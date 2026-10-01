@@ -2,6 +2,7 @@
 import { formatFiles, updateJson, type Tree } from "@nx/devkit";
 import { findMatchingConfigFiles } from "@nx/devkit/internal";
 import { Minimatch } from "minimatch";
+import * as ts from "typescript";
 
 type JsonObject = Record<string, unknown>;
 
@@ -308,10 +309,8 @@ function planAuthSmokeMigration(tree: Tree) {
   const path = "apps/web/e2e/auth.e2e.ts";
   const source = tree.read(path, "utf-8");
   if (source === null) return;
-  if (!source.includes(oldHostedUi)) {
-    if (isOriginBasedHostedUiDetection(source)) return;
-    return conflict(path, "Hosted UI transition detection");
-  }
+  if (isOriginBasedHostedUiDetection(source)) return;
+  if (!source.includes(oldHostedUiWait)) return conflict(path, "Hosted UI transition detection");
   if (
     hasProviderHostnameInspection(source.replaceAll(oldHostedUi, "")) ||
     !oldBaseUrl.test(source) ||
@@ -329,7 +328,7 @@ function planAuthSmokeMigration(tree: Tree) {
     .replace(oldHostedUiRequest, hostedUiRequestByOrigin)
     .replace(oldHostedUiWait, hostedUiWaitByOrigin)
     .replace(oldHostedUiExpectation, hostedUiExpectationByOrigin);
-  if (migrated.includes(oldHostedUi)) return conflict(path, "Hosted UI transition detection");
+  if (hasProviderHostnameInspection(migrated)) return conflict(path, "Hosted UI transition detection");
   return { path, source: migrated };
 }
 
@@ -516,11 +515,135 @@ function findCallArguments(source: string, callPattern: RegExp) {
   return arguments_;
 }
 
-function hasProviderHostnameInspection(source: string) {
+function propertyName(node: ts.Node) {
+  if (ts.isPropertyAccessExpression(node)) return node.name.text;
+  if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)) return node.argumentExpression.text;
+  return "";
+}
+
+function isApplicationBaseUrl(expression: ts.Expression) {
+  // AUTH_E2E_BASE_URL is application authority, including its project-owned fallback.
+  let authority = expression;
+  while (ts.isParenthesizedExpression(authority)) authority = authority.expression;
+  if (
+    ts.isBinaryExpression(authority) &&
+    [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken].includes(authority.operatorToken.kind)
+  )
+    authority = authority.left;
+  while (ts.isParenthesizedExpression(authority)) authority = authority.expression;
   return (
-    /\.\s*(?:hostname|host)\b|\[\s*["'`](?:hostname|host)["'`]\s*\]/u.test(source) ||
-    /\/[^/\n]*(?:authkit|workos)[^/\n]*\/[a-z]*|(?:includes|startsWith|endsWith)\([^)]*["'][^"']*(?:authkit|workos)/iu.test(source)
+    (ts.isPropertyAccessExpression(authority) || ts.isElementAccessExpression(authority)) &&
+    propertyName(authority) === "AUTH_E2E_BASE_URL" &&
+    authority.expression.getText() === "process.env"
   );
+}
+
+function hasProviderHostnameInspection(source: string) {
+  const file = ts.createSourceFile("auth.e2e.ts", source, ts.ScriptTarget.Latest, true);
+  const visited = new Set<ts.Node>();
+
+  function binding(identifier: ts.Identifier): ts.Node | undefined {
+    for (let scope: ts.Node | undefined = identifier.parent; scope !== undefined; scope = scope.parent) {
+      if (
+        (ts.isArrowFunction(scope) || ts.isFunctionExpression(scope) || ts.isFunctionDeclaration(scope)) &&
+        scope.parameters.some(({ name }) => ts.isIdentifier(name) && name.text === identifier.text)
+      )
+        return undefined;
+      if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
+      for (const statement of scope.statements) {
+        if (ts.isFunctionDeclaration(statement) && statement.name?.text === identifier.text) return statement;
+        if (!ts.isVariableStatement(statement)) continue;
+        const declaration = statement.declarationList.declarations.find(
+          ({ name }) => ts.isIdentifier(name) && name.text === identifier.text
+        );
+        if (declaration?.initializer === undefined) continue;
+        if (isApplicationBaseUrl(declaration.initializer)) return undefined;
+        return declaration.initializer;
+      }
+    }
+    return undefined;
+  }
+
+  function address(node: ts.Node, seen = new Set<ts.Node>()): boolean {
+    if (seen.has(node)) return false;
+    seen.add(node);
+    if (ts.isIdentifier(node)) {
+      const value = binding(node);
+      return value !== undefined && address(value, seen);
+    }
+    if (ts.isParenthesizedExpression(node)) return address(node.expression, seen);
+    if (["origin", "host", "hostname", "href"].includes(propertyName(node))) return true;
+    return ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "url";
+  }
+
+  function fixedHost(node: ts.Node, seen = new Set<ts.Node>()): boolean {
+    if (seen.has(node)) return false;
+    seen.add(node);
+    if (ts.isIdentifier(node)) {
+      const value = binding(node);
+      return value !== undefined && fixedHost(value, seen);
+    }
+    if (ts.isStringLiteralLike(node))
+      return (
+        (URL.canParse(node.text) && new URL(node.text).hostname !== "") ||
+        /^(?:[\w-]+\.)+[\w-]+(?::\d+)?$/u.test(node.text) ||
+        /authkit|workos/iu.test(node.text)
+      );
+    if (ts.isTemplateExpression(node) && /^[a-z][\w+.-]*:\/\//iu.test(node.head.text)) return true;
+    if (ts.isRegularExpressionLiteral(node)) return /authkit|workos|\\\./iu.test(node.text);
+    if (ts.isPropertyAccessExpression(node)) return fixedHost(node.expression, seen);
+    return ts.forEachChild(node, (child) => fixedHost(child, seen) || undefined) === true;
+  }
+
+  // oxlint-disable-next-line eslint/complexity -- The syntax walk explicitly handles lexical bindings, returned predicates, and each supported URL comparison form.
+  function coupled(node: ts.Node): boolean {
+    if (visited.has(node)) return false;
+    visited.add(node);
+    if (ts.isIdentifier(node)) {
+      const value = binding(node);
+      return value !== undefined && coupled(value);
+    }
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node))
+      return node.body !== undefined && coupled(node.body);
+    if (ts.isBlock(node)) {
+      // Inspect returned predicates, not diagnostic statements or unused declarations in a helper.
+      return (
+        ts.forEachChild(
+          node,
+          (child) => (!ts.isVariableStatement(child) && !ts.isExpressionStatement(child) && coupled(child)) || undefined
+        ) === true
+      );
+    }
+    if (["host", "hostname"].includes(propertyName(node))) return true;
+    if (ts.isBinaryExpression(node) && ((address(node.left) && fixedHost(node.right)) || (address(node.right) && fixedHost(node.left))))
+      return true;
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const receiver = node.expression.expression;
+      if (address(receiver) && node.arguments.some((argument) => fixedHost(argument))) return true;
+      if (node.expression.name.text === "test" && node.arguments.some((argument) => address(argument)) && fixedHost(receiver)) return true;
+    }
+    if (ts.isPropertyAccessExpression(node)) return coupled(node.expression);
+    return ts.forEachChild(node, (child) => coupled(child) || undefined) === true;
+  }
+
+  function transition(node: ts.Node): boolean {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.expression.getText(file) === "page" &&
+      ["waitForURL", "waitForRequest"].includes(node.expression.name.text)
+    ) {
+      const predicate = node.arguments[0];
+      if (
+        predicate !== undefined &&
+        ((fixedHost(predicate) && (ts.isStringLiteralLike(predicate) || ts.isRegularExpressionLiteral(predicate))) || coupled(predicate))
+      )
+        return true;
+    }
+    return ts.forEachChild(node, (child) => transition(child) || undefined) === true;
+  }
+
+  return transition(file);
 }
 
 function isContinuousWorkspace(tags: unknown) {
