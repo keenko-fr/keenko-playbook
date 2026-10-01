@@ -30,8 +30,19 @@ export default function applicationWorkspaces102(tree: Tree) {
   migrateContinuousTargets(staged);
   if (authSmokeMigration !== undefined) staged.write(authSmokeMigration.path, authSmokeMigration.source);
   for (const write of boundaryPolicyMigration) staged.write(write.path, write.source);
+  // Keep caller configuration available to Nx's formatter, but copy back only migration changes.
+  const changedPaths = new Set(
+    staged
+      .listChanges()
+      .filter((change) => {
+        const original = tree.read(change.path);
+        return change.content === null ? original !== null : original === null || !change.content.equals(original);
+      })
+      .map((change) => change.path)
+  );
   return formatFiles(staged).then(() => {
     for (const change of staged.listChanges()) {
+      if (!changedPaths.has(change.path)) continue;
       if (change.type === "DELETE") tree.delete(change.path);
       else if (change.content !== null) tree.write(change.path, change.content, change.options);
     }
@@ -100,6 +111,8 @@ function migrateRootVerification(tree: Tree) {
     const scripts = packageJson.scripts;
     if (!isObject(scripts) || typeof scripts.check !== "string") return conflict("package.json", "scripts.check");
     let check = scripts.check;
+    const occurrences = check.split(oldRouteTreePath).length + check.split(applicationRouteTreePath).length - 2;
+    if (occurrences !== 1) return conflict("package.json", "scripts.check generated route-tree path");
     if (!check.includes(applicationRouteTreePath)) {
       if (!check.includes(oldRouteTreePath)) return conflict("package.json", "scripts.check generated route-tree path");
       check = check.replace(oldRouteTreePath, applicationRouteTreePath);
@@ -126,16 +139,6 @@ function planBoundaryPolicyMigration(tree: Tree) {
 function validateAndMigrateConstraints(body: string) {
   const constraints = [...body.matchAll(dependencyConstraint)].map((match) => match[0]);
   if (constraints.length === 0) return conflict("oxlint.config.ts", "dependency constraints");
-  const required = [
-    ["type:package", ["type:package"]],
-    ["scope:backend", ["scope:shared"]],
-    ["scope:ui", ["scope:shared"]],
-    ["scope:shared", []],
-  ] satisfies readonly (readonly [string, readonly string[]])[];
-  for (const [sourceTag, targetTags] of required) {
-    if (constraints.filter((constraint) => isConstraint(constraint, sourceTag, targetTags)).length !== 1)
-      return conflict("oxlint.config.ts", `${sourceTag} dependency constraint`);
-  }
   const newApplications = constraints.filter((constraint) => isApplicationBoundary(constraint, "type:app"));
   const oldApplications = constraints.filter((constraint) => isApplicationBoundary(constraint, "scope:web"));
   if (newApplications.length === 1) return body;
@@ -218,6 +221,7 @@ function migrateContinuousTargets(tree: Tree) {
         if (!isObject(scripts) || typeof scripts.dev !== "string") return packageJson;
         const nx = packageJson.nx;
         if (!isObject(nx) || !isContinuousWorkspace(nx.tags)) return packageJson;
+        if (nx.targets !== undefined && !isObject(nx.targets)) return conflict(path, "nx.targets");
         const targets = isObject(nx.targets) ? nx.targets : (nx.targets = {});
         const dev = targets.dev;
         if (dev === undefined) {
@@ -239,13 +243,97 @@ function planAuthSmokeMigration(tree: Tree) {
   // Frozen release baselines: future generator changes must not change this migration's signatures.
   const oldSmoke = readFileSync(new URL("files/application-workspaces-1-0-2/auth.e2e.1-0-1.ts.template", import.meta.url), "utf-8");
   const targetSmoke = readFileSync(new URL("files/application-workspaces-1-0-2/auth.e2e.1-0-2.ts.template", import.meta.url), "utf-8");
-  const signature = authSmokeTokens(source);
-  if (signature === authSmokeTokens(targetSmoke)) return;
-  if (signature !== authSmokeTokens(oldSmoke)) return conflict(path, "Hosted UI transition detection");
-  return { path, source: targetSmoke };
+  const current = authSmokeFields(source);
+  const old = authSmokeFields(oldSmoke);
+  const target = authSmokeFields(targetSmoke);
+  const matches = (baseline: Map<string, ts.Node>) =>
+    current.size === baseline.size &&
+    [...baseline].every(([key, node]) => {
+      const actual = current.get(key);
+      return actual !== undefined && authSmokeTokens(actual.getText()) === authSmokeTokens(node.getText());
+    });
+  if (matches(target)) return;
+  if (!matches(old)) return conflict(path, "Hosted UI transition detection");
+  const edits = [...current].map(([key, node]) => {
+    const replacement = target.get(key);
+    if (replacement === undefined) return conflict(path, "Hosted UI transition detection");
+    const authority =
+      key === "baseUrl"
+        ? [target.get("applicationOrigin"), target.get("isOutsideApplicationOrigin")].map((field) => field?.getText()).join("\n")
+        : "";
+    return { end: node.end, source: `${replacement.getText()}${authority === "" ? "" : `\n${authority}`}`, start: node.getStart() };
+  });
+  let migrated = source;
+  for (const edit of edits.toSorted((left, right) => right.start - left.start))
+    migrated = `${migrated.slice(0, edit.start)}${edit.source}${migrated.slice(edit.end)}`;
+  return { path, source: migrated };
 }
 
-// Compare complete syntax, allowing only formatter changes to whitespace, quotes, and trailing commas.
+// Locate only generated transition fields. This is syntax selection, not helper resolution or semantic analysis.
+function authSmokeFields(source: string) {
+  const path = "apps/web/e2e/auth.e2e.ts";
+  const parsed = ts.transpileModule(source, { reportDiagnostics: true });
+  if (parsed.diagnostics?.some((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error))
+    return conflict(path, "Hosted UI transition detection");
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  const fields = new Map<string, ts.Node>();
+  const declarationNames = new Set(["baseUrl", "applicationOrigin", "isOutsideApplicationOrigin", "hostedUiDocumentRequest"]);
+  const callees = ["expect(page).toHaveURL", "expect(new URL(page.url()).origin).not.toBe"];
+  const namedCall = (node: ts.Node, name: string): node is ts.CallExpression =>
+    ts.isCallExpression(node) && authSmokeTokens(node.expression.getText(file)) === authSmokeTokens(name);
+  const add = (key: string, node: ts.Node) => {
+    if (fields.has(key)) return conflict(path, "Hosted UI transition detection");
+    fields.set(key, node);
+  };
+  for (const statement of file.statements) {
+    const body = authSmokeBody(statement);
+    if (body === undefined) continue;
+    for (const item of body.statements) {
+      if (ts.isVariableStatement(item)) {
+        for (const declaration of item.declarationList.declarations)
+          if (ts.isIdentifier(declaration.name) && declarationNames.has(declaration.name.text)) {
+            if (item.declarationList.declarations.length !== 1) return conflict(path, "Hosted UI transition detection");
+            add(declaration.name.text, item);
+          }
+      }
+      if (!ts.isExpressionStatement(item)) continue;
+      const expression = ts.isAwaitExpression(item.expression) ? item.expression.expression : item.expression;
+      if (callees.some((callee) => namedCall(expression, callee))) add("hostedUiAssertion", item);
+      if (!namedCall(expression, "Promise.all")) continue;
+      const array = expression.arguments[0];
+      if (
+        array === undefined ||
+        !ts.isArrayLiteralExpression(array) ||
+        !array.elements.some((element) => ts.isIdentifier(element) && element.text === "hostedUiDocumentRequest")
+      )
+        continue;
+      for (const element of array.elements) if (namedCall(element, "page.waitForURL")) add("hostedUiWait", element);
+    }
+  }
+  return fields;
+}
+
+function authSmokeBody(statement: ts.Statement) {
+  if (
+    !ts.isExpressionStatement(statement) ||
+    !ts.isCallExpression(statement.expression) ||
+    !ts.isIdentifier(statement.expression.expression) ||
+    statement.expression.expression.text !== "test"
+  )
+    return;
+  const callback = statement.expression.arguments[1];
+  if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isBlock(callback.body)) return;
+  const hasRequest = callback.body.statements
+    .filter(ts.isVariableStatement)
+    .some((item) =>
+      item.declarationList.declarations.some(
+        (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "hostedUiDocumentRequest"
+      )
+    );
+  return hasRequest ? callback.body : undefined;
+}
+
+// Compare owned-field syntax, allowing only formatter changes to whitespace, quotes, and trailing commas.
 // No callback, binding, control-flow, or behavioral interpretation is performed.
 function authSmokeTokens(source: string) {
   const file = ts.createSourceFile("auth.e2e.ts", source, ts.ScriptTarget.Latest, true);

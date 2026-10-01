@@ -313,8 +313,6 @@ describe("1.0.2 application-workspace migration", () => {
       "mixed old and target detection",
       oldSmoke.replace("page.waitForURL(/(?:authkit|workos)/u)", "page.waitForURL(url => url.origin !== applicationOrigin)"),
     ],
-    ["customized return-route assertion", targetSmoke.replace("/mon-espace", "/dashboard")],
-    ["customized identity assertion", targetSmoke.replace("convex-authenticated", "custom-authenticated")],
     [
       "behaviorally compatible callback",
       targetSmoke.replace(
@@ -337,7 +335,6 @@ describe("1.0.2 application-workspace migration", () => {
         "url => url.origin !== applicationOrigin && url.hostname === process.env.WORKOS_HOST"
       ),
     ],
-    ["added diagnostics", `${oldSmoke}const diagnosticHost = new URL(baseUrl).hostname;\n`],
     ["malformed target", targetSmoke.slice(0, -4)],
     ["empty smoke", ""],
   ])("requires manual reconciliation for unrecognized AuthKit state: %s", (_name, source) => {
@@ -348,9 +345,77 @@ describe("1.0.2 application-workspace migration", () => {
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
+  test.each([oldSmoke, targetSmoke])("preserves unrelated AuthKit smoke state around recognized transition fields", async (baseline) => {
+    const tree = makeTree();
+    const custom = baseline
+      .replace("/mon-espace", "/dashboard")
+      .replace("convex-authenticated", "custom-authenticated")
+      .replace("await page.goto", 'const diagnostic = new URL("https://diagnostic.example").hostname;\n  await page.goto')
+      .replace('name: "Mon espace"', 'name: "Dashboard"');
+    tree.write("apps/web/e2e/auth.e2e.ts", custom);
+    await migration(tree);
+    const migrated = tree.read("apps/web/e2e/auth.e2e.ts", "utf-8") ?? "";
+    expect(migrated).toContain("/dashboard");
+    expect(migrated).toContain("custom-authenticated");
+    expect(migrated).toContain("diagnostic.example");
+    expect(migrated).toContain("Dashboard");
+    expect(migrated).not.toContain("authkit|workos");
+    if (baseline === targetSmoke) expect(migrated).toBe(custom);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("preserves unrelated pending caller files without formatting them", async () => {
+    const tree = makeTree();
+    const source = "const   untouched={value:1}\n";
+    tree.write("tools/custom.ts", source);
+    await migration(tree);
+    expect(tree.read("tools/custom.ts", "utf-8")).toBe(source);
+  });
+
+  test("preserves package constraints outside the owned application policy", async () => {
+    const tree = makeTree();
+    tree.write("oxlint.config.ts", oldOxlint.replace('sourceTag: "scope:backend"', 'sourceTag: "scope:custom-backend"'));
+    await migration(tree);
+    expect(tree.read("oxlint.config.ts", "utf-8")).toContain("scope:custom-backend");
+    expect(tree.read("oxlint.config.ts", "utf-8")).toContain("type:app");
+  });
+
+  test("preserves unrelated scripts, scope tags, and target configuration", async () => {
+    const tree = makeTree();
+    tree.write("package.json", JSON.stringify({ scripts: { check: `${oldCheck} && custom-validation`, custom: "project-owned" } }));
+    tree.write(
+      "apps/admin/package.json",
+      JSON.stringify({
+        nx: { tags: ["scope:admin"], targets: { custom: { cache: true }, dev: { options: { port: 9001 } } } },
+        scripts: { custom: "project-owned", dev: "vite dev" },
+      })
+    );
+    await migration(tree);
+    expect(readJson<{ scripts: Record<string, string> }>(tree, "package.json").scripts).toEqual({
+      check: "nx sync:check && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && custom-validation",
+      custom: "project-owned",
+    });
+    expect(readJson(tree, "apps/admin/package.json")).toEqual({
+      nx: { tags: ["scope:admin", "type:app"], targets: { custom: { cache: true }, dev: { continuous: true, options: { port: 9001 } } } },
+      scripts: { custom: "project-owned", dev: "vite dev" },
+    });
+  });
+
   test.each([
     ["nx.json", JSON.stringify({ plugins: [vitestRegistration(["apps/custom/vite.config.ts"])] }), "nx.json"],
     ["package.json", JSON.stringify({ scripts: { check: "custom check" } }), "scripts.check generated route-tree path"],
+    [
+      "package.json",
+      JSON.stringify({ scripts: { check: `${oldCheck} && echo ':(glob)apps/*/src/routeTree.gen.ts'` } }),
+      "scripts.check generated route-tree path",
+    ],
+    [
+      "apps/admin/package.json",
+      JSON.stringify({ nx: { tags: ["scope:admin"], targets: "custom" }, scripts: { dev: "vite dev" } }),
+      "nx.targets",
+    ],
     [
       "oxlint.config.ts",
       oldOxlint.replace('"scope:backend", "scope:ui", "scope:shared"', '"scope:ui", "scope:shared"'),

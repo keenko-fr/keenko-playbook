@@ -91,6 +91,11 @@ describe("keenko sync", () => {
           yield* readSource(new URL("files/docs/core/tooling.md", import.meta.url))
         );
 
+        expect(tree.read(".keenko/docs/core/migrations.md", "utf-8")).toBe(
+          yield* readSource(new URL("files/docs/core/migrations.md", import.meta.url))
+        );
+        expect(tree.read(".keenko/docs/core/dependencies.md", "utf-8")).toContain("[Keenko migration contract](migrations.md)");
+
         expect(tree.read(".keenko/docs/conventions/frontend.md", "utf-8")).toBe(
           yield* readSource(new URL("files/docs/conventions/frontend.md", import.meta.url))
         );
