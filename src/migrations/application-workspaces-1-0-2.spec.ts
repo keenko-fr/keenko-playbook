@@ -10,7 +10,9 @@ import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-li
 import { generatedDriftCheck } from "../generators/preset/preset.js";
 import migration from "./application-workspaces-1-0-2.js";
 
-const oldCheck = "nx sync:check && git status --porcelain -- apps/web/src/routeTree.gen.ts";
+const sourceDriftCheck = "git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts";
+const targetDriftCheck = "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts'";
+const oldCheck = `nx sync:check && ${sourceDriftCheck}`;
 const oldOxlint = `import { defineConfig } from "oxlint";
 
 export default defineConfig({
@@ -537,30 +539,35 @@ describe("1.0.2 application-workspace migration", () => {
     expect(tree.read("oxlint.config.ts", "utf-8")).toContain("type:app");
   });
 
-  test.each([
-    [oldCheck, "nx sync:check && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts"],
-    ["git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts", "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts"],
+  test.each(
     [
-      `${oldCheck} && echo ':(glob)apps/*/src/routeTree.gen.ts'`,
-      "nx sync:check && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && echo ':(glob)apps/*/src/routeTree.gen.ts'",
-    ],
-    [
-      "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && echo 'apps/web/src/routeTree.gen.ts'",
-      "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && echo 'apps/web/src/routeTree.gen.ts'",
-    ],
-    [
-      "git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts packages/backend/convex",
-      "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts' packages/backend/convex",
-    ],
-    [
-      "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts' packages/backend/convex",
-      "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts' packages/backend/convex",
-    ],
-  ])("recognizes only the owned route-tree command: %s", async (check, expected) => {
+      "",
+      "echo preparing; ",
+      "echo preparing\n",
+      "echo preparing && ",
+      "echo preparing || ",
+      `echo preparing # ${sourceDriftCheck}\n`,
+    ].flatMap((prefix) => [sourceDriftCheck, targetDriftCheck].map((fragment) => [prefix, fragment]))
+  )("recognizes canonical commands after ordinary boundaries: %j, %s", async (prefix, fragment) => {
     const tree = makeTree();
+    const suffix = " packages/backend/convex";
+    tree.write("package.json", JSON.stringify({ scripts: { check: `${prefix}${fragment}${suffix}` } }));
+    await migration(tree);
+    expect(readJson<{ scripts: { check: string } }>(tree, "package.json").scripts.check).toBe(`${prefix}${targetDriftCheck}${suffix}`);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([sourceDriftCheck, targetDriftCheck])("ignores unrelated quoted fragments and pathnames: %s", async (fragment) => {
+    const tree = makeTree();
+    const unrelated = `echo '; ${sourceDriftCheck}' && echo "; ${targetDriftCheck}" && echo 'apps/web/src/routeTree.gen.ts' && echo ':(glob)apps/*/src/routeTree.gen.ts'`;
+    const check = `${unrelated}; ${fragment} packages/backend/convex`;
     tree.write("package.json", JSON.stringify({ scripts: { check } }));
     await migration(tree);
-    expect(readJson<{ scripts: { check: string } }>(tree, "package.json").scripts.check).toBe(expected);
+    expect(readJson<{ scripts: { check: string } }>(tree, "package.json").scripts.check).toBe(
+      `${unrelated}; ${targetDriftCheck} packages/backend/convex`
+    );
     const before = snapshotChanges(tree);
     await migration(tree);
     expect(snapshotChanges(tree)).toEqual(before);
@@ -581,14 +588,22 @@ describe("1.0.2 application-workspace migration", () => {
   test.each([
     "echo ':(glob)apps/*/src/routeTree.gen.ts'",
     "echo apps/web/src/routeTree.gen.ts",
-    "echo git status --porcelain -- apps/web/src/routeTree.gen.ts",
-    "echo 'git status --porcelain -- apps/web/src/routeTree.gen.ts '",
+    "git status --porcelain -- apps/web/src/routeTree.gen.ts",
+    "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts",
+    "git status --porcelain --untracked-files=all -- :(glob)apps/*/src/routeTree.gen.ts",
+    `echo '; ${sourceDriftCheck}'`,
+    `echo "; ${sourceDriftCheck}"`,
+    `echo '${sourceDriftCheck}'`,
+    `echo ${sourceDriftCheck}`,
+    `echo preparing # ; ${sourceDriftCheck}`,
+    String.raw`echo \; ${sourceDriftCheck}`,
+    String.raw`echo "say \"; ${sourceDriftCheck}"`,
     "custom check",
     "git status --short -- apps/web/src/routeTree.gen.ts",
-    "git status --porcelain -- apps/web/src/routeTree.gen.ts.backup",
-    `${oldCheck} && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts`,
-    `${oldCheck} && ${oldCheck}`,
-    "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts",
+    `${sourceDriftCheck}.backup`,
+    `${oldCheck} && ${targetDriftCheck}`,
+    `${oldCheck}; ${oldCheck}`,
+    `${targetDriftCheck}\n${targetDriftCheck}`,
   ])("conflicts atomically without a unique supported drift-check command: %s", (check) => {
     const tree = makeTree();
     tree.write("package.json", JSON.stringify({ scripts: { check } }));
@@ -609,7 +624,7 @@ describe("1.0.2 application-workspace migration", () => {
     );
     await migration(tree);
     expect(readJson<{ scripts: Record<string, string> }>(tree, "package.json").scripts).toEqual({
-      check: "nx sync:check && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && custom-validation",
+      check: `nx sync:check && ${targetDriftCheck} && custom-validation`,
       custom: "project-owned",
     });
     expect(readJson(tree, "apps/admin/package.json")).toEqual({

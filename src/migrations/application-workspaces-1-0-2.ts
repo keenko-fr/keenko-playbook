@@ -8,17 +8,9 @@ import * as ts from "typescript";
 
 type JsonObject = Record<string, unknown>;
 
-// Frozen command fragments: the released generator form and the simple review fixture form.
-const routeTreeDriftChecks = [
-  {
-    source: "git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts",
-    target: "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts'",
-  },
-  {
-    source: "git status --porcelain -- apps/web/src/routeTree.gen.ts",
-    target: "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts",
-  },
-];
+// Frozen fragments from the supported 1.0.1 source and 1.0.2 target generators.
+const sourceRouteTreeDriftCheck = "git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts";
+const targetRouteTreeDriftCheck = "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts'";
 const applicationTargetTags = ["scope:backend", "scope:shared", "scope:ui"];
 
 export default function applicationWorkspaces102(tree: Tree) {
@@ -109,22 +101,79 @@ function migrateRootVerification(tree: Tree) {
     const scripts = packageJson.scripts;
     if (!isObject(scripts) || typeof scripts.check !== "string") return conflict("package.json", "scripts.check");
     const check = scripts.check;
-    const matches: { fragment: string; index: number; target: string }[] = [];
-    for (const { source, target } of routeTreeDriftChecks)
-      for (const fragment of [source, target]) {
-        let index = check.indexOf(fragment);
-        while (index !== -1) {
-          const end = index + fragment.length;
-          const commandStart = /(?:^|&&|\$\()[\t \r\n]*$/u.test(check.slice(0, index));
-          if (commandStart && (end === check.length || /\s/u.test(check[end] ?? ""))) matches.push({ fragment, index, target });
-          index = check.indexOf(fragment, end);
-        }
-      }
+    const matches = routeTreeCommandMatches(check);
     const match = matches[0];
     if (matches.length !== 1 || match === undefined) return conflict("package.json", "scripts.check generated route-tree command");
-    scripts.check = `${check.slice(0, match.index)}${match.target}${check.slice(match.index + match.fragment.length)}`;
+    scripts.check = `${check.slice(0, match.index)}${targetRouteTreeDriftCheck}${check.slice(match.index + match.fragment.length)}`;
     return packageJson;
   });
+}
+
+// Only locate the frozen command at lexical boundaries. No shell behavior or command equivalence is evaluated.
+// oxlint-disable-next-line eslint/complexity -- Keep the bounded quote/escape/substitution state machine together; it only locates frozen fragments.
+function routeTreeCommandMatches(script: string) {
+  const matches: { fragment: string; index: number }[] = [];
+  const substitutions: string[] = [];
+  let quote = "";
+  let commandStart = true;
+  for (let index = 0; index < script.length; index += 1) {
+    const character = script[index];
+    const next = script[index + 1];
+    if (quote === "'") {
+      if (character === "'") quote = "";
+      continue;
+    }
+    if (character === "\\") {
+      if (next !== "\n") commandStart = false;
+      index += 1;
+      continue;
+    }
+    if (character === "$" && next === "(") {
+      substitutions.push(quote);
+      quote = "";
+      commandStart = true;
+      index += 1;
+      continue;
+    }
+    if (quote === '"') {
+      if (character === '"') quote = "";
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      commandStart = false;
+      continue;
+    }
+    if (character === "#" && (index === 0 || /[\s;&|)]/u.test(script[index - 1] ?? ""))) {
+      const newline = script.indexOf("\n", index);
+      if (newline === -1) break;
+      index = newline - 1;
+      continue;
+    }
+    if (character === ")" && substitutions.length > 0) {
+      quote = substitutions.pop() ?? "";
+      commandStart = false;
+      continue;
+    }
+    if (character === ";" || character === "\n" || (character === "&" && next === "&") || (character === "|" && next === "|")) {
+      commandStart = true;
+      if (character === "&" || character === "|") index += 1;
+      continue;
+    }
+    if (/\s/u.test(character ?? "")) continue;
+    if (commandStart) {
+      const fragment = [sourceRouteTreeDriftCheck, targetRouteTreeDriftCheck].find((candidate) => script.startsWith(candidate, index));
+      if (fragment !== undefined) {
+        const end = index + fragment.length;
+        if (end === script.length || /[\s;&|)]/u.test(script[end] ?? "")) {
+          matches.push({ fragment, index });
+          index = end - 1;
+        }
+      }
+    }
+    commandStart = false;
+  }
+  return matches;
 }
 
 function planBoundaryPolicyMigration(tree: Tree) {
