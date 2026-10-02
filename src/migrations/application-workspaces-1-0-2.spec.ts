@@ -663,6 +663,34 @@ describe("1.0.2 application-workspace migration", () => {
   });
 
   test.each([
+    "enum applicationOrigin { ProjectOwned }",
+    "const enum isOutsideApplicationOrigin { ProjectOwned }",
+    "class applicationOrigin {}",
+  ])("rejects direct AuthKit runtime-value binding collisions atomically: %s", (declaration) => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", oldSmoke.replace("await page.goto", `${declaration}\n  await page.goto`));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    "enum ProjectOwned { Diagnostic }",
+    "type applicationOrigin = string; interface isOutsideApplicationOrigin { diagnostic: string }",
+    "if (diagnosticsEnabled) { enum applicationOrigin { ProjectOwned } const enum isOutsideApplicationOrigin { ProjectOwned } }",
+  ])("preserves unrelated, type-only, and nested enum AuthKit declarations: %s", async (declaration) => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", oldSmoke.replace("await page.goto", `${declaration}\n  await page.goto`));
+    await migration(tree);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(
+      targetSmoke.replace("await page.goto", `${declaration}\n  await page.goto`)
+    );
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
     oldSmoke.replace("await page.goto", 'const applicationOrigin = "project-owned";\n  await page.goto'),
     oldSmoke.replace("await page.goto", "function isOutsideApplicationOrigin() { return true; }\n  await page.goto"),
     oldSmoke.replace("await page.goto", "const { applicationOrigin } = diagnostics;\n  await page.goto"),
@@ -714,6 +742,9 @@ describe("1.0.2 application-workspace migration", () => {
       "echo preparing; ",
       "echo preparing\n",
       "echo preparing && ",
+      "printf '' & ",
+      "printf '' &",
+      "printf '&' >&1 & ",
       "echo preparing || ",
       "printf '' | ",
       "printf '' |",
@@ -773,6 +804,21 @@ describe("1.0.2 application-workspace migration", () => {
     `echo "| ${sourceDriftCheck}"`,
     String.raw`echo \| ${sourceDriftCheck}`,
     `echo preparing # | ${sourceDriftCheck}`,
+    `echo '& ${sourceDriftCheck}'`,
+    `echo "& ${sourceDriftCheck}"`,
+    `echo '&' ${sourceDriftCheck}`,
+    `echo "&" ${sourceDriftCheck}`,
+    String.raw`echo \& ${sourceDriftCheck}`,
+    `echo >& ${sourceDriftCheck}`,
+    `echo <& ${sourceDriftCheck}`,
+    `echo &> ${sourceDriftCheck}`,
+    `echo &>> ${sourceDriftCheck}`,
+    `echo |& ${sourceDriftCheck}`,
+    `echo ;& ${sourceDriftCheck}`,
+    `echo ;;& ${sourceDriftCheck}`,
+    `${sourceDriftCheck} & ${sourceDriftCheck}`,
+    `${sourceDriftCheck} & ${targetDriftCheck}`,
+    `${targetDriftCheck} & ${targetDriftCheck}`,
     String.raw`echo "say \"; ${sourceDriftCheck}"`,
     "custom check",
     "git status --short -- apps/web/src/routeTree.gen.ts",
@@ -832,6 +878,34 @@ describe("1.0.2 application-workspace migration", () => {
       ...packageJson,
       nx: { ...packageJson.nx, targets: { ...packageJson.nx.targets, dev: { ...packageJson.nx.targets.dev, continuous: true } } },
     });
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("conflicts atomically when the canonical backend package is missing", () => {
+    const tree = makeTree();
+    tree.delete("packages/backend/package.json");
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("canonical backend package in packages/backend/package.json");
+    expect(snapshotChanges(tree)).toEqual(before);
+    expect(tree.exists("packages/backend/package.json")).toBe(false);
+  });
+
+  test("ignores absent unrelated package and discovered application package files", async () => {
+    const tree = makeTree();
+    tree.write("packages/worker/package.json", '{"scripts":{"dev":"project-owned"}}');
+    tree.delete("packages/worker/package.json");
+    tree.delete("apps/admin/package.json");
+    tree.write("apps/project-owned/README.md", "No package workspace here.");
+    await migration(tree);
+    expect(tree.exists("packages/worker/package.json")).toBe(false);
+    expect(tree.exists("apps/admin/package.json")).toBe(false);
+    expect(tree.exists("apps/project-owned/package.json")).toBe(false);
+    expect(tree.read("apps/project-owned/README.md", "utf-8")).toBe("No package workspace here.");
+    expect(
+      readJson<{ nx: { targets: { dev: { continuous: boolean } } } }>(tree, "packages/backend/package.json").nx.targets.dev.continuous
+    ).toBe(true);
     const before = snapshotChanges(tree);
     await migration(tree);
     expect(snapshotChanges(tree)).toEqual(before);

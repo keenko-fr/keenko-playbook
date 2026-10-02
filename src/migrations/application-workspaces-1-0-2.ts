@@ -173,9 +173,18 @@ function routeTreeCommandMatches(script: string) {
       commandStart = false;
       continue;
     }
-    if (character === ";" || character === "\n" || (character === "&" && next === "&") || character === "|") {
+    // Ampersands in compound redirection/control operators are not standalone asynchronous-list boundaries.
+    if (
+      (character === "&" && next === ">") ||
+      ((character === "<" || character === ">" || character === "|" || character === ";") && next === "&")
+    ) {
+      commandStart = false;
+      index += 1;
+      continue;
+    }
+    if (character === ";" || character === "\n" || character === "&" || character === "|") {
       commandStart = true;
-      if (character === "&" || (character === "|" && next === "|")) index += 1;
+      if ((character === "&" && next === "&") || (character === "|" && next === "|")) index += 1;
       continue;
     }
     if (/\s/u.test(character ?? "")) continue;
@@ -305,6 +314,7 @@ function matchesApplicationTargets(node: ts.Node | undefined) {
 
 function migrateContinuousTargets(tree: Tree) {
   const backendPath = "packages/backend/package.json";
+  if (!tree.exists(backendPath)) return conflict(backendPath, "canonical backend package");
   const paths = [...tree.children("apps").map((workspace) => `apps/${workspace}/package.json`), backendPath];
   for (const path of paths) {
     if (!tree.exists(path)) continue;
@@ -363,7 +373,7 @@ function planAuthSmokeMigration(tree: Tree) {
       (statement) =>
         (ts.isVariableStatement(statement) &&
           statement.declarationList.declarations.some((declaration) => declaresAuthAuthority(declaration.name))) ||
-        ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) &&
+        ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement)) &&
           statement.name !== undefined &&
           ["applicationOrigin", "isOutsideApplicationOrigin"].includes(statement.name.text))
     )
