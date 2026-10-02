@@ -13,9 +13,9 @@ const oldCheck = "nx sync:check && git status --porcelain -- apps/web/src/routeT
 const oldOxlint = `import { defineConfig } from "oxlint";
 
 export default defineConfig({
-  overrides: [{ files: ["apps/web/**/*.{ts,tsx}"] }],
+  overrides: [{ files: ["apps/web/**/*.{ts,tsx}"], rules: { "eslint/sort-keys": "off" } }],
   rules: {
-    boundaries: [{
+    "@nx/enforce-module-boundaries": ["error", {
       depConstraints: [
         { onlyDependOnLibsWithTags: ["type:package"], sourceTag: "type:package" },
         { onlyDependOnLibsWithTags: ["scope:backend", "scope:ui", "scope:shared"], sourceTag: "scope:web" },
@@ -99,7 +99,7 @@ describe("1.0.2 application-workspace migration", () => {
     expect(readJson<{ nx: { tags: string[] } }>(tree, "apps/web/package.json").nx.tags).toEqual(["type:app", "scope:web"]);
     expect(readJson<{ nx: { tags: string[] } }>(tree, "apps/admin/package.json").nx.tags).toEqual(["scope:admin", "type:app"]);
     expect(tree.read("oxlint.config.ts", "utf-8")).toContain("depConstraints: [");
-    expect(tree.read("oxlint.config.ts", "utf-8")).toContain("sourceTag: 'type:app'");
+    expect(tree.read("oxlint.config.ts", "utf-8")).toContain('sourceTag: "type:app"');
     expect(tree.exists("tools/dependency-boundaries.ts")).toBe(false);
     expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).not.toContain("authkit|workos");
   });
@@ -146,7 +146,7 @@ describe("1.0.2 application-workspace migration", () => {
     { options: { testMode: "watch", testTargetName: "custom-test" }, plugin: "@nx/vitest" },
     { include: ["tools/**"], options: { testMode: "run", testTargetName: "test" }, plugin: "@nx/vitest" },
     {
-      exclude: ["apps/*/vite.config.ts"],
+      exclude: ["project/custom/**"],
       include: ["apps/**"],
       options: { testMode: "run", testTargetName: "custom-test" },
       plugin: "@nx/vitest",
@@ -191,13 +191,9 @@ describe("1.0.2 application-workspace migration", () => {
     { ...vitestRegistration(["apps/custom/vite.config.ts"]) },
     { ...vitestRegistration(["tools/**"]) },
     { ...vitestRegistration(["apps/**/vite.config.ts"]) },
-    { ...vitestRegistration(["apps/web/vite.config.ts", "tools/**"]) },
-    { ...vitestRegistration(["apps/*/vite.config.ts", "!apps/admin/vite.config.ts"]) },
-    { ...vitestRegistration(["apps/web/vite.config.ts"]), include: ["apps/**"] },
-    { ...vitestRegistration(["apps/*/vite.config.ts"]), include: [] },
     { options: { testMode: "run", testTargetName: "test" }, plugin: "@nx/vitest" },
     { ...vitestRegistration([]), exclude: "apps/web/vite.config.ts" },
-  ])("rejects customized owned Vitest include/exclude state atomically: %j", (registration) => {
+  ])("rejects unrecognized Vitest exclusion markers atomically: %j", (registration) => {
     const tree = makeTree();
     tree.write("nx.json", JSON.stringify({ plugins: [registration] }));
     const before = snapshotChanges(tree);
@@ -205,14 +201,34 @@ describe("1.0.2 application-workspace migration", () => {
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
-  test("rejects customized owned include scope even alongside unrelated registrations", () => {
+  test.each([
+    {
+      exclude: ["tools/**", "apps/web/vite.config.ts"],
+      include: ["apps/**"],
+      options: { testMode: "watch", testTargetName: "custom" },
+      plugin: "@nx/vitest",
+    },
+    { exclude: ["apps/*/vite.config.ts", "!apps/admin/vite.config.ts"], include: [], plugin: "@nx/vitest" },
+    { exclude: ["apps/web/vite.config.ts"], options: { testMode: "watch", testTargetName: "test" }, plugin: "@nx/vitest" },
+    {
+      custom: true,
+      exclude: ["tools/**", "apps/*/vite.config.ts"],
+      include: ["custom/**"],
+      options: { testMode: "watch", testTargetName: "custom" },
+      plugin: "@nx/vitest",
+    },
+  ])("changes only the owned Vitest exclusion element: %j", async (registration) => {
     const tree = makeTree();
-    const unrelated = { include: ["tools/**"], plugin: "@nx/vitest" };
-    const owned = { ...vitestRegistration(["apps/web/vite.config.ts"]), include: ["apps/**"] };
-    tree.write("nx.json", JSON.stringify({ plugins: [unrelated, owned] }));
-    const before = snapshotChanges(tree);
-    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
-    expect(snapshotChanges(tree)).toEqual(before);
+    tree.write("nx.json", JSON.stringify({ plugins: [registration] }));
+    await migration(tree);
+    expect(readJson(tree, "nx.json")).toEqual({
+      plugins: [
+        {
+          ...registration,
+          exclude: registration.exclude.map((value) => (value === "apps/web/vite.config.ts" ? "apps/*/vite.config.ts" : value)),
+        },
+      ],
+    });
   });
 
   test.each([
@@ -222,6 +238,52 @@ describe("1.0.2 application-workspace migration", () => {
   ])("rejects ambiguous duplicate Keenko markers without mutation: %s, %s", (first, second) => {
     const tree = makeTree();
     tree.write("nx.json", JSON.stringify({ plugins: [vitestRegistration([first]), vitestRegistration([second])] }));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each(["apps/web/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}"])(
+    "preserves unrelated overrides with the application glob: %s",
+    async (glob) => {
+      const tree = makeTree();
+      const source = oldOxlint.replace("overrides: [", `overrides: [{ files: ["${glob}"], rules: { "project/custom-rule": "off" } }, `);
+      tree.write("oxlint.config.ts", source);
+      await migration(tree);
+      const migrated = tree.read("oxlint.config.ts", "utf-8") ?? "";
+      expect(migrated).toContain(`files: ["${glob}"], rules: { "project/custom-rule": "off" }`);
+      expect(migrated).toContain('files: ["apps/**/*.{ts,tsx}"], rules: { "eslint/sort-keys": "off" }');
+    }
+  );
+
+  test("preserves unrelated depConstraints before the Nx boundary configuration", async () => {
+    const tree = makeTree();
+    const unrelated = '{ depConstraints: [{ onlyDependOnLibsWithTags: ["project"], sourceTag: "scope:web" }] }';
+    tree.write("oxlint.config.ts", oldOxlint.replace("export default", `const project = ${unrelated};\nexport default`));
+    await migration(tree);
+    const migrated = tree.read("oxlint.config.ts", "utf-8") ?? "";
+    expect(migrated).toContain(unrelated);
+    expect(migrated).toContain('sourceTag: "type:app"');
+  });
+
+  test.each([
+    oldOxlint.replace("overrides: [", 'overrides: [{ files: ["apps/web/**/*.{ts,tsx}"], rules: { "eslint/sort-keys": "off" } }, '),
+    oldOxlint.replace(
+      "depConstraints: [",
+      'depConstraints: [{ onlyDependOnLibsWithTags: ["scope:backend", "scope:ui", "scope:shared"], sourceTag: "scope:web" }, '
+    ),
+    oldOxlint.replace('"@nx/enforce-module-boundaries":', '"@nx/enforce-module-boundaries": [], "@nx/enforce-module-boundaries":'),
+  ])("rejects ambiguous owned Oxlint nodes atomically", (source) => {
+    const tree = makeTree();
+    tree.write("oxlint.config.ts", source);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Reconcile the customization manually");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("rejects duplicate Vitest markers within one exclusion array atomically", () => {
+    const tree = makeTree();
+    tree.write("nx.json", JSON.stringify({ plugins: [vitestRegistration(["apps/web/vite.config.ts", "apps/*/vite.config.ts"])] }));
     const before = snapshotChanges(tree);
     expect(() => migration(tree)).toThrow("@nx/vitest application scope");
     expect(snapshotChanges(tree)).toEqual(before);
@@ -237,8 +299,8 @@ describe("1.0.2 application-workspace migration", () => {
     await migration(tree);
 
     const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
-    expect(source).toContain("onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'scope:web'");
-    expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(1);
+    expect(source).toContain('onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:web"');
+    expect([...source.matchAll(/sourceTag: "type:app"/gu)]).toHaveLength(1);
   });
 
   test("migrates the legacy boundary despite an unrelated type:app rule", async () => {
@@ -251,8 +313,8 @@ describe("1.0.2 application-workspace migration", () => {
     await migration(tree);
 
     const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
-    expect(source).toContain("onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'type:app'");
-    expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(2);
+    expect(source).toContain('onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "type:app"');
+    expect([...source.matchAll(/sourceTag: "type:app"/gu)]).toHaveLength(2);
   });
 
   test("preserves unrelated constraints around a compliant application boundary", async () => {
@@ -266,8 +328,8 @@ describe("1.0.2 application-workspace migration", () => {
     await migration(tree);
 
     const source = tree.read("oxlint.config.ts", "utf-8") ?? "";
-    expect(source).toContain("onlyDependOnLibsWithTags: ['scope:shared'], sourceTag: 'scope:web'");
-    expect([...source.matchAll(/sourceTag: 'type:app'/gu)]).toHaveLength(1);
+    expect(source).toContain('onlyDependOnLibsWithTags: ["scope:shared"], sourceTag: "scope:web"');
+    expect([...source.matchAll(/sourceTag: "type:app"/gu)]).toHaveLength(1);
   });
 
   test.each([
@@ -279,7 +341,7 @@ describe("1.0.2 application-workspace migration", () => {
     const tree = makeTree();
     addInlineConstraint(tree, constraint);
     await migration(tree);
-    expect(tree.read("oxlint.config.ts", "utf-8")).toContain(constraint.replaceAll('"', "'"));
+    expect(tree.read("oxlint.config.ts", "utf-8")).toContain(constraint);
     const before = snapshotChanges(tree);
     await migration(tree);
     expect(snapshotChanges(tree)).toEqual(before);
@@ -299,12 +361,9 @@ describe("1.0.2 application-workspace migration", () => {
   test("migrates the complete 1.0.1 smoke to the current generated 1.0.2 baseline", async () => {
     const generated = readFileSync(new URL("../generators/preset/files/web/e2e/auth.e2e.ts.template", import.meta.url), "utf-8");
     expect(targetSmoke).toBe(generated);
-    const expected = makeTree();
-    expected.write("apps/web/e2e/auth.e2e.ts", targetSmoke);
-    await formatFiles(expected);
     const tree = makeTree();
     await migration(tree);
-    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(expected.read("apps/web/e2e/auth.e2e.ts", "utf-8"));
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(targetSmoke);
   });
 
   test("recognizes the formatted 1.0.1 smoke without semantic interpretation", async () => {
@@ -426,6 +485,36 @@ describe("1.0.2 application-workspace migration", () => {
     const tree = makeTree();
     const testBody = baseline.slice(baseline.indexOf("test("));
     tree.write("apps/web/e2e/auth.e2e.ts", `${baseline}test.describe("another", () => {\n${testBody}\n});`);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([oldSmoke, targetSmoke])("ignores unrelated AuthKit URL assertions and waits", async (baseline) => {
+    const tree = makeTree();
+    const source = baseline
+      .replace(
+        "await page.goto",
+        "await expect(page).toHaveURL( /dashboard/u );\n  await page.waitForURL(/project-route/u);\n  await page.goto"
+      )
+      .replace("hostedUiDocumentRequest,", "hostedUiDocumentRequest,\n    page.waitForURL(/unrelated-route/u),");
+    tree.write("apps/web/e2e/auth.e2e.ts", source);
+    await migration(tree);
+    const result = tree.read("apps/web/e2e/auth.e2e.ts", "utf-8") ?? "";
+    expect(result).toContain("await expect(page).toHaveURL( /dashboard/u );");
+    expect(result).toContain("await page.waitForURL(/project-route/u);");
+    expect(result).toContain("page.waitForURL(/unrelated-route/u)");
+    expect(result).not.toContain("authkit|workos");
+    if (baseline === targetSmoke) expect(result).toBe(source);
+  });
+
+  test.each([oldSmoke, targetSmoke])("rejects duplicate exact AuthKit assertions atomically", (baseline) => {
+    const tree = makeTree();
+    const assertion =
+      baseline === oldSmoke
+        ? "await expect(page).toHaveURL(/(?:authkit|workos)/u);"
+        : "expect(new URL(page.url()).origin).not.toBe(applicationOrigin);";
+    tree.write("apps/web/e2e/auth.e2e.ts", baseline.replace(assertion, `${assertion}\n  ${assertion}`));
     const before = snapshotChanges(tree);
     expect(() => migration(tree)).toThrow("Hosted UI transition detection");
     expect(snapshotChanges(tree)).toEqual(before);

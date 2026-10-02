@@ -10,9 +10,6 @@ type JsonObject = Record<string, unknown>;
 
 const oldRouteTreePath = "apps/web/src/routeTree.gen.ts";
 const applicationRouteTreePath = ":(glob)apps/*/src/routeTree.gen.ts";
-const oldAppFiles = /files:\s*\[["']apps\/web\/\*\*\/\*\.\{ts,tsx\}["']\]/u;
-const applicationFiles = /files:\s*\[["']apps\/\*\*\/\*\.\{ts,tsx\}["']\]/u;
-const dependencyConstraint = /\{[^{}]*\}/gu;
 const applicationTargetTags = ["scope:backend", "scope:shared", "scope:ui"];
 
 export default function applicationWorkspaces102(tree: Tree) {
@@ -40,11 +37,17 @@ export default function applicationWorkspaces102(tree: Tree) {
       })
       .map((change) => change.path)
   );
+  const sourceWrites = new Map(
+    [...boundaryPolicyMigration, ...(authSmokeMigration === undefined ? [] : [authSmokeMigration])].map((write) => [
+      write.path,
+      write.source,
+    ])
+  );
   return formatFiles(staged).then(() => {
     for (const change of staged.listChanges()) {
       if (!changedPaths.has(change.path)) continue;
       if (change.type === "DELETE") tree.delete(change.path);
-      else if (change.content !== null) tree.write(change.path, change.content, change.options);
+      else if (change.content !== null) tree.write(change.path, sourceWrites.get(change.path) ?? change.content, change.options);
     }
   });
 }
@@ -79,28 +82,15 @@ function migrateVitestDiscovery(tree: Tree) {
     if (!Array.isArray(plugins)) return conflict("nx.json", "@nx/vitest plugin configuration");
     const oldExclusion = "apps/web/vite.config.ts";
     const targetExclusion = "apps/*/vite.config.ts";
-    // A baseline exclusion marker identifies ownership; shared plugin/options alone do not.
-    const candidates = plugins.filter(
-      (entry) =>
-        isObject(entry) &&
-        entry.plugin === "@nx/vitest" &&
-        isObject(entry.options) &&
-        entry.options.testMode === "run" &&
-        entry.options.testTargetName === "test" &&
-        Array.isArray(entry.exclude) &&
-        (entry.exclude.includes(oldExclusion) || entry.exclude.includes(targetExclusion))
-    );
-    if (candidates.length !== 1) return conflict("nx.json", "@nx/vitest application scope");
-    const registration = candidates[0];
-    if (
-      !isObject(registration) ||
-      registration.include !== undefined ||
-      !Array.isArray(registration.exclude) ||
-      registration.exclude.length !== 1 ||
-      (registration.exclude[0] !== oldExclusion && registration.exclude[0] !== targetExclusion)
-    )
-      return conflict("nx.json", "@nx/vitest application scope");
-    registration.exclude[0] = targetExclusion;
+    const markers: { exclude: unknown[]; index: number }[] = [];
+    for (const entry of plugins) {
+      if (!isObject(entry) || entry.plugin !== "@nx/vitest" || !Array.isArray(entry.exclude)) continue;
+      for (const [index, value] of entry.exclude.entries())
+        if (value === oldExclusion || value === targetExclusion) markers.push({ exclude: entry.exclude, index });
+    }
+    const marker = markers[0];
+    if (markers.length !== 1 || marker === undefined) return conflict("nx.json", "@nx/vitest application scope");
+    marker.exclude[marker.index] = targetExclusion;
     return nxJson;
   });
 }
@@ -125,89 +115,92 @@ function planBoundaryPolicyMigration(tree: Tree) {
   const path = "oxlint.config.ts";
   const source = tree.read(path, "utf-8");
   if (source === null) return conflict(path, "application lint and boundary policy");
-  const filesCompliant = applicationFiles.test(source);
-  if (!filesCompliant && !oldAppFiles.test(source)) return conflict(path, "application lint and boundary policy");
-  const inlinePolicy = findArrayProperty(source, "depConstraints");
-  if (inlinePolicy === undefined) return conflict(path, "dependency constraints");
-  const migratedPolicyBody = validateAndMigrateConstraints(inlinePolicy.body);
-  const migratedPolicy = `${source.slice(0, inlinePolicy.start)}depConstraints: [${migratedPolicyBody}],${source.slice(inlinePolicy.end)}`;
-  const migratedOxlint = filesCompliant ? migratedPolicy : migratedPolicy.replace(oldAppFiles, 'files: ["apps/**/*.{ts,tsx}"]');
-  return migratedOxlint === source ? [] : [{ path, source: migratedOxlint }];
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  const config = exportedOxlintConfig(file);
+  const overrides = configProperty(config, "overrides");
+  if (overrides === undefined || !ts.isArrayLiteralExpression(overrides)) return conflict(path, "application lint override");
+  const oldFiles = "apps/web/**/*.{ts,tsx}";
+  const targetFiles = "apps/**/*.{ts,tsx}";
+  const applicationOverrides = overrides.elements.filter((override) => {
+    const rule = configProperty(configProperty(override, "rules"), "eslint/sort-keys");
+    const files = configProperty(override, "files");
+    return (
+      rule !== undefined &&
+      ts.isStringLiteral(rule) &&
+      rule.text === "off" &&
+      files !== undefined &&
+      ts.isArrayLiteralExpression(files) &&
+      files.elements.some((element) => ts.isStringLiteral(element) && (element.text === oldFiles || element.text === targetFiles))
+    );
+  });
+  if (applicationOverrides.length !== 1) return conflict(path, "application lint override");
+  const files = configProperty(applicationOverrides[0], "files");
+  if (files === undefined || !ts.isArrayLiteralExpression(files) || files.elements.length !== 1)
+    return conflict(path, "application lint override");
+  const filesMarker = files.elements[0];
+  if (filesMarker === undefined || !ts.isStringLiteral(filesMarker)) return conflict(path, "application lint override");
+  const rule = configProperty(configProperty(config, "rules"), "@nx/enforce-module-boundaries");
+  if (rule === undefined || !ts.isArrayLiteralExpression(rule)) return conflict(path, "dependency constraints");
+  const constraints = configProperty(rule.elements[1], "depConstraints");
+  if (constraints === undefined || !ts.isArrayLiteralExpression(constraints)) return conflict(path, "dependency constraints");
+  const applicationTag = applicationConstraintTag(constraints);
+  const edits = [
+    ...(filesMarker.text === oldFiles ? [{ node: filesMarker, source: '"apps/**/*.{ts,tsx}"' }] : []),
+    ...(applicationTag.text === "scope:web" ? [{ node: applicationTag, source: '"type:app"' }] : []),
+  ];
+  let migrated = source;
+  for (const edit of edits.toSorted((left, right) => right.node.getStart() - left.node.getStart()))
+    migrated = `${migrated.slice(0, edit.node.getStart())}${edit.source}${migrated.slice(edit.node.end)}`;
+  return migrated === source ? [] : [{ path, source: migrated }];
 }
 
-function validateAndMigrateConstraints(body: string) {
-  const constraints = [...body.matchAll(dependencyConstraint)].map((match) => match[0]);
-  if (constraints.length === 0) return conflict("oxlint.config.ts", "dependency constraints");
-  const newApplications = constraints.filter((constraint) => isApplicationBoundary(constraint, "type:app"));
-  const oldApplications = constraints.filter((constraint) => isApplicationBoundary(constraint, "scope:web"));
-  if (newApplications.length === 1) return body;
-  if (newApplications.length > 1 || oldApplications.length !== 1) return conflict("oxlint.config.ts", "application dependency constraint");
-  return body.replace(oldApplications[0] ?? "", (constraint) =>
-    constraint.replace(/sourceTag:\s*(["'])scope:web\1/u, 'sourceTag: "type:app"')
+function exportedOxlintConfig(file: ts.SourceFile) {
+  const path = "oxlint.config.ts";
+  const exports = file.statements.filter(ts.isExportAssignment);
+  const expression = exports[0]?.expression;
+  if (
+    exports.length !== 1 ||
+    expression === undefined ||
+    !ts.isCallExpression(expression) ||
+    expression.expression.getText(file) !== "defineConfig"
+  )
+    return conflict(path, "application lint and boundary policy");
+  return expression.arguments[0];
+}
+
+// Select direct literal properties only. No evaluation of config expressions or bindings.
+function configProperty(node: ts.Node | undefined, name: string) {
+  if (node === undefined || !ts.isObjectLiteralExpression(node)) return;
+  const properties = node.properties.filter(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) &&
+      (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
+      property.name.text === name
   );
+  if (properties.length > 1) return conflict("oxlint.config.ts", name);
+  return properties[0]?.initializer;
 }
 
-function parseConstraint(constraint: string) {
-  const sourceTag = /sourceTag:\s*["']([^"']+)["']/u.exec(constraint)?.[1];
-  const targets = /onlyDependOnLibsWithTags:\s*\[([^\]]*)\]/u.exec(constraint)?.[1];
-  if (sourceTag === undefined || targets === undefined) return;
-  return {
-    sourceTag,
-    targetTags: [...targets.matchAll(/["']([^"']+)["']/gu)].map((match) => match[1]).toSorted(),
-  };
+function applicationConstraintTag(constraints: ts.ArrayLiteralExpression) {
+  const recognized = constraints.elements.filter((constraint) => {
+    const tag = configProperty(constraint, "sourceTag");
+    const targets = configProperty(constraint, "onlyDependOnLibsWithTags");
+    if (tag === undefined || !ts.isStringLiteral(tag)) return false;
+    return (tag.text === "type:app" || tag.text === "scope:web") && matchesApplicationTargets(targets);
+  });
+  if (recognized.length !== 1) return conflict("oxlint.config.ts", "application dependency constraint");
+  const constraint = recognized[0];
+  const tag = configProperty(constraint, "sourceTag");
+  if (tag === undefined || !ts.isStringLiteral(tag) || !matchesApplicationTargets(configProperty(constraint, "onlyDependOnLibsWithTags")))
+    return conflict("oxlint.config.ts", "application dependency constraint");
+  return tag;
 }
 
-function isConstraint(constraint: string, sourceTag: string, targetTags: readonly string[]) {
-  const parsed = parseConstraint(constraint);
-  const expectedTargets = targetTags.toSorted();
-  return (
-    parsed !== undefined &&
-    parsed.sourceTag === sourceTag &&
-    parsed.targetTags.length === expectedTargets.length &&
-    parsed.targetTags.every((tag, index) => tag === expectedTargets[index])
-  );
-}
-
-function isApplicationBoundary(constraint: string, sourceTag: string) {
-  return isConstraint(constraint, sourceTag, applicationTargetTags);
-}
-
-function findArrayProperty(source: string, property: string) {
-  return findArray(source, new RegExp(`${property}:\\s*\\[`, "u"));
-}
-
-function findArray(source: string, pattern: RegExp) {
-  const match = pattern.exec(source);
-  if (match === null || match.index === undefined) return;
-  const open = source.indexOf("[", match.index);
-  let quote = "";
-  let escaped = false;
-  let depth = 0;
-  for (let index = open; index < source.length; index += 1) {
-    const character = source[index] ?? "";
-    if (quote !== "") {
-      if (escaped) escaped = false;
-      else if (character === "\\") escaped = true;
-      else if (character === quote) quote = "";
-      continue;
-    }
-    if (character === '"' || character === "'" || character === "`") {
-      quote = character;
-      continue;
-    }
-    if (character === "[") depth += 1;
-    if (character !== "]") continue;
-    depth -= 1;
-    if (depth !== 0) continue;
-    const comma = /^\s*,/u.exec(source.slice(index + 1));
-    return {
-      body: source.slice(open + 1, index),
-      end: comma === null ? index + 1 : index + 1 + (comma[0]?.length ?? 0),
-      start: match.index,
-    };
-  }
-  // oxlint-disable-next-line unicorn/no-useless-undefined -- Explicit absence satisfies noImplicitReturns for the source scanner.
-  return undefined;
+function matchesApplicationTargets(node: ts.Node | undefined) {
+  if (node === undefined || !ts.isArrayLiteralExpression(node) || node.elements.some((element) => !ts.isStringLiteral(element)))
+    return false;
+  const tags = node.elements.map((element) => (ts.isStringLiteral(element) ? element.text : "")).toSorted();
+  return tags.length === applicationTargetTags.length && tags.every((tag, index) => tag === applicationTargetTags[index]);
 }
 
 function migrateContinuousTargets(tree: Tree) {
@@ -242,9 +235,16 @@ function planAuthSmokeMigration(tree: Tree) {
   // Frozen release baselines: future generator changes must not change this migration's signatures.
   const oldSmoke = readFileSync(new URL("files/application-workspaces-1-0-2/auth.e2e.1-0-1.ts.template", import.meta.url), "utf-8");
   const targetSmoke = readFileSync(new URL("files/application-workspaces-1-0-2/auth.e2e.1-0-2.ts.template", import.meta.url), "utf-8");
-  const current = authSmokeFields(source);
   const old = authSmokeFields(oldSmoke);
   const target = authSmokeFields(targetSmoke);
+  const signatures = new Map<string, Set<string>>();
+  for (const baseline of [old, target])
+    for (const [key, node] of baseline) {
+      const known = signatures.get(key) ?? new Set<string>();
+      known.add(authSmokeTokens(node.getText()));
+      signatures.set(key, known);
+    }
+  const current = authSmokeFields(source, signatures);
   const matches = (baseline: Map<string, ts.Node>) =>
     current.size === baseline.size &&
     [...baseline].every(([key, node]) => {
@@ -256,11 +256,15 @@ function planAuthSmokeMigration(tree: Tree) {
   const edits = [...current].map(([key, node]) => {
     const replacement = target.get(key);
     if (replacement === undefined) return conflict(path, "Hosted UI transition detection");
+    const line = source.slice(source.lastIndexOf("\n", node.getStart()) + 1, node.getStart());
+    const indent = /^[\t ]*/u.exec(line)?.[0] ?? "";
     const authority =
       key === "baseUrl"
-        ? [target.get("applicationOrigin"), target.get("isOutsideApplicationOrigin")].map((field) => field?.getText()).join("\n")
+        ? [target.get("applicationOrigin"), target.get("isOutsideApplicationOrigin")]
+            .map((field) => (field === undefined ? "" : `\n${indent}${authFieldText(field, indent)}`))
+            .join("")
         : "";
-    return { end: node.end, source: `${replacement.getText()}${authority === "" ? "" : `\n${authority}`}`, start: node.getStart() };
+    return { end: node.end, source: `${authFieldText(replacement, indent)}${authority}`, start: node.getStart() };
   });
   let migrated = source;
   for (const edit of edits.toSorted((left, right) => right.start - left.start))
@@ -268,8 +272,19 @@ function planAuthSmokeMigration(tree: Tree) {
   return { path, source: migrated };
 }
 
+// Reindent only inserted baseline fields; surrounding project source is left byte-for-byte intact.
+function authFieldText(node: ts.Node, indent: string) {
+  const source = node.getSourceFile().text;
+  const baselineIndent = node.getStart() - (source.lastIndexOf("\n", node.getStart()) + 1);
+  return node
+    .getText()
+    .split("\n")
+    .map((line, index) => (index === 0 ? line : `${indent}${line.slice(baselineIndent)}`))
+    .join("\n");
+}
+
 // Locate only generated transition fields. This is syntax selection, not helper resolution or semantic analysis.
-function authSmokeFields(source: string) {
+function authSmokeFields(source: string, signatures?: Map<string, Set<string>>) {
   const path = "apps/web/e2e/auth.e2e.ts";
   const parsed = ts.transpileModule(source, { reportDiagnostics: true });
   if (parsed.diagnostics?.some((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error))
@@ -281,6 +296,7 @@ function authSmokeFields(source: string) {
   const namedCall = (node: ts.Node, name: string): node is ts.CallExpression =>
     ts.isCallExpression(node) && authSmokeTokens(node.expression.getText(file)) === authSmokeTokens(name);
   const add = (key: string, node: ts.Node) => {
+    if (signatures !== undefined && !signatures.get(key)?.has(authSmokeTokens(node.getText()))) return;
     if (fields.has(key)) return conflict(path, "Hosted UI transition detection");
     fields.set(key, node);
   };
