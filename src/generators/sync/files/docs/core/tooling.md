@@ -218,20 +218,21 @@ packages/shared
 
 The preset owns this initial topology. It does not impose a permanent four-workspace maximum.
 
-Additional workspaces are valid when they model a real ownership or reuse boundary and participate in the Nx project graph with the required tags.
+Additional workspaces are valid when they model a real ownership or reuse boundary and participate in the Nx project graph with the required tags. Every workspace under `apps/*` has the required `type:app` classification.
 
-The initial scopes are:
+The initial package scopes are:
 
 ```text
-scope:web
 scope:backend
 scope:ui
 scope:shared
 ```
 
-Nx is the sole implementation of package and source dependency-boundary checks.
+Application-specific `scope:*` tags are optional project metadata for stricter boundaries; they are not part of the fresh required baseline.
 
-When the pinned Nx boundary implementation changes materially, verify source and package dependency enforcement against the project graph before changing the Keenko boundary configuration.
+Nx/Oxlint is the sole implementation of workspace dependency-boundary checks on source imports. Declaration-only workspace dependencies with no corresponding source import are outside Keenko's enforcement guarantee.
+
+When the pinned Nx boundary implementation changes materially, verify source-import dependency enforcement against the project graph before changing the Keenko boundary configuration.
 
 ## CI
 

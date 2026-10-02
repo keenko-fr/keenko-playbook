@@ -54,6 +54,8 @@ The committed lockfile is part of the dependency state. Unexpected lockfile chur
 
 ## Upgrades
 
+For native Nx upgrades of persisted Keenko consumer state, follow the [Keenko migration contract](migrations.md).
+
 Routine dependency updates should normally require changes only to the canonical package/runtime compatibility configuration, affected package manifests that cannot consume that configuration directly, the lockfile, and tests that validate behavior.
 
 Do not update documentation merely because a current reference version changed.

@@ -307,10 +307,14 @@ const product = E.gen(function* () {
   const installedPackage = yield* S.decodeEffect(sVersionPackage)(installedPackageSource);
   yield* assert(installedPackage.version === packageVersion, `The consumer did not install Keenko ${packageVersion}`);
   const installedPackageManifest = yield* S.decodeEffect(sManifest)(installedPackageSource);
-  yield* assert(!Object.hasOwn(installedPackageManifest, "nx-migrations"), "Pre-1.0 package unexpectedly exposes Nx migration metadata");
   yield* assert(
-    !(yield* fs.exists(path.join(workspace, "node_modules/keenko/migrations.json"))),
-    "Pre-1.0 package unexpectedly ships an executable migration manifest"
+    installedPackageManifest["nx-migrations"] === "./migrations.json",
+    "Installed Keenko package is missing the expected Nx migration metadata"
+  );
+
+  yield* assert(
+    yield* fs.exists(path.join(workspace, "node_modules/keenko/migrations.json")),
+    "Installed Keenko package is missing migrations.json"
   );
   const packedLicense = yield* fs.readFileString(
     path.join(workspace, "node_modules/keenko/dist/generators/sync/files/skills/grilling/LICENSE")
