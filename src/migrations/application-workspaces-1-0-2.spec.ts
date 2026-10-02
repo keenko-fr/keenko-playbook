@@ -7,6 +7,7 @@ import { formatFiles, readJson, readJsonFile } from "@nx/devkit";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-line/migrate/migrate";
 
+import { generatedDriftCheck } from "../generators/preset/preset.js";
 import migration from "./application-workspaces-1-0-2.js";
 
 const oldCheck = "nx sync:check && git status --porcelain -- apps/web/src/routeTree.gen.ts";
@@ -536,6 +537,66 @@ describe("1.0.2 application-workspace migration", () => {
     expect(tree.read("oxlint.config.ts", "utf-8")).toContain("type:app");
   });
 
+  test.each([
+    [oldCheck, "nx sync:check && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts"],
+    ["git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts", "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts"],
+    [
+      `${oldCheck} && echo ':(glob)apps/*/src/routeTree.gen.ts'`,
+      "nx sync:check && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && echo ':(glob)apps/*/src/routeTree.gen.ts'",
+    ],
+    [
+      "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && echo 'apps/web/src/routeTree.gen.ts'",
+      "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && echo 'apps/web/src/routeTree.gen.ts'",
+    ],
+    [
+      "git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts packages/backend/convex",
+      "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts' packages/backend/convex",
+    ],
+    [
+      "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts' packages/backend/convex",
+      "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts' packages/backend/convex",
+    ],
+  ])("recognizes only the owned route-tree command: %s", async (check, expected) => {
+    const tree = makeTree();
+    tree.write("package.json", JSON.stringify({ scripts: { check } }));
+    await migration(tree);
+    expect(readJson<{ scripts: { check: string } }>(tree, "package.json").scripts.check).toBe(expected);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("migrates the actual generated drift-check command without changing its surrounding shell", async () => {
+    const tree = makeTree();
+    const target = `nx sync:check && bun run codegen && ${generatedDriftCheck} && custom-validation`;
+    const source = target.replace("':(glob)apps/*/src/routeTree.gen.ts'", "apps/web/src/routeTree.gen.ts");
+    tree.write("package.json", JSON.stringify({ scripts: { check: source } }));
+    await migration(tree);
+    expect(readJson<{ scripts: { check: string } }>(tree, "package.json").scripts.check).toBe(target);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    "echo ':(glob)apps/*/src/routeTree.gen.ts'",
+    "echo apps/web/src/routeTree.gen.ts",
+    "echo git status --porcelain -- apps/web/src/routeTree.gen.ts",
+    "echo 'git status --porcelain -- apps/web/src/routeTree.gen.ts '",
+    "custom check",
+    "git status --short -- apps/web/src/routeTree.gen.ts",
+    "git status --porcelain -- apps/web/src/routeTree.gen.ts.backup",
+    `${oldCheck} && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts`,
+    `${oldCheck} && ${oldCheck}`,
+    "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts && git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts",
+  ])("conflicts atomically without a unique supported drift-check command: %s", (check) => {
+    const tree = makeTree();
+    tree.write("package.json", JSON.stringify({ scripts: { check } }));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("scripts.check generated route-tree command");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
   test("preserves unrelated scripts, scope tags, and target configuration", async () => {
     const tree = makeTree();
     tree.write("package.json", JSON.stringify({ scripts: { check: `${oldCheck} && custom-validation`, custom: "project-owned" } }));
@@ -559,11 +620,11 @@ describe("1.0.2 application-workspace migration", () => {
 
   test.each([
     ["nx.json", JSON.stringify({ plugins: [vitestRegistration(["apps/custom/vite.config.ts"])] }), "nx.json"],
-    ["package.json", JSON.stringify({ scripts: { check: "custom check" } }), "scripts.check generated route-tree path"],
+    ["package.json", JSON.stringify({ scripts: { check: "custom check" } }), "scripts.check generated route-tree command"],
     [
       "package.json",
-      JSON.stringify({ scripts: { check: `${oldCheck} && echo ':(glob)apps/*/src/routeTree.gen.ts'` } }),
-      "scripts.check generated route-tree path",
+      JSON.stringify({ scripts: { check: "echo ':(glob)apps/*/src/routeTree.gen.ts'" } }),
+      "scripts.check generated route-tree command",
     ],
     [
       "apps/admin/package.json",

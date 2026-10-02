@@ -8,8 +8,17 @@ import * as ts from "typescript";
 
 type JsonObject = Record<string, unknown>;
 
-const oldRouteTreePath = "apps/web/src/routeTree.gen.ts";
-const applicationRouteTreePath = ":(glob)apps/*/src/routeTree.gen.ts";
+// Frozen command fragments: the released generator form and the simple review fixture form.
+const routeTreeDriftChecks = [
+  {
+    source: "git status --porcelain --untracked-files=all -- apps/web/src/routeTree.gen.ts",
+    target: "git status --porcelain --untracked-files=all -- ':(glob)apps/*/src/routeTree.gen.ts'",
+  },
+  {
+    source: "git status --porcelain -- apps/web/src/routeTree.gen.ts",
+    target: "git status --porcelain -- :(glob)apps/*/src/routeTree.gen.ts",
+  },
+];
 const applicationTargetTags = ["scope:backend", "scope:shared", "scope:ui"];
 
 export default function applicationWorkspaces102(tree: Tree) {
@@ -99,14 +108,21 @@ function migrateRootVerification(tree: Tree) {
   updateJson<JsonObject>(tree, "package.json", (packageJson) => {
     const scripts = packageJson.scripts;
     if (!isObject(scripts) || typeof scripts.check !== "string") return conflict("package.json", "scripts.check");
-    let check = scripts.check;
-    const occurrences = check.split(oldRouteTreePath).length + check.split(applicationRouteTreePath).length - 2;
-    if (occurrences !== 1) return conflict("package.json", "scripts.check generated route-tree path");
-    if (!check.includes(applicationRouteTreePath)) {
-      if (!check.includes(oldRouteTreePath)) return conflict("package.json", "scripts.check generated route-tree path");
-      check = check.replace(oldRouteTreePath, applicationRouteTreePath);
-    }
-    scripts.check = check;
+    const check = scripts.check;
+    const matches: { fragment: string; index: number; target: string }[] = [];
+    for (const { source, target } of routeTreeDriftChecks)
+      for (const fragment of [source, target]) {
+        let index = check.indexOf(fragment);
+        while (index !== -1) {
+          const end = index + fragment.length;
+          const commandStart = /(?:^|&&|\$\()[\t \r\n]*$/u.test(check.slice(0, index));
+          if (commandStart && (end === check.length || /\s/u.test(check[end] ?? ""))) matches.push({ fragment, index, target });
+          index = check.indexOf(fragment, end);
+        }
+      }
+    const match = matches[0];
+    if (matches.length !== 1 || match === undefined) return conflict("package.json", "scripts.check generated route-tree command");
+    scripts.check = `${check.slice(0, match.index)}${match.target}${check.slice(match.index + match.fragment.length)}`;
     return packageJson;
   });
 }
