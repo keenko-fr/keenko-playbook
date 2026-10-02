@@ -41,7 +41,7 @@ Effect/Confect callers decode the result as `void`. Callers using the generated 
 
 Persisted resource schema modules start from application-controlled `sFooFields` and derive the complete `sFooDoc` with Confect's installed system-field facility. Do not manually recreate Convex `_id` or `_creationTime`.
 
-For Confect `10.0.0-next.22`, the verified API is:
+For Confect `10.0.0-next.25`, the verified API is:
 
 ```ts
 export const sFooDoc = SystemFields.extendWithSystemFields("foo", sFooFields);
@@ -123,7 +123,7 @@ Focused persistence-only Patch schemas stay with the data owner; shared Patch re
 
 ## Versions and generated code
 
-For Confect `10.0.0-next.22`, treat both `confect/_generated/` and the sibling `convex/` directory as generator-owned targets. Do not edit generated root Convex entrypoints such as `convex/schema.ts` or generated function modules manually. The supported authored exceptions inside `convex/` are `tsconfig.json` and `convex.config.ts`; keep those under normal authored-source ownership and typecheck the Convex runtime through `convex/tsconfig.json`.
+For Confect `10.0.0-next.25`, treat both `confect/_generated/` and the sibling `convex/` directory as generator-owned targets. Do not edit generated root Convex entrypoints such as `convex/schema.ts` or generated function modules manually. The supported authored exceptions inside `convex/` are `tsconfig.json` and `convex.config.ts`; keep those under normal authored-source ownership and typecheck the Convex runtime through `convex/tsconfig.json`.
 
 Confect-generated deployment/runtime modules are source-required generated artifacts for the checked-in application shape. Track them when the repository deploys/tests from source and regenerate them through the repository's canonical codegen command after Confect inputs change. The sibling official Convex `convex/_generated/api.*` surface has a distinct lifecycle: after generated Convex module topology changes, refresh it through the configured official `convex dev` workflow. Offline CI may validate the committed surface but cannot prove that deployment-bound API output is fresh. Make CI detect drift across generated targets while excluding the authored `convex/` exceptions from generator-byte comparison.
 
