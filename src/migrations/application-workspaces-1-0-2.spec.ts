@@ -115,6 +115,30 @@ describe("1.0.2 application-workspace migration", () => {
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
+  test.each(["apps/web/vite.config.ts", "apps/*/vite.config.ts"])(
+    "uses the unique Vitest marker over unrelated same-option registrations: %s",
+    async (marker) => {
+      const tree = makeTree();
+      const unrelated = [vitestRegistration(["tools/**"]), vitestRegistration(["packages/custom/**"])];
+      tree.write("nx.json", JSON.stringify({ plugins: [unrelated[0], vitestRegistration([marker]), unrelated[1]] }));
+      await migration(tree);
+      expect(readJson(tree, "nx.json")).toEqual({
+        plugins: [unrelated[0], vitestRegistration(["apps/*/vite.config.ts"]), unrelated[1]],
+      });
+      const before = snapshotChanges(tree);
+      await migration(tree);
+      expect(snapshotChanges(tree)).toEqual(before);
+    }
+  );
+
+  test("conflicts instead of choosing among marker-free plausible Vitest registrations", () => {
+    const tree = makeTree();
+    tree.write("nx.json", JSON.stringify({ plugins: [vitestRegistration(["tools/**"]), vitestRegistration(["apps/custom/**"])] }));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("@nx/vitest application scope");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
   test.each([
     { exclude: ["apps/pro*/vite.config.ts"], include: ["apps/pro?/vite.config.ts"], plugin: "@nx/vitest" },
     { include: ["apps/**/vite.config.ts"], plugin: "@nx/vitest" },
@@ -165,6 +189,7 @@ describe("1.0.2 application-workspace migration", () => {
 
   test.each([
     { ...vitestRegistration(["apps/custom/vite.config.ts"]) },
+    { ...vitestRegistration(["tools/**"]) },
     { ...vitestRegistration(["apps/**/vite.config.ts"]) },
     { ...vitestRegistration(["apps/web/vite.config.ts", "tools/**"]) },
     { ...vitestRegistration(["apps/*/vite.config.ts", "!apps/admin/vite.config.ts"]) },
@@ -190,12 +215,13 @@ describe("1.0.2 application-workspace migration", () => {
     expect(snapshotChanges(tree)).toEqual(before);
   });
 
-  test("rejects ambiguous duplicate Keenko-shaped Vitest registrations without mutation", () => {
+  test.each([
+    ["apps/web/vite.config.ts", "apps/*/vite.config.ts"],
+    ["apps/web/vite.config.ts", "apps/web/vite.config.ts"],
+    ["apps/*/vite.config.ts", "apps/*/vite.config.ts"],
+  ])("rejects ambiguous duplicate Keenko markers without mutation: %s, %s", (first, second) => {
     const tree = makeTree();
-    tree.write(
-      "nx.json",
-      JSON.stringify({ plugins: [vitestRegistration(["apps/web/vite.config.ts"]), vitestRegistration(["apps/*/vite.config.ts"])] })
-    );
+    tree.write("nx.json", JSON.stringify({ plugins: [vitestRegistration([first]), vitestRegistration([second])] }));
     const before = snapshotChanges(tree);
     expect(() => migration(tree)).toThrow("@nx/vitest application scope");
     expect(snapshotChanges(tree)).toEqual(before);
@@ -363,6 +389,45 @@ describe("1.0.2 application-workspace migration", () => {
     if (baseline === targetSmoke) expect(migrated).toBe(custom);
     const before = snapshotChanges(tree);
     await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    ["source", "describe", oldSmoke],
+    ["target", "describe", targetSmoke],
+    ["source", "only", oldSmoke],
+    ["target", "only", targetSmoke],
+  ])("recognizes %s AuthKit fields independently of test.%s", async (state, wrapper, baseline) => {
+    const tree = makeTree();
+    const customized = baseline
+      .replace("Google auth reaches Convex identity, WorkOS synchronization, and sign-out", "Project-owned auth test")
+      .replace("convex-authenticated", "project-identity")
+      .replace("await page.goto", 'const diagnostic = "project-owned";\n  await page.goto');
+    const start = customized.indexOf("test(");
+    const wrapped =
+      wrapper === "only"
+        ? customized.replace("test(", "test.only(")
+        : `${customized.slice(0, start)}test.describe("auth", () => {\n${customized.slice(start)}\n});\n`;
+    tree.write("apps/web/e2e/auth.e2e.ts", wrapped);
+    await migration(tree);
+    const result = tree.read("apps/web/e2e/auth.e2e.ts", "utf-8") ?? "";
+    expect(result).toContain(`test.${wrapper}`);
+    expect(result).toContain("Project-owned auth test");
+    expect(result).toContain("project-identity");
+    expect(result).toContain("project-owned");
+    expect(result).not.toContain("authkit|workos");
+    if (state === "target") expect(result).toBe(wrapped);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([oldSmoke, targetSmoke])("rejects multiple plausible AuthKit field sets atomically", (baseline) => {
+    const tree = makeTree();
+    const testBody = baseline.slice(baseline.indexOf("test("));
+    tree.write("apps/web/e2e/auth.e2e.ts", `${baseline}test.describe("another", () => {\n${testBody}\n});`);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
     expect(snapshotChanges(tree)).toEqual(before);
   });
 

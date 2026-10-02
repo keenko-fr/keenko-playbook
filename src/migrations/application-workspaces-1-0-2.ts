@@ -79,8 +79,7 @@ function migrateVitestDiscovery(tree: Tree) {
     if (!Array.isArray(plugins)) return conflict("nx.json", "@nx/vitest plugin configuration");
     const oldExclusion = "apps/web/vite.config.ts";
     const targetExclusion = "apps/*/vite.config.ts";
-    // The 1.0.1 preset registered run/test with no include scope. Explicitly scoped project
-    // registrations are unrelated unless they retain an owned old/target exclusion marker.
+    // A baseline exclusion marker identifies ownership; shared plugin/options alone do not.
     const candidates = plugins.filter(
       (entry) =>
         isObject(entry) &&
@@ -88,8 +87,8 @@ function migrateVitestDiscovery(tree: Tree) {
         isObject(entry.options) &&
         entry.options.testMode === "run" &&
         entry.options.testTargetName === "test" &&
-        (entry.include === undefined ||
-          (Array.isArray(entry.exclude) && (entry.exclude.includes(oldExclusion) || entry.exclude.includes(targetExclusion))))
+        Array.isArray(entry.exclude) &&
+        (entry.exclude.includes(oldExclusion) || entry.exclude.includes(targetExclusion))
     );
     if (candidates.length !== 1) return conflict("nx.json", "@nx/vitest application scope");
     const registration = candidates[0];
@@ -285,9 +284,14 @@ function authSmokeFields(source: string) {
     if (fields.has(key)) return conflict(path, "Hosted UI transition detection");
     fields.set(key, node);
   };
-  for (const statement of file.statements) {
-    const body = authSmokeBody(statement);
-    if (body === undefined) continue;
+  const bodies: ts.Block[] = [];
+  function locate(node: ts.Node) {
+    if (ts.isBlock(node) && hasAuthSmokeFields(node)) bodies.push(node);
+    ts.forEachChild(node, locate);
+  }
+  locate(file);
+  if (bodies.length !== 1) return conflict(path, "Hosted UI transition detection");
+  for (const body of bodies) {
     for (const item of body.statements) {
       if (ts.isVariableStatement(item)) {
         for (const declaration of item.declarationList.declarations)
@@ -313,24 +317,15 @@ function authSmokeFields(source: string) {
   return fields;
 }
 
-function authSmokeBody(statement: ts.Statement) {
-  if (
-    !ts.isExpressionStatement(statement) ||
-    !ts.isCallExpression(statement.expression) ||
-    !ts.isIdentifier(statement.expression.expression) ||
-    statement.expression.expression.text !== "test"
-  )
-    return;
-  const callback = statement.expression.arguments[1];
-  if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isBlock(callback.body)) return;
-  const hasRequest = callback.body.statements
+// The request declaration anchors a coherent field set in one block, independent of its wrapper.
+function hasAuthSmokeFields(body: ts.Block) {
+  return body.statements
     .filter(ts.isVariableStatement)
     .some((item) =>
       item.declarationList.declarations.some(
         (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "hostedUiDocumentRequest"
       )
     );
-  return hasRequest ? callback.body : undefined;
 }
 
 // Compare owned-field syntax, allowing only formatter changes to whitespace, quotes, and trailing commas.
