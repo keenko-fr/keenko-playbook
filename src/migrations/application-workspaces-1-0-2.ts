@@ -70,7 +70,9 @@ function migrateApplicationTags(tree: Tree) {
         return packageJson;
       }
       if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== "string")) return conflict(path, "nx.tags");
-      if (tags.some((tag) => tag.startsWith("type:") && tag !== "type:app")) return conflict(path, "nx.tags application classification");
+      const classifications = tags.filter((tag) => tag.startsWith("type:"));
+      if (classifications.length > 1 || classifications.some((tag) => tag !== "type:app"))
+        return conflict(path, "nx.tags application classification");
       if (!tags.includes("type:app")) tags.push("type:app");
       return packageJson;
     });
@@ -124,10 +126,26 @@ function routeTreeCommandMatches(script: string) {
       continue;
     }
     if (character === "\\") {
+      if (next === undefined) return conflict("package.json", "scripts.check generated route-tree command");
       if (next !== "\n") commandStart = false;
       index += 1;
       continue;
     }
+    if (character === "$" && next === "{") {
+      const parameter = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}/u.exec(script.slice(index))?.[0];
+      if (parameter !== undefined) {
+        index += parameter.length - 1;
+        commandStart = false;
+        continue;
+      }
+    }
+    // ponytail: reject opaque shell data/expansions instead of parsing their contents as commands.
+    if (
+      character === "`" ||
+      (character === "$" && (next === "{" || (next === "(" && script[index + 2] === "("))) ||
+      (quote === "" && character === "<" && next === "<")
+    )
+      return conflict("package.json", "scripts.check generated route-tree command");
     if (character === "$" && next === "(") {
       substitutions.push(quote);
       quote = "";
@@ -173,6 +191,7 @@ function routeTreeCommandMatches(script: string) {
     }
     commandStart = false;
   }
+  if (quote !== "" || substitutions.length > 0) return conflict("package.json", "scripts.check generated route-tree command");
   return matches;
 }
 
@@ -180,6 +199,9 @@ function planBoundaryPolicyMigration(tree: Tree) {
   const path = "oxlint.config.ts";
   const source = tree.read(path, "utf-8");
   if (source === null) return conflict(path, "application lint and boundary policy");
+  const parsed = ts.transpileModule(source, { reportDiagnostics: true });
+  if (parsed.diagnostics?.some((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error))
+    return conflict(path, "application lint and boundary policy");
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   const config = exportedOxlintConfig(file);
   const overrides = configProperty(config, "overrides");
@@ -187,18 +209,18 @@ function planBoundaryPolicyMigration(tree: Tree) {
   const oldFiles = "apps/web/**/*.{ts,tsx}";
   const targetFiles = "apps/**/*.{ts,tsx}";
   const applicationOverrides = overrides.elements.filter((override) => {
-    const rule = configProperty(configProperty(override, "rules"), "eslint/sort-keys");
-    const files = configProperty(override, "files");
-    return (
-      rule !== undefined &&
-      ts.isStringLiteral(rule) &&
-      rule.text === "off" &&
-      files !== undefined &&
-      ts.isArrayLiteralExpression(files) &&
-      files.elements.some((element) => ts.isStringLiteral(element) && (element.text === oldFiles || element.text === targetFiles))
-    );
+    const files = configProperty(override, "files", false);
+    if (
+      files === undefined ||
+      !ts.isArrayLiteralExpression(files) ||
+      !files.elements.some((element) => ts.isStringLiteral(element) && (element.text === oldFiles || element.text === targetFiles))
+    )
+      return false;
+    const rule = configProperty(configProperty(override, "rules", false), "eslint/sort-keys", false);
+    return rule !== undefined && ts.isStringLiteral(rule) && rule.text === "off";
   });
   if (applicationOverrides.length !== 1) return conflict(path, "application lint override");
+  configProperty(configProperty(applicationOverrides[0], "rules"), "eslint/sort-keys");
   const files = configProperty(applicationOverrides[0], "files");
   if (files === undefined || !ts.isArrayLiteralExpression(files) || files.elements.length !== 1)
     return conflict(path, "application lint override");
@@ -234,24 +256,37 @@ function exportedOxlintConfig(file: ts.SourceFile) {
 }
 
 // Select direct literal properties only. No evaluation of config expressions or bindings.
-function configProperty(node: ts.Node | undefined, name: string) {
+function configProperty(node: ts.Node | undefined, name: string, owned = true) {
   if (node === undefined || !ts.isObjectLiteralExpression(node)) return;
   const properties = node.properties.filter(
-    (property): property is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(property) &&
-      (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
-      property.name.text === name
+    (property) =>
+      property.name !== undefined && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) && property.name.text === name
   );
-  if (properties.length > 1) return conflict("oxlint.config.ts", name);
-  return properties[0]?.initializer;
+  const property = properties[0];
+  if (property === undefined) return;
+  // Candidate discovery must not validate unrelated project objects. Validate only the selected owned context.
+  if (!owned) return ts.isPropertyAssignment(property) ? property.initializer : undefined;
+  if (
+    properties.length > 1 ||
+    !ts.isPropertyAssignment(property) ||
+    node.properties.some(
+      (following) =>
+        following.pos > property.pos &&
+        (ts.isSpreadAssignment(following) || (following.name !== undefined && ts.isComputedPropertyName(following.name)))
+    )
+  )
+    return conflict("oxlint.config.ts", name);
+  return property.initializer;
 }
 
 function applicationConstraintTag(constraints: ts.ArrayLiteralExpression) {
   const recognized = constraints.elements.filter((constraint) => {
-    const tag = configProperty(constraint, "sourceTag");
-    const targets = configProperty(constraint, "onlyDependOnLibsWithTags");
+    const tag = configProperty(constraint, "sourceTag", false);
     if (tag === undefined || !ts.isStringLiteral(tag)) return false;
-    return (tag.text === "type:app" || tag.text === "scope:web") && matchesApplicationTargets(targets);
+    return (
+      (tag.text === "type:app" || tag.text === "scope:web") &&
+      matchesApplicationTargets(configProperty(constraint, "onlyDependOnLibsWithTags", false))
+    );
   });
   if (recognized.length !== 1) return conflict("oxlint.config.ts", "application dependency constraint");
   const constraint = recognized[0];
@@ -274,11 +309,12 @@ function migrateContinuousTargets(tree: Tree) {
       const path = `${root}/${workspace}/package.json`;
       if (!tree.exists(path)) continue;
       updateJson<JsonObject>(tree, path, (packageJson) => {
-        const scripts = packageJson.scripts;
-        if (!isObject(scripts) || typeof scripts.dev !== "string") return packageJson;
         const nx = packageJson.nx;
         if (!isObject(nx) || !isContinuousWorkspace(nx.tags)) return packageJson;
         if (nx.targets !== undefined && !isObject(nx.targets)) return conflict(path, "nx.targets");
+        const scripts = packageJson.scripts;
+        if ((!isObject(scripts) || typeof scripts.dev !== "string") && (!isObject(nx.targets) || nx.targets.dev === undefined))
+          return packageJson;
         const targets = isObject(nx.targets) ? nx.targets : (nx.targets = {});
         const dev = targets.dev;
         if (dev === undefined) {
@@ -312,12 +348,27 @@ function planAuthSmokeMigration(tree: Tree) {
   const current = authSmokeFields(source, signatures);
   const matches = (baseline: Map<string, ts.Node>) =>
     current.size === baseline.size &&
+    [...current.keys()].join(",") === [...baseline.keys()].join(",") &&
     [...baseline].every(([key, node]) => {
       const actual = current.get(key);
       return actual !== undefined && authSmokeTokens(actual.getText()) === authSmokeTokens(node.getText());
     });
   if (matches(target)) return;
   if (!matches(old)) return conflict(path, "Hosted UI transition detection");
+  const body = current.get("baseUrl")?.parent;
+  if (
+    body !== undefined &&
+    ts.isBlock(body) &&
+    body.statements.some(
+      (statement) =>
+        (ts.isVariableStatement(statement) &&
+          statement.declarationList.declarations.some((declaration) => declaresAuthAuthority(declaration.name))) ||
+        ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) &&
+          statement.name !== undefined &&
+          ["applicationOrigin", "isOutsideApplicationOrigin"].includes(statement.name.text))
+    )
+  )
+    return conflict(path, "Hosted UI transition detection");
   const edits = [...current].map(([key, node]) => {
     const replacement = target.get(key);
     if (replacement === undefined) return conflict(path, "Hosted UI transition detection");
@@ -335,6 +386,13 @@ function planAuthSmokeMigration(tree: Tree) {
   for (const edit of edits.toSorted((left, right) => right.start - left.start))
     migrated = `${migrated.slice(0, edit.start)}${edit.source}${migrated.slice(edit.end)}`;
   return { path, source: migrated };
+}
+
+// Prevent inserted baseline declarations from colliding with existing bindings; do not resolve their values.
+function declaresAuthAuthority(name: ts.BindingName): boolean {
+  return ts.isIdentifier(name)
+    ? ["applicationOrigin", "isOutsideApplicationOrigin"].includes(name.text)
+    : name.elements.some((element) => ts.isBindingElement(element) && declaresAuthAuthority(element.name));
 }
 
 // Reindent only inserted baseline fields; surrounding project source is left byte-for-byte intact.
@@ -367,7 +425,7 @@ function authSmokeFields(source: string, signatures?: Map<string, Set<string>>) 
   };
   const bodies: ts.Block[] = [];
   function locate(node: ts.Node) {
-    if (ts.isBlock(node) && hasAuthSmokeFields(node)) bodies.push(node);
+    if (ts.isBlock(node) && hasAuthSmokeFields(node, signatures)) bodies.push(node);
     ts.forEachChild(node, locate);
   }
   locate(file);
@@ -377,7 +435,6 @@ function authSmokeFields(source: string, signatures?: Map<string, Set<string>>) 
       if (ts.isVariableStatement(item)) {
         for (const declaration of item.declarationList.declarations)
           if (ts.isIdentifier(declaration.name) && declarationNames.has(declaration.name.text)) {
-            if (item.declarationList.declarations.length !== 1) return conflict(path, "Hosted UI transition detection");
             add(declaration.name.text, item);
           }
       }
@@ -399,13 +456,15 @@ function authSmokeFields(source: string, signatures?: Map<string, Set<string>>) 
 }
 
 // The request declaration anchors a coherent field set in one block, independent of its wrapper.
-function hasAuthSmokeFields(body: ts.Block) {
+function hasAuthSmokeFields(body: ts.Block, signatures?: Map<string, Set<string>>) {
   return body.statements
     .filter(ts.isVariableStatement)
     .some((item) =>
-      item.declarationList.declarations.some(
-        (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "hostedUiDocumentRequest"
-      )
+      signatures === undefined
+        ? item.declarationList.declarations.some(
+            (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "hostedUiDocumentRequest"
+          )
+        : signatures.get("hostedUiDocumentRequest")?.has(authSmokeTokens(item.getText()))
     );
 }
 

@@ -31,6 +31,9 @@ export default defineConfig({
 });\n`;
 const oldSmoke = readFileSync(new URL("files/application-workspaces-1-0-2/auth.e2e.1-0-1.ts.template", import.meta.url), "utf-8");
 const targetSmoke = readFileSync(new URL("files/application-workspaces-1-0-2/auth.e2e.1-0-2.ts.template", import.meta.url), "utf-8");
+// Copied from the v1.0.1 release, not reconstructed from current generator output.
+const releasedOxlint = readFileSync(new URL("__fixtures__/oxlint.1-0-1.ts.template", import.meta.url), "utf-8");
+const releasedDriftCheck = readFileSync(new URL("__fixtures__/drift-check.1-0-1.txt", import.meta.url), "utf-8");
 
 const vitestRegistration = (exclude: string[]) => ({
   exclude,
@@ -70,6 +73,18 @@ const addInlineConstraint = (tree: ReturnType<typeof makeTree>, constraint: stri
 };
 
 describe("1.0.2 application-workspace migration", () => {
+  test("migrates the frozen released Oxlint baseline to the actual generator target", async () => {
+    const tree = makeTree();
+    tree.write("oxlint.config.ts", releasedOxlint);
+    await migration(tree);
+    expect(tree.read("oxlint.config.ts", "utf-8")).toBe(
+      readFileSync(new URL("../generators/preset/files/root/oxlint.config.ts.template", import.meta.url), "utf-8")
+    );
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
   test("is selected by native Nx for a 1.0.1 to 1.0.2 release-candidate plan", async () => {
     const migrationConfig = readJsonFile<ResolvedMigrationConfiguration>("migrations.json");
     const migrator = new Migrator({
@@ -267,6 +282,38 @@ describe("1.0.2 application-workspace migration", () => {
     const migrated = tree.read("oxlint.config.ts", "utf-8") ?? "";
     expect(migrated).toContain(unrelated);
     expect(migrated).toContain('sourceTag: "type:app"');
+  });
+
+  test("preserves unrelated override properties and spreads before explicit owned fields", async () => {
+    const tree = makeTree();
+    const unrelated = '{ files: ["tools/**"], rules: projectRules, ...projectOverride }';
+    const source = oldOxlint
+      .replace("overrides: [", `overrides: [${unrelated}, `)
+      .replace('rules: { "eslint/sort-keys"', 'rules: { ...projectRules, "eslint/sort-keys"')
+      .replace('"@nx/enforce-module-boundaries":', '...projectRules, "@nx/enforce-module-boundaries":');
+    tree.write("oxlint.config.ts", source);
+    await migration(tree);
+    expect(tree.read("oxlint.config.ts", "utf-8")).toBe(
+      source
+        .replace('files: ["apps/web/**/*.{ts,tsx}"]', 'files: ["apps/**/*.{ts,tsx}"]')
+        .replace('sourceTag: "scope:web"', 'sourceTag: "type:app"')
+    );
+  });
+
+  test.each([
+    oldOxlint.slice(0, -4),
+    oldOxlint.replace('files: ["apps/web/**/*.{ts,tsx}"]', 'files: ["apps/web/**/*.{ts,tsx}"], ...projectOverride'),
+    oldOxlint.replace('"eslint/sort-keys": "off"', '"eslint/sort-keys": "off", ...projectRules'),
+    oldOxlint.replace('sourceTag: "scope:web"', 'sourceTag: "scope:web", ...projectConstraint'),
+    oldOxlint.replace('sourceTag: "scope:web"', 'sourceTag: "scope:web", [projectKey]: "custom"'),
+    oldOxlint.replace('sourceTag: "scope:web"', 'sourceTag: "scope:web", sourceTag'),
+    oldOxlint.replace('sourceTag: "scope:web"', 'sourceTag: "scope:web", get sourceTag() { return "custom"; }'),
+  ])("rejects opaque or duplicate properties that can replace owned Oxlint fields atomically", (source) => {
+    const tree = makeTree();
+    tree.write("oxlint.config.ts", source);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Reconcile the customization manually");
+    expect(snapshotChanges(tree)).toEqual(before);
   });
 
   test.each([
@@ -511,6 +558,39 @@ describe("1.0.2 application-workspace migration", () => {
     if (baseline === targetSmoke) expect(result).toBe(source);
   });
 
+  test.each([oldSmoke, targetSmoke])("ignores project bindings with incidental AuthKit field names", async (baseline) => {
+    const tree = makeTree();
+    const diagnostic = 'function diagnostic() { const hostedUiDocumentRequest = "project", baseUrl = "unrelated"; return baseUrl; }';
+    const source = `${diagnostic}\n${baseline.replace("await page.goto", 'const baseUrlDiagnostic = "project", hostedUiDocumentRequestDiagnostic = "unrelated";\n  await page.goto')}`;
+    tree.write("apps/web/e2e/auth.e2e.ts", source);
+    await migration(tree);
+    const result = tree.read("apps/web/e2e/auth.e2e.ts", "utf-8") ?? "";
+    expect(result).toContain(diagnostic);
+    expect(result).toContain('const baseUrlDiagnostic = "project", hostedUiDocumentRequestDiagnostic = "unrelated";');
+    if (baseline === targetSmoke) expect(result).toBe(source);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    oldSmoke.replace("await page.goto", 'const applicationOrigin = "project-owned";\n  await page.goto'),
+    oldSmoke.replace("await page.goto", "function isOutsideApplicationOrigin() { return true; }\n  await page.goto"),
+    oldSmoke.replace("await page.goto", "const { applicationOrigin } = diagnostics;\n  await page.goto"),
+    oldSmoke
+      .replace('  const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";\n', "")
+      .replace(
+        "  await expect(page).toHaveURL(/(?:authkit|workos)/u);",
+        '  await expect(page).toHaveURL(/(?:authkit|workos)/u);\n  const baseUrl = process.env.AUTH_E2E_BASE_URL ?? "http://localhost:3210";'
+      ),
+  ])("conflicts before inserting colliding or reordered owned AuthKit fields", (source) => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", source);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
   test.each([oldSmoke, targetSmoke])("rejects duplicate exact AuthKit assertions atomically", (baseline) => {
     const tree = makeTree();
     const assertion =
@@ -547,6 +627,7 @@ describe("1.0.2 application-workspace migration", () => {
       "echo preparing && ",
       "echo preparing || ",
       `echo preparing # ${sourceDriftCheck}\n`,
+      `echo "\${PROJECT_LABEL}"; `,
     ].flatMap((prefix) => [sourceDriftCheck, targetDriftCheck].map((fragment) => [prefix, fragment]))
   )("recognizes canonical commands after ordinary boundaries: %j, %s", async (prefix, fragment) => {
     const tree = makeTree();
@@ -576,7 +657,7 @@ describe("1.0.2 application-workspace migration", () => {
   test("migrates the actual generated drift-check command without changing its surrounding shell", async () => {
     const tree = makeTree();
     const target = `nx sync:check && bun run codegen && ${generatedDriftCheck} && custom-validation`;
-    const source = target.replace("':(glob)apps/*/src/routeTree.gen.ts'", "apps/web/src/routeTree.gen.ts");
+    const source = `nx sync:check && bun run codegen && ${releasedDriftCheck} && custom-validation`;
     tree.write("package.json", JSON.stringify({ scripts: { check: source } }));
     await migration(tree);
     expect(readJson<{ scripts: { check: string } }>(tree, "package.json").scripts.check).toBe(target);
@@ -604,6 +685,11 @@ describe("1.0.2 application-workspace migration", () => {
     `${oldCheck} && ${targetDriftCheck}`,
     `${oldCheck}; ${oldCheck}`,
     `${targetDriftCheck}\n${targetDriftCheck}`,
+    `cat <<EOF\n${sourceDriftCheck}\nEOF`,
+    `echo \${value:-; ${sourceDriftCheck}}`,
+    `echo $((1; ${sourceDriftCheck}))`,
+    `echo \`echo '; ${sourceDriftCheck}'\``,
+    `${sourceDriftCheck} && echo "unterminated`,
   ])("conflicts atomically without a unique supported drift-check command: %s", (check) => {
     const tree = makeTree();
     tree.write("package.json", JSON.stringify({ scripts: { check } }));
@@ -631,6 +717,47 @@ describe("1.0.2 application-workspace migration", () => {
       nx: { tags: ["scope:admin", "type:app"], targets: { custom: { cache: true }, dev: { continuous: true, options: { port: 9001 } } } },
       scripts: { custom: "project-owned", dev: "vite dev" },
     });
+  });
+
+  test.each([{}, { continuous: true }])("adds or retains explicit Nx dev continuity without a package script: %j", async (metadata) => {
+    const tree = makeTree();
+    const packageJson = {
+      nx: {
+        tags: ["type:app", "scope:admin", "project:extra"],
+        targets: { dev: { command: "vite dev", ...metadata, options: { cwd: "project" } }, unrelated: { cache: true } },
+      },
+      scripts: { custom: "project-owned" },
+    };
+    tree.write("apps/admin/package.json", JSON.stringify(packageJson));
+    await migration(tree);
+    expect(readJson(tree, "apps/admin/package.json")).toEqual({
+      ...packageJson,
+      nx: { ...packageJson.nx, targets: { ...packageJson.nx.targets, dev: { ...packageJson.nx.targets.dev, continuous: true } } },
+    });
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("preserves workspaces with no actual dev target", async () => {
+    const tree = makeTree();
+    const packageJson = { nx: { tags: ["type:app", "scope:admin"], targets: { test: { cache: true } } }, scripts: { test: "vitest" } };
+    tree.write("apps/admin/package.json", JSON.stringify(packageJson));
+    await migration(tree);
+    expect(readJson(tree, "apps/admin/package.json")).toEqual(packageJson);
+  });
+
+  test.each([
+    { nx: { tags: ["type:app", "type:app", "scope:admin"] } },
+    { nx: { tags: ["type:app", "scope:admin"], targets: { dev: { continuous: false } } } },
+    { nx: { tags: ["type:app", "scope:admin"], targets: { dev: "custom" } } },
+    { nx: { tags: ["type:app", "scope:admin"], targets: { dev: { continuous: "true" } } } },
+  ])("rejects ambiguous classification or invalid explicit dev metadata atomically: %j", (packageJson) => {
+    const tree = makeTree();
+    tree.write("apps/admin/package.json", JSON.stringify(packageJson));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Reconcile the customization manually");
+    expect(snapshotChanges(tree)).toEqual(before);
   });
 
   test.each([
