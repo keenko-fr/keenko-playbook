@@ -574,6 +574,54 @@ describe("1.0.2 application-workspace migration", () => {
   });
 
   test.each([
+    'if (diagnosticsEnabled) { var applicationOrigin = "project"; }',
+    'if (diagnosticsEnabled) {} else { var isOutsideApplicationOrigin = "project"; }',
+    "if (diagnosticsEnabled) { var { applicationOrigin } = diagnostics; }",
+    "if (diagnosticsEnabled) { var [isOutsideApplicationOrigin] = diagnostics; }",
+    "for (var applicationOrigin of diagnostics) {}",
+    'while (diagnosticsEnabled) { var isOutsideApplicationOrigin = "project"; }',
+    'try { var applicationOrigin = "project"; } catch (error) {}',
+    'try {} catch (error) { var isOutsideApplicationOrigin = "project"; }',
+    'try {} finally { var applicationOrigin = "project"; }',
+    'switch (diagnostic) { case 1: var applicationOrigin = "project"; }',
+    "{ { var { nested: { applicationOrigin } } = diagnostics; } }",
+  ])("conflicts atomically with nested function-scoped AuthKit bindings: %s", (statement) => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", oldSmoke.replace("await page.goto", `${statement}\n  await page.goto`));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection function-scoped binding");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("checks the whole containing function when owned AuthKit fields are in a nested block", () => {
+    const tree = makeTree();
+    const source = oldSmoke
+      .replace("async ({ page }) => {", 'async ({ page }) => { if (diagnosticsEnabled) { var applicationOrigin = "project"; } {')
+      .replace("\n});", "\n} });");
+    tree.write("apps/web/e2e/auth.e2e.ts", source);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection function-scoped binding");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    'function diagnostic() { var applicationOrigin = "local"; }',
+    'const diagnostic = function () { var isOutsideApplicationOrigin = "local"; };',
+    'const diagnostic = () => { var applicationOrigin = "local"; };',
+    'const diagnostic = { run() { var applicationOrigin = "local"; } };',
+    'class Diagnostic { static { var applicationOrigin = "local"; } run() { var isOutsideApplicationOrigin = "local"; } }',
+    'if (diagnosticsEnabled) { const applicationOrigin = "local"; let isOutsideApplicationOrigin = "local"; }',
+  ])("preserves safe nested AuthKit bindings and remains idempotent: %s", async (statement) => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", oldSmoke.replace("await page.goto", `${statement}\n  await page.goto`));
+    await migration(tree);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(targetSmoke.replace("await page.goto", `${statement}\n  await page.goto`));
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
     "applicationOrigin",
     "isOutsideApplicationOrigin",
     "{ applicationOrigin }",
@@ -786,6 +834,92 @@ describe("1.0.2 application-workspace migration", () => {
     });
     const before = snapshotChanges(tree);
     await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    { nx: { tags: ["type:package", "scope:backend"], targets: {} }, scripts: { dev: "project-owned-command" } },
+    { nx: { tags: ["type:package", "scope:backend"], targets: { dev: { command: "project-owned-command" } } } },
+    { nx: { tags: ["type:app", "scope:backend"], targets: { dev: { continuous: false } } } },
+  ])("preserves unrelated package dev surfaces byte-for-byte despite tags: %j", async (packageJson) => {
+    const tree = makeTree();
+    const source = JSON.stringify({ name: "@acme/worker", ...packageJson });
+    tree.write("packages/worker/package.json", source);
+    await migration(tree);
+    expect(tree.read("packages/worker/package.json", "utf-8")).toBe(source);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each(
+    ["apps/admin", "packages/backend"].flatMap((workspace) =>
+      [[], ["scope:custom"], ["scope:backend"], ["project:extra"]].flatMap((tags) =>
+        [{}, { continuous: true }].map((metadata) => ({ metadata, tags, workspace }))
+      )
+    )
+  )("owns continuity by physical workspace path: %j", async ({ metadata, tags, workspace }) => {
+    const tree = makeTree();
+    const path = `${workspace}/package.json`;
+    const packageJson = {
+      nx: { tags, targets: { dev: { ...metadata, command: "custom-command", options: { port: 9001 } }, unrelated: { cache: true } } },
+      scripts: { custom: "project-owned", dev: "custom-dev" },
+    };
+    tree.write(path, JSON.stringify(packageJson));
+    await migration(tree);
+    expect(readJson(tree, path)).toEqual({
+      ...packageJson,
+      nx: {
+        ...packageJson.nx,
+        tags: workspace.startsWith("apps/") ? [...tags, "type:app"] : tags,
+        targets: { ...packageJson.nx.targets, dev: { ...packageJson.nx.targets.dev, continuous: true } },
+      },
+    });
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
+    { scripts: { dev: "custom-backend-dev" } },
+    { nx: { tags: ["scope:custom"] }, scripts: { dev: "custom-backend-dev" } },
+    { nx: { targets: { dev: { command: "custom-backend-dev", options: { cwd: "custom" } } } } },
+  ])("migrates identifiable backend dev without baseline tags or command: %j", async (packageJson) => {
+    const tree = makeTree();
+    tree.write("packages/backend/package.json", JSON.stringify(packageJson));
+    await migration(tree);
+    expect(
+      readJson<{ nx: { targets: { dev: { continuous: boolean } } } }>(tree, "packages/backend/package.json").nx.targets.dev.continuous
+    ).toBe(true);
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test("leaves a recognized canonical backend target byte-for-byte unchanged", async () => {
+    const tree = makeTree();
+    const source = JSON.stringify({
+      nx: { tags: ["scope:custom"], targets: { dev: { continuous: true } } },
+      scripts: { dev: "custom-dev" },
+    });
+    tree.write("packages/backend/package.json", source);
+    await migration(tree);
+    expect(tree.read("packages/backend/package.json", "utf-8")).toBe(source);
+  });
+
+  test.each([
+    { nx: { tags: ["scope:custom"], targets: { dev: { continuous: false } } } },
+    { nx: { targets: { dev: { continuous: "true" } } } },
+    { nx: { targets: { dev: "custom" } } },
+    { nx: { targets: "custom" }, scripts: { dev: "custom-dev" } },
+    { nx: "custom", scripts: { dev: "custom-dev" } },
+    { nx: { tags: ["type:package", "scope:backend"], targets: {} }, scripts: { test: "project-test" } },
+    { scripts: { dev: false } },
+  ])("conflicts atomically on malformed or unrecognizable canonical backend dev: %j", (packageJson) => {
+    const tree = makeTree();
+    tree.write("packages/backend/package.json", JSON.stringify(packageJson));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Reconcile the customization manually");
     expect(snapshotChanges(tree)).toEqual(before);
   });
 

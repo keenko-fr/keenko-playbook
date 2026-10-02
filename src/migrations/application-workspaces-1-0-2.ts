@@ -2,7 +2,7 @@
 // oxlint-disable-next-line effect/noNodeBuiltinImport -- Native Nx migration planning synchronously reads packaged release baselines.
 import { readFileSync } from "node:fs";
 
-import { formatFiles, updateJson, type Tree } from "@nx/devkit";
+import { formatFiles, readJson, updateJson, writeJson, type Tree } from "@nx/devkit";
 import { FsTree } from "nx/src/generators/tree";
 import * as ts from "typescript";
 
@@ -304,28 +304,28 @@ function matchesApplicationTargets(node: ts.Node | undefined) {
 }
 
 function migrateContinuousTargets(tree: Tree) {
-  for (const root of ["apps", "packages"]) {
-    for (const workspace of tree.children(root)) {
-      const path = `${root}/${workspace}/package.json`;
-      if (!tree.exists(path)) continue;
-      updateJson<JsonObject>(tree, path, (packageJson) => {
-        const nx = packageJson.nx;
-        if (!isObject(nx) || !isContinuousWorkspace(nx.tags)) return packageJson;
-        if (nx.targets !== undefined && !isObject(nx.targets)) return conflict(path, "nx.targets");
-        const scripts = packageJson.scripts;
-        if ((!isObject(scripts) || typeof scripts.dev !== "string") && (!isObject(nx.targets) || nx.targets.dev === undefined))
-          return packageJson;
-        const targets = isObject(nx.targets) ? nx.targets : (nx.targets = {});
-        const dev = targets.dev;
-        if (dev === undefined) {
-          targets.dev = { continuous: true };
-          return packageJson;
-        }
-        if (!isObject(dev) || (dev.continuous !== undefined && dev.continuous !== true)) return conflict(path, "nx.targets.dev.continuous");
-        dev.continuous = true;
-        return packageJson;
-      });
+  const backendPath = "packages/backend/package.json";
+  const paths = [...tree.children("apps").map((workspace) => `apps/${workspace}/package.json`), backendPath];
+  for (const path of paths) {
+    if (!tree.exists(path)) continue;
+    const packageJson = readJson<JsonObject>(tree, path);
+    const nx = packageJson.nx === undefined ? (packageJson.nx = {}) : packageJson.nx;
+    if (!isObject(nx)) return conflict(path, "nx dev metadata");
+    if (nx.targets !== undefined && !isObject(nx.targets)) return conflict(path, "nx.targets");
+    const scripts = packageJson.scripts;
+    if ((!isObject(scripts) || typeof scripts.dev !== "string") && (!isObject(nx.targets) || nx.targets.dev === undefined)) {
+      if (path === backendPath) return conflict(path, "dev target");
+      continue;
     }
+    const targets = isObject(nx.targets) ? nx.targets : (nx.targets = {});
+    const dev = targets.dev;
+    if (dev === undefined) targets.dev = { continuous: true };
+    else {
+      if (!isObject(dev) || (dev.continuous !== undefined && dev.continuous !== true)) return conflict(path, "nx.targets.dev.continuous");
+      if (dev.continuous === true) continue;
+      dev.continuous = true;
+    }
+    writeJson(tree, path, packageJson);
   }
 }
 
@@ -373,6 +373,7 @@ function planAuthSmokeMigration(tree: Tree) {
     if (!ts.isFunctionLike(owner)) continue;
     if (owner.parameters.some((parameter) => declaresAuthAuthority(parameter.name)))
       return conflict(path, "Hosted UI transition detection parameter binding");
+    if (ts.forEachChild(owner, hasAuthAuthorityVar)) return conflict(path, "Hosted UI transition detection function-scoped binding");
     break;
   }
   const edits = [...current].map(([key, node]) => {
@@ -399,6 +400,19 @@ function declaresAuthAuthority(name: ts.BindingName): boolean {
   return ts.isIdentifier(name)
     ? ["applicationOrigin", "isOutsideApplicationOrigin"].includes(name.text)
     : name.elements.some((element) => ts.isBindingElement(element) && declaresAuthAuthority(element.name));
+}
+
+// Var bindings belong to the containing function, including declarations nested under statements.
+function hasAuthAuthorityVar(node: ts.Node): boolean {
+  if (ts.isFunctionLike(node) || ts.isClassStaticBlockDeclaration(node)) return false;
+  if (
+    ts.isVariableDeclarationList(node) &&
+    // oxlint-disable-next-line eslint/no-bitwise -- TypeScript represents declaration scope with NodeFlags bits.
+    (node.flags & ts.NodeFlags.BlockScoped) === 0 &&
+    node.declarations.some((declaration) => declaresAuthAuthority(declaration.name))
+  )
+    return true;
+  return ts.forEachChild(node, hasAuthAuthorityVar) ?? false;
 }
 
 // Reindent only inserted baseline fields; surrounding project source is left byte-for-byte intact.
@@ -500,10 +514,6 @@ function authSmokeTokens(source: string) {
   visit(file);
   // oxlint-disable-next-line effect/noGlobals -- Serialization compares syntax tokens; it does not decode project data.
   return JSON.stringify(tokens);
-}
-
-function isContinuousWorkspace(tags: unknown) {
-  return Array.isArray(tags) && (tags.includes("type:app") || tags.includes("scope:backend"));
 }
 
 function isObject(value: unknown): value is JsonObject {
