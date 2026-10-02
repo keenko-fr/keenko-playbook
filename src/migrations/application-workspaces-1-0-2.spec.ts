@@ -574,6 +574,47 @@ describe("1.0.2 application-workspace migration", () => {
   });
 
   test.each([
+    "applicationOrigin",
+    "isOutsideApplicationOrigin",
+    "{ applicationOrigin }",
+    "[applicationOrigin]",
+    "{ nested: { isOutsideApplicationOrigin } }",
+  ])("conflicts atomically with an inserted AuthKit name in callback parameters: %s", (parameter) => {
+    const tree = makeTree();
+    tree.write("apps/web/e2e/auth.e2e.ts", oldSmoke.replace("async ({ page })", `async ({ page }, ${parameter})`));
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection parameter binding");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each(["function", "arrow"])("preflights parameters of a %s containing a nested owned block", (wrapper) => {
+    const tree = makeTree();
+    const source = oldSmoke
+      .replace(
+        "async ({ page }) => {",
+        wrapper === "function"
+          ? "async function ({ page }, { nested: { applicationOrigin } }) { {"
+          : "async ({ page }, { nested: { applicationOrigin } }) => { {"
+      )
+      .replace("\n});", "\n} });");
+    tree.write("apps/web/e2e/auth.e2e.ts", source);
+    const before = snapshotChanges(tree);
+    expect(() => migration(tree)).toThrow("Hosted UI transition detection parameter binding");
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([oldSmoke, targetSmoke])("preserves unrelated AuthKit callback parameter bindings", async (baseline) => {
+    const tree = makeTree();
+    const parameters = "async ({ page }, { applicationOrigin: origin }, [diagnostic])";
+    tree.write("apps/web/e2e/auth.e2e.ts", baseline.replace("async ({ page })", parameters));
+    await migration(tree);
+    expect(tree.read("apps/web/e2e/auth.e2e.ts", "utf-8")).toBe(targetSmoke.replace("async ({ page })", parameters));
+    const before = snapshotChanges(tree);
+    await migration(tree);
+    expect(snapshotChanges(tree)).toEqual(before);
+  });
+
+  test.each([
     oldSmoke.replace("await page.goto", 'const applicationOrigin = "project-owned";\n  await page.goto'),
     oldSmoke.replace("await page.goto", "function isOutsideApplicationOrigin() { return true; }\n  await page.goto"),
     oldSmoke.replace("await page.goto", "const { applicationOrigin } = diagnostics;\n  await page.goto"),
@@ -626,6 +667,8 @@ describe("1.0.2 application-workspace migration", () => {
       "echo preparing\n",
       "echo preparing && ",
       "echo preparing || ",
+      "printf '' | ",
+      "printf '' |",
       `echo preparing # ${sourceDriftCheck}\n`,
       `echo "\${PROJECT_LABEL}"; `,
     ].flatMap((prefix) => [sourceDriftCheck, targetDriftCheck].map((fragment) => [prefix, fragment]))
@@ -642,7 +685,7 @@ describe("1.0.2 application-workspace migration", () => {
 
   test.each([sourceDriftCheck, targetDriftCheck])("ignores unrelated quoted fragments and pathnames: %s", async (fragment) => {
     const tree = makeTree();
-    const unrelated = `echo '; ${sourceDriftCheck}' && echo "; ${targetDriftCheck}" && echo 'apps/web/src/routeTree.gen.ts' && echo ':(glob)apps/*/src/routeTree.gen.ts'`;
+    const unrelated = `echo '; | ${sourceDriftCheck}' && echo "; | ${targetDriftCheck}" && echo 'apps/web/src/routeTree.gen.ts' && echo ':(glob)apps/*/src/routeTree.gen.ts'`;
     const check = `${unrelated}; ${fragment} packages/backend/convex`;
     tree.write("package.json", JSON.stringify({ scripts: { check } }));
     await migration(tree);
@@ -678,6 +721,10 @@ describe("1.0.2 application-workspace migration", () => {
     `echo ${sourceDriftCheck}`,
     `echo preparing # ; ${sourceDriftCheck}`,
     String.raw`echo \; ${sourceDriftCheck}`,
+    `echo '| ${sourceDriftCheck}'`,
+    `echo "| ${sourceDriftCheck}"`,
+    String.raw`echo \| ${sourceDriftCheck}`,
+    `echo preparing # | ${sourceDriftCheck}`,
     String.raw`echo "say \"; ${sourceDriftCheck}"`,
     "custom check",
     "git status --short -- apps/web/src/routeTree.gen.ts",
@@ -685,6 +732,9 @@ describe("1.0.2 application-workspace migration", () => {
     `${oldCheck} && ${targetDriftCheck}`,
     `${oldCheck}; ${oldCheck}`,
     `${targetDriftCheck}\n${targetDriftCheck}`,
+    `${sourceDriftCheck} | ${sourceDriftCheck}`,
+    `${sourceDriftCheck} | ${targetDriftCheck}`,
+    `${targetDriftCheck} | ${targetDriftCheck}`,
     `cat <<EOF\n${sourceDriftCheck}\nEOF`,
     `echo \${value:-; ${sourceDriftCheck}}`,
     `echo $((1; ${sourceDriftCheck}))`,

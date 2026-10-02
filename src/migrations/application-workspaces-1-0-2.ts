@@ -173,9 +173,9 @@ function routeTreeCommandMatches(script: string) {
       commandStart = false;
       continue;
     }
-    if (character === ";" || character === "\n" || (character === "&" && next === "&") || (character === "|" && next === "|")) {
+    if (character === ";" || character === "\n" || (character === "&" && next === "&") || character === "|") {
       commandStart = true;
-      if (character === "&" || character === "|") index += 1;
+      if (character === "&" || (character === "|" && next === "|")) index += 1;
       continue;
     }
     if (/\s/u.test(character ?? "")) continue;
@@ -369,6 +369,12 @@ function planAuthSmokeMigration(tree: Tree) {
     )
   )
     return conflict(path, "Hosted UI transition detection");
+  for (let owner: ts.Node | undefined = body; owner !== undefined; owner = owner.parent) {
+    if (!ts.isFunctionLike(owner)) continue;
+    if (owner.parameters.some((parameter) => declaresAuthAuthority(parameter.name)))
+      return conflict(path, "Hosted UI transition detection parameter binding");
+    break;
+  }
   const edits = [...current].map(([key, node]) => {
     const replacement = target.get(key);
     if (replacement === undefined) return conflict(path, "Hosted UI transition detection");
