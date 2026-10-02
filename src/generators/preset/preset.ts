@@ -9,7 +9,7 @@ import {
   type Tree,
 } from "@nx/devkit";
 import { Effect as E, HashSet as HS, Layer as L, Path, Schema as S, Struct } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { WorkspaceFailure } from "../errors.js";
 import type { PackageJson } from "../helpers.js";

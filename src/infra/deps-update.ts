@@ -1,6 +1,6 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Option as O, Path, type PlatformError, Schema as S, type Scope, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { packageVersions, runtimeVersions } from "../generators/versions.js";
 
@@ -10,18 +10,21 @@ export const prereleaseChannels = {
   "@confect/core": "next",
   "@confect/server": "next",
   "@confect/test": "next",
-  "@effect/platform-node": "rc",
-  effect: "rc",
 };
 
-// npm latest is incompatible with another member of the fixed tuple. Re-evaluate these holds whenever the named constraint changes.
+// Qualified tuple holds. Re-evaluate these whenever the named constraint changes.
 export const compatibilityVersionOverrides = {
+  // Keep the Nx integrations on one qualified version.
   "@nx/devkit": "23.2.1",
   "@nx/oxlint": "23.2.1",
+  // jsdom 30.1.1 breaks Vitest 4's EventTarget environment setup.
+  jsdom: "30.0.1",
   nx: "23.2.1",
-  // Newer Oxlint releases are incompatible with the current Effect/TSGo integration.
-  oxlint: "1.82.0",
+  // New recommended rules require a separate test-runner and coding-convention review.
+  "oxlint-plugin-effect": "0.12.1",
+  // Nx consumes the TypeScript 6 JavaScript API; @typescript/native owns compilation.
   typescript: "6.0.2",
+  // @nx/vitest 23.2.1 supports Vitest 3/4, not Vitest 5.
   vitest: "4.0.18",
 };
 

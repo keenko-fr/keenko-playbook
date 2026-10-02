@@ -22,7 +22,7 @@ const sTestManifest = S.fromJsonString(
 const failedResolver: RegistryResolver = (packageName, selector) =>
   E.fail(new DependencyUpdateFailure({ issue: "registry_resolution_failed", packageName, selector }));
 
-const successfulResolver: RegistryResolver = (_packageName, selector) => E.succeed(selector === "rc" ? "4.0.0-rc.9" : "2.3.4");
+const successfulResolver: RegistryResolver = (packageName) => E.succeed(packageName === "effect" ? "4.0.0" : "2.3.4");
 
 const fixture = E.fn("test.deps.fixture")(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -34,11 +34,11 @@ const fixture = E.fn("test.deps.fixture")(function* () {
   yield* fs.makeDirectory(path.join(root, "docs"), { recursive: true });
   yield* fs.writeFileString(
     path.join(versionsDirectory, "versions.ts"),
-    `export const packageVersions = {\n  "@nx/devkit": "23.2.1",\n  "@nx/oxlint": "23.2.1",\n  effect: "4.0.0-rc.1",\n  nx: "23.2.1",\n} satisfies Record<string, string>;\n\nexport const runtimeVersions = {\n  bun: "1.4.2",\n  nodeRange: ">=24.15 <25",\n} satisfies Record<string, string>;\n`
+    `export const packageVersions = {\n  "@effect/platform-node": "4.0.0-rc.1",\n  "@nx/devkit": "23.2.1",\n  "@nx/oxlint": "23.2.1",\n  effect: "4.0.0-rc.1",\n  nx: "23.2.1",\n} satisfies Record<string, string>;\n\nexport const runtimeVersions = {\n  bun: "1.4.2",\n  nodeRange: ">=24.15 <25",\n} satisfies Record<string, string>;\n`
   );
   yield* fs.writeFileString(
     path.join(root, "package.json"),
-    '{\n  "dependencies": {\n    "@nx/devkit": "23.2.1",\n    "effect": "4.0.0-rc.1"\n  },\n  "devDependencies": {\n    "@nx/js": "23.2.1",\n    "@nx/oxlint": "23.2.1",\n    "nx": "23.2.1"\n  }\n}\n'
+    '{\n  "dependencies": {\n    "@effect/platform-node": "4.0.0-rc.1",\n    "@nx/devkit": "23.2.1",\n    "effect": "4.0.0-rc.1"\n  },\n  "devDependencies": {\n    "@nx/js": "23.2.1",\n    "@nx/oxlint": "23.2.1",\n    "nx": "23.2.1"\n  }\n}\n'
   );
   yield* fs.writeFileString(path.join(root, "docs/versions.md"), "runtime and package documentation stays untouched\n");
   yield* fs.writeFileString(path.join(root, "bun.lock"), "original lockfile\n");
@@ -47,7 +47,7 @@ const fixture = E.fn("test.deps.fixture")(function* () {
 });
 
 describe("dependency updater", () => {
-  test("resolves latest and explicit prerelease channels to exact versions", () =>
+  test("resolves stable Effect and retained Confect prereleases to exact versions", () =>
     run(
       E.gen(function* () {
         const root = yield* fixture();
@@ -57,30 +57,45 @@ describe("dependency updater", () => {
         const resolver: RegistryResolver = (packageName, selector) =>
           E.sync(() => {
             calls.push([packageName, selector]);
-            return selector === "rc" ? "4.0.0-rc.9" : "2.3.4";
+            return selector === "next" ? "10.0.0-next.30" : "4.0.0";
           });
 
         const updates = yield* updateDependencySources(
           root,
-          { "@nx/devkit": "23.2.1", "@nx/oxlint": "23.2.1", effect: "4.0.0-rc.1", nx: "23.2.1" },
+          {
+            "@confect/core": "10.0.0-next.22",
+            "@effect/platform-node": "4.0.0-rc.1",
+            "@nx/devkit": "23.2.1",
+            "@nx/oxlint": "23.2.1",
+            effect: "4.0.0-rc.1",
+            nx: "23.2.1",
+          },
           resolver
         );
         const versions = yield* fs.readFileString(path.join(root, "src/generators/versions.ts"));
         const manifest = yield* S.decodeEffect(sTestManifest)(yield* fs.readFileString(path.join(root, "package.json")));
 
-        expect(calls).toEqual([["effect", "rc"]]);
+        expect(calls).toEqual([
+          ["@confect/core", "next"],
+          ["@effect/platform-node", "latest"],
+          ["effect", "latest"],
+        ]);
         expect(updates).toEqual({
+          "@confect/core": "10.0.0-next.30",
+          "@effect/platform-node": "4.0.0",
           "@nx/devkit": "23.2.1",
           "@nx/oxlint": "23.2.1",
-          effect: "4.0.0-rc.9",
+          effect: "4.0.0",
           nx: "23.2.1",
         });
         expect(Object.values(updates).every(isExactPackageVersion)).toBe(true);
-        expect(versions).toContain('effect: "4.0.0-rc.9"');
+        expect(versions).toContain('"@effect/platform-node": "4.0.0"');
+        expect(versions).toContain('effect: "4.0.0"');
         expect(versions).toContain('"@nx/devkit": "23.2.1"');
         expect(versions).toContain('"@nx/oxlint": "23.2.1"');
         expect(versions).toContain('nx: "23.2.1"');
-        expect(manifest.dependencies.effect).toBe("4.0.0-rc.9");
+        expect(manifest.dependencies["@effect/platform-node"]).toBe("4.0.0");
+        expect(manifest.dependencies.effect).toBe("4.0.0");
         expect(manifest.dependencies["@nx/devkit"]).toBe("23.2.1");
         expect(manifest.devDependencies["@nx/oxlint"]).toBe("23.2.1");
         expect(manifest.devDependencies.nx).toBe("23.2.1");
@@ -102,8 +117,9 @@ describe("dependency updater", () => {
     expect(compatibilityVersionOverrides).toEqual({
       "@nx/devkit": "23.2.1",
       "@nx/oxlint": "23.2.1",
+      jsdom: "30.0.1",
       nx: "23.2.1",
-      oxlint: "1.82.0",
+      "oxlint-plugin-effect": "0.12.1",
       typescript: "6.0.2",
       vitest: "4.0.18",
     });
@@ -227,7 +243,7 @@ describe("dependency updater", () => {
         const resolver: RegistryResolver = (packageName, selector) =>
           E.sync(() => {
             calls.push([packageName, selector]);
-            if (selector === "rc") return "4.0.0-rc.9";
+            if (packageName === "effect") return "4.0.0";
             if (selector === "next") return "10.0.0-next.30";
             return "9.8.7";
           });
@@ -246,14 +262,15 @@ describe("dependency updater", () => {
 
         expect(calls).toEqual([
           ["@confect/core", "next"],
-          ["effect", "rc"],
+          ["effect", "latest"],
+          ["oxlint", "latest"],
           ["react", "latest"],
         ]);
         expect(updates).toEqual({
           "@confect/core": "10.0.0-next.30",
-          effect: "4.0.0-rc.9",
+          effect: "4.0.0",
           nx: "23.2.1",
-          oxlint: "1.82.0",
+          oxlint: "9.8.7",
           react: "9.8.7",
         });
       }).pipe(E.scoped)
@@ -276,9 +293,9 @@ describe("dependency updater", () => {
           { nodeRange: ">=24.15 <25" }
         );
 
-        expect(updates.effect).toBe("4.0.0-rc.9");
+        expect(updates.effect).toBe("4.0.0");
         expect(yield* fs.readFileString(path.join(root, "bun.lock"))).toBe("refreshed lockfile\n");
-        expect(yield* fs.readFileString(path.join(root, "src/generators/versions.ts"))).toContain('effect: "4.0.0-rc.9"');
+        expect(yield* fs.readFileString(path.join(root, "src/generators/versions.ts"))).toContain('effect: "4.0.0"');
       }).pipe(E.scoped)
     ));
 
