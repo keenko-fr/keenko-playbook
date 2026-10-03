@@ -16,7 +16,13 @@ const dependencies = Struct.pick(packageVersions, [
   "tw-animate-css",
 ]);
 
-const devDependencies = Struct.pick(packageVersions, ["@testing-library/dom", "@testing-library/react", "jsdom", "tailwindcss"]);
+const devDependencies = Struct.pick(packageVersions, [
+  "@testing-library/dom",
+  "@testing-library/react",
+  "@types/react",
+  "jsdom",
+  "tailwindcss",
+]);
 
 // GENERATE --------------------------------------------------------------------------------------------------------------------------------
 export const generateUi = E.fn("keenko.preset.generateUi")(function* (tree: Tree, workspace: string) {

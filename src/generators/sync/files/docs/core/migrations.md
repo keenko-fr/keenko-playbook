@@ -2,14 +2,27 @@
 
 Native Nx migrations own post-1.0 upgrades of persisted Keenko consumer state. This contract follows KEE-14's native lifecycle and ownership boundary.
 
+```sh
+bun x nx migrate keenko@<target>
+bun install
+bun x nx migrate --run-migrations
+bun install
+bun x nx sync
+bun run codegen
+bun run check
+```
+
+The second `bun install` is unconditional. Migrations can change dependency manifests after the first install. Bun alone reconciles installed packages and regenerates `bun.lock`; migrations never text-edit or merge the lockfile.
+
 ## Recognition and ownership
 
 - Recognized source baseline: migrate deterministically.
 - Recognized target baseline: no-op.
-- Unrecognized customization of a Keenko-owned semantic field: fail before mutation with an actionable conflict and require manual reconciliation.
+- Managed dependency slots present in the target compatibility baseline: converge presence, dependency section, and exact version, including consumer-modified, moved, or deleted slots. Consumer changes do not transfer slot ownership.
+- Other semantic fields with conflicting project-owned customization: fail before mutation with an actionable conflict and require manual reconciliation.
 - Unrelated project-owned state: preserve unchanged.
 
-Keenko migrations do not prove semantic equivalence of arbitrary project customization. Behaviorally compatible custom state can still require manual reconciliation. Never silently overwrite project customization.
+Keenko migrations do not prove semantic equivalence of arbitrary project-owned customization. Behaviorally compatible custom configuration or source state can still require manual reconciliation. Preserve project-owned dependencies and customizations. The managed dependency-slot rule does not extend automatically to source or configuration, and does not decide removal of packages absent from a future compatibility tuple.
 
 Match the smallest Keenko-owned semantic field needed for the migration. Do not require unrelated surrounding project-owned state to match the generated baseline. Identify ownership from supported baseline structure, not from incidental effects on the same tool or file class.
 

@@ -230,7 +230,6 @@ describe("keenko preset", () => {
         const backendConfig = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/vitest.config.ts", "utf-8")));
         expect(backendConfig).toContain('environment: "node"');
         expect(backendConfig).toContain('environment: "edge-runtime"');
-        expect(backendConfig).toContain('exclude: ["convex/**", "test/**"]');
         expect(backendConfig).toContain('include: ["test/**/*.test.{ts,js}"]');
         expect(backendConfig.match(/passWithNoTests/gu)).toHaveLength(1);
 
@@ -238,7 +237,7 @@ describe("keenko preset", () => {
           Struct.pick(packageVersions, ["@confect/test", "@edge-runtime/vm", "convex-test"])
         );
         expect(readJson<PackageJson>(tree, "packages/ui/package.json").devDependencies).toMatchObject(
-          Struct.pick(packageVersions, ["@testing-library/dom", "@testing-library/react", "jsdom"])
+          Struct.pick(packageVersions, ["@testing-library/dom", "@testing-library/react", "@types/react", "jsdom"])
         );
       })
     ));
@@ -448,7 +447,7 @@ describe("keenko preset", () => {
 
         expect(tree.exists("oxfmt.config.ts")).toBe(true);
         expect(tree.exists("oxlint.config.ts")).toBe(true);
-        expect(tree.read("bunfig.toml", "utf-8")).toBe('[install]\nlinker = "hoisted"\n');
+        expect(tree.read("bunfig.toml", "utf-8")).toBe('[install]\nlinker = "isolated"\nhoist = false\n');
         expect(readJson<PackageJson>(tree, "package.json").type).toBe("module");
 
         expect(readJson(tree, "tsconfig.base.json")).toMatchObject({

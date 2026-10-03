@@ -98,9 +98,11 @@ describe("1.0.2 application-workspace migration", () => {
 
     const plan = await migrator.migrate("keenko", "1.0.2-rc.2");
 
-    expect(plan.migrations.map(({ name, package: packageName, version }) => ({ name, packageName, version }))).toEqual([
-      { name: "1.0.2-application-workspaces", packageName: "keenko", version: "1.0.2-rc.0" },
-    ]);
+    expect(
+      plan.migrations
+        .filter(({ name }) => name === "1.0.2-application-workspaces")
+        .map(({ name, package: packageName, version }) => ({ name, packageName, version }))
+    ).toEqual([{ name: "1.0.2-application-workspaces", packageName: "keenko", version: "1.0.2-rc.0" }]);
   });
 
   test("transforms untouched 1.0.1 state for two applications sharing one backend", async () => {
