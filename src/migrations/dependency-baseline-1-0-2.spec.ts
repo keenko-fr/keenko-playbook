@@ -95,7 +95,7 @@ describe("1.0.2 dependency-baseline migration", () => {
     expect(tree.listChanges()).toEqual(before);
   });
 
-  test("native Nx selects the separate KEE-45, KEE-51, and KEE-47 migrations", async () => {
+  test("native Nx selects the separate application, backend, dependency, and linker migrations", async () => {
     const migrationConfig = readJsonFile<ResolvedMigrationConfiguration>("migrations.json");
     const migrator = new Migrator({
       fetch: async (_packageName, targetVersion) => ({ ...migrationConfig, version: targetVersion }),
@@ -110,6 +110,7 @@ describe("1.0.2 dependency-baseline migration", () => {
       "1.0.2-application-workspaces",
       "1.0.2-backend-vitest-exclusions",
       "1.0.2-dependency-baseline",
+      "1.0.2-bun-linker",
     ]);
   });
 });

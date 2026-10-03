@@ -56,7 +56,10 @@ const parseVerification = E.fn("product.parseVerification")(function* (args: rea
 });
 
 const assert = E.fn("product.assert")(function* (condition: boolean, message: string) {
-  if (!condition) return yield* new ProductFailure({ message });
+  if (!condition) {
+    yield* Console.error(message);
+    return yield* new ProductFailure({ message });
+  }
 });
 
 const startPhase = E.fn("product.startPhase")(function* (name: string) {
@@ -425,6 +428,15 @@ const verifyBackendTestOwnership = E.fn("product.verifyBackendTestOwnership")(fu
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const backend = path.join(workspace, "packages/backend");
+  const dependency = path.join(backend, "node_modules/@convex-dev/workos-authkit");
+  yield* assert(
+    path.relative(yield* fs.realPath(workspace), yield* fs.realPath(dependency)).split(path.sep)[0] !== "..",
+    "Backend dependency resolved outside the canonical isolated workspace"
+  );
+  const dependencyTests = (yield* fs.readDirectory(dependency, { recursive: true })).filter((file) =>
+    /\.test\.(?:ts|tsx|js|jsx)$/u.test(file)
+  );
+  yield* assert(dependencyTests.length > 0, "Backend isolated installation has no reachable dependency-owned test files");
   const nodeTest = path.join(backend, "keenko-node-ownership.test.ts");
   const integrationTest = path.join(backend, "test/keenko-integration-ownership.test.ts");
   const generatedTest = path.join(backend, "convex/keenko-generated-ownership.test.ts");
@@ -461,6 +473,9 @@ const verifyBackendTestOwnership = E.fn("product.verifyBackendTestOwnership")(fu
         .join("|") === "authored Node ownership|authored integration ownership",
       "Backend authored fixtures did not run exactly once in their intended environments"
     );
+    yield* Console.log(
+      `Backend ownership passed in ${workspace}: one Node test, one Edge Runtime test; ${dependencyTests.length} reachable dependency test files excluded.`
+    );
   }).pipe(
     E.ensuring(
       E.forEach([nodeTest, integrationTest, generatedTest], (file) => fs.remove(file, { force: true }), { discard: true }).pipe(E.orDie)
@@ -468,71 +483,78 @@ const verifyBackendTestOwnership = E.fn("product.verifyBackendTestOwnership")(fu
   );
 });
 
-const verifyIsolatedBackendTestOwnership = E.fn("product.verifyIsolatedBackendTestOwnership")(function* (
+const verifyResolution = E.fn("product.verifyResolution")(function* (workspace: string, env: Record<string, string>) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const script = yield* fs.readFileString(yield* path.fromFileUrl(new URL("fixtures/product-resolution.mjs.template", import.meta.url)));
+  const resolution = (yield* command(workspace, env, "node", ["--input-type=module", "--eval", script, workspace])).trim();
+  const compiler = yield* command(workspace, env, "node", ["node_modules/@typescript/native/bin/tsc", "--version"]);
+  const manifest = yield* S.decodeEffect(sDependencySections)(yield* fs.readFileString(path.join(workspace, "package.json")));
+  yield* assert(
+    compiler.trim() === `Version ${manifest.devDependencies?.["@typescript/native"]?.replace("npm:typescript@", "")}`,
+    "Native compiler version disagrees with its selected alias"
+  );
+  const effect = (yield* command(path.join(workspace, "packages/shared"), env, "bun", [
+    "--eval",
+    'import { Effect } from "effect"; const version = require("effect/package.json").version; if (version !== require("./package.json").dependencies.effect || Effect.runSync(Effect.succeed("ok")) !== "ok") throw new Error("Stale Bun Effect resolution"); console.log(JSON.stringify({ path: Bun.resolveSync("effect", process.cwd()), version }));',
+  ])).trim();
+  yield* Console.log(`Product resolution in ${workspace}: ${resolution}; native compiler: ${compiler.trim()}; Bun Effect: ${effect}`);
+  return `${resolution}\n${effect}`;
+});
+
+const verifyReinstalls = E.fn("product.verifyReinstalls")(function* (
   workspace: string,
-  env: Record<string, string>
+  env: Record<string, string>,
+  initialResolution: string
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const phase = `disposable isolated backend ownership: ${path.basename(workspace)}`;
-  const startedAt = yield* startPhase(phase);
-  const proof = yield* fs.makeTempDirectoryScoped({ prefix: `keenko-isolated-${path.basename(workspace)}-` });
-  const archive = yield* fs.makeTempFileScoped({ prefix: "keenko-isolated-source-" });
-  const config = yield* fs.readFileString(path.join(workspace, "bunfig.toml"));
-  const lock = yield* fs.readFileString(path.join(workspace, "bun.lock"));
-  yield* assert(config.includes('linker = "hoisted"'), "Canonical workspace must retain the hoisted linker");
-  // Copy authored/generated state, never the previous installation or Nx/Git caches.
-  yield* command(workspace, env, "tar", ["--exclude=node_modules", "--exclude=.nx", "--exclude=.git", "-cf", archive, "."]);
-  yield* command(proof, env, "tar", ["-xf", archive]);
-  for (const directory of ["", "apps/web", "packages/backend", "packages/ui", "packages/shared"])
-    yield* assert(!(yield* fs.exists(path.join(proof, directory, "node_modules"))), "Isolated proof copied hoisted installation state");
-  const isolatedConfig = config.replace('linker = "hoisted"', 'linker = "isolated"');
-  yield* fs.writeFileString(path.join(proof, "bunfig.toml"), isolatedConfig);
-  yield* assert((yield* command(proof, env, "bun", ["--version"])).trim() === "1.4.2", "Isolated backend proof requires Bun 1.4.2");
-  yield* command(proof, env, "bun", ["install", "--frozen-lockfile"]);
+  const lockPath = path.join(workspace, "bun.lock");
+  const lock = yield* fs.readFileString(lockPath);
+  for (const args of [["install", "--frozen-lockfile"], ["install"]]) {
+    yield* command(workspace, env, "bun", args);
+    yield* assert((yield* fs.readFileString(lockPath)) === lock, `${args.join(" ")} changed the reconciled lockfile`);
+    yield* assert((yield* verifyResolution(workspace, env)) === initialResolution, `${args.join(" ")} changed module resolution`);
+  }
+});
+
+const verifyHistoricalEffect = E.fn("product.verifyHistoricalEffect")(function* (workspace: string, env: Record<string, string>) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const output = yield* command(path.join(workspace, "packages/shared"), env, "bun", [
+    "--eval",
+    'console.log(JSON.stringify({ path: Bun.resolveSync("effect", process.cwd()), version: require("effect/package.json").version }));',
+  ]);
+  const result = yield* S.decodeEffect(S.fromJsonString(S.Struct({ path: S.String, version: S.String })))(output);
+  yield* Console.log(`Historical Effect probe: ${output.trim()}`);
+  yield* assert(result.version === "4.0.0-rc.114", "Divergent historical consumer did not reproduce its stale Effect RC");
   yield* assert(
-    (yield* fs.readFileString(path.join(proof, "bunfig.toml"))) === isolatedConfig,
-    "Isolated install changed its linker config"
+    (yield* fs.realPath(result.path)).startsWith(
+      `${yield* fs.realPath(path.join(workspace, "packages/shared/node_modules/effect"))}${path.sep}`
+    ),
+    "Historical Effect was not workspace-local"
   );
-  yield* assert((yield* fs.readFileString(path.join(proof, "bun.lock"))) === lock, "Isolated install changed the reconciled lockfile");
-  const dependency = path.join(proof, "packages/backend/node_modules/@convex-dev/workos-authkit");
-  const installedDependency = yield* fs.realPath(dependency);
-  yield* assert(
-    path.relative(yield* fs.realPath(proof), installedDependency).split(path.sep)[0] !== "..",
-    "Backend dependency resolved outside the isolated proof copy"
-  );
-  const dependencyTests = (yield* fs.readDirectory(dependency, { recursive: true })).filter((file) =>
-    /\.test\.(?:ts|tsx|js|jsx)$/u.test(file)
-  );
-  yield* assert(dependencyTests.length > 0, "Isolated backend has no reachable dependency-owned test files");
-  yield* Console.log(`Isolated backend proof copy: ${proof}; reachable dependency test files: ${dependencyTests.length}`);
-  yield* verifyBackendTestOwnership(proof, env);
-  yield* assert(
-    (yield* fs.readFileString(path.join(workspace, "bunfig.toml"))) === config,
-    "Isolated proof changed canonical linker state"
-  );
-  yield* assert((yield* fs.readFileString(path.join(workspace, "bun.lock"))) === lock, "Isolated proof changed canonical lockfile state");
-  yield* completePhase(phase, startedAt);
-}, E.scoped);
+  yield* Console.log(`Historical stale Effect: ${output.trim()}`);
+});
 
 const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
-  fresh: string,
+  target: DependencyBaseline,
   releasedWorkspaces: readonly string[],
   packageVersion: string,
   env: Record<string, string>
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const target = yield* S.decodeEffect(sDependencyBaseline)(
-    yield* fs.readFileString(path.join(fresh, "node_modules/keenko/dist/migrations/files/dependency-baseline-1-0-2.json"))
-  );
   const manifestPaths = Object.keys(target);
   const sSections = S.decodeEffect(sDependencySections);
-  yield* verifyDependencySlots(fresh, target);
 
   for (const workspace of releasedWorkspaces) {
     const phase = `controlled 1.0.1 forward upgrade: ${path.basename(workspace)}`;
     const startedAt = yield* startPhase(phase);
+    yield* assert(
+      (yield* fs.readFileString(path.join(workspace, "bunfig.toml"))) === '[install]\nlinker = "hoisted"\n',
+      "Released 1.0.1 consumer did not retain its historical hoisted configuration"
+    );
     const divergent = path.basename(workspace) === "upgrade-divergent";
     if (divergent) yield* customizeDependencySlots(workspace, manifestPaths);
     const before = new Map<string, S.Schema.Type<typeof sDependencySections>>();
@@ -541,12 +563,13 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     yield* command(workspace, env, "bun", ["x", "nx", "migrate", `keenko@${packageVersion}`]);
     const plan = yield* S.decodeEffect(sMigrations)(yield* fs.readFileString(path.join(workspace, "migrations.json")));
     yield* assert(
-      plan.migrations.length === 3 &&
+      plan.migrations.length === 4 &&
         plan.migrations[0]?.name === "1.0.2-application-workspaces" &&
         plan.migrations[1]?.name === "1.0.2-backend-vitest-exclusions" &&
         plan.migrations[2]?.name === "1.0.2-dependency-baseline" &&
+        plan.migrations[3]?.name === "1.0.2-bun-linker" &&
         plan.migrations.every((migration) => migration.package === "keenko" && migration.version === "1.0.2-rc.0"),
-      `Native Nx did not discover and order the separate KEE-45, KEE-51, and KEE-47 migrations: ${serializeJson(plan)}`
+      `Native Nx did not discover and order the separate application, backend, dependency, and linker migrations: ${serializeJson(plan)}`
     );
     yield* command(workspace, env, "bun", ["install"]);
     const installed = yield* S.decodeEffect(sVersionPackage)(
@@ -558,6 +581,7 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
       "dist/migrations/application-workspaces-1-0-2.js",
       "dist/migrations/backend-vitest-exclusions-1-0-2.js",
       "dist/migrations/dependency-baseline-1-0-2.js",
+      "dist/migrations/bun-linker-1-0-2.js",
       "dist/migrations/files/dependency-baseline-1-0-2.json",
     ])
       yield* assert(
@@ -566,28 +590,30 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
       );
     const lockPath = path.join(workspace, "bun.lock");
     const lockBefore = yield* fs.readFileString(lockPath);
+    if (divergent) yield* verifyHistoricalEffect(workspace, env);
     const migrationOutput = yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"]);
     const applicationMigrationIndex = migrationOutput.indexOf("1.0.2-application-workspaces");
     yield* assert(
       applicationMigrationIndex !== -1 &&
         migrationOutput.indexOf("1.0.2-backend-vitest-exclusions") > applicationMigrationIndex &&
-        migrationOutput.indexOf("1.0.2-dependency-baseline") > migrationOutput.indexOf("1.0.2-backend-vitest-exclusions"),
+        migrationOutput.indexOf("1.0.2-dependency-baseline") > migrationOutput.indexOf("1.0.2-backend-vitest-exclusions") &&
+        migrationOutput.indexOf("1.0.2-bun-linker") > migrationOutput.indexOf("1.0.2-dependency-baseline"),
       "Native Nx ran migrations in an unexpected order"
     );
     yield* verifyDependencySlots(workspace, target, before);
     yield* command(workspace, env, "bun", ["install"]);
     const lockAfter = yield* fs.readFileString(lockPath);
     yield* assert(lockAfter !== lockBefore, "Bun did not reconcile changed dependency state");
-    yield* verifyIsolatedBackendTestOwnership(workspace, env);
+    const initialResolution = yield* verifyResolution(workspace, env);
     yield* verifyInstalledSlots(workspace, target, lockAfter);
     yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
     yield* command(workspace, env, "bun", ["run", "codegen"]);
     yield* verifyBackendTestOwnership(workspace, env);
     yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
-    yield* command(workspace, env, "bun", ["install", "--frozen-lockfile"]);
-    yield* assert((yield* fs.readFileString(lockPath)) === lockAfter, "Frozen reinstall changed the reconciled lockfile");
+    yield* verifyReinstalls(workspace, env, initialResolution);
     yield* verifyInstalledSlots(workspace, target, lockAfter);
     const canonical = new Map<string, string>([
+      ["bunfig.toml", yield* fs.readFileString(path.join(workspace, "bunfig.toml"))],
       ["packages/backend/vitest.config.ts", yield* fs.readFileString(path.join(workspace, "packages/backend/vitest.config.ts"))],
     ]);
     for (const relative of manifestPaths) canonical.set(relative, yield* fs.readFileString(path.join(workspace, relative)));
@@ -598,6 +624,7 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
         `Canonical migration rerun changed ${relative}`
       );
     yield* assert((yield* fs.readFileString(lockPath)) === lockAfter, "Canonical migration rerun changed bun.lock");
+    yield* assert((yield* verifyResolution(workspace, env)) === initialResolution, "Migration rerun changed module resolution");
     yield* completePhase(phase, startedAt);
   }
 });
@@ -664,8 +691,13 @@ const product = E.gen(function* () {
   yield* completePhase("fresh workspace creation", creationStartedAt);
 
   const workspace = path.join(temporary, identity);
+  const initialResolution = yield* verifyResolution(workspace, env);
+  const target = yield* S.decodeEffect(sDependencyBaseline)(
+    yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/dependency-baseline-1-0-2.json"))
+  );
+  yield* verifyDependencySlots(workspace, target);
+  yield* verifyInstalledSlots(workspace, target, yield* fs.readFileString(path.join(workspace, "bun.lock")));
   yield* verifyBackendTestOwnership(workspace, env);
-  if (!shadcnCompatibility && source._tag === "local") yield* verifyIsolatedBackendTestOwnership(workspace, bootstrapEnv);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
   for (const file of [
     "CONTEXT.md",
@@ -711,7 +743,13 @@ const product = E.gen(function* () {
     );
     const shadcnVersion = uiPackage.dependencies.shadcn;
     yield* assert(exactSemver.test(shadcnVersion), `Generated packages/ui does not pin an exact shadcn version: ${shadcnVersion}`);
-    yield* command(path.join(workspace, "apps/web"), env, "bunx", [`shadcn@${shadcnVersion}`, "add", "button", "input-otp", "--yes"]);
+    yield* command(path.join(workspace, "apps/web"), env, "node", [
+      path.join(workspace, "packages/ui/node_modules/shadcn/dist/index.js"),
+      "add",
+      "button",
+      "input-otp",
+      "--yes",
+    ]);
     for (const component of ["button.tsx", "input-otp.tsx"]) {
       yield* assert(
         yield* fs.exists(path.join(workspace, "packages/ui/src/components", component)),
@@ -734,12 +772,7 @@ const product = E.gen(function* () {
     return;
   }
 
-  const verificationStartedAt = yield* startPhase("clean frozen install and generated consumer canonical verification");
-  for (const directory of ["", "apps/web", "packages/backend", "packages/ui", "packages/shared"])
-    yield* fs.remove(path.join(workspace, directory, "node_modules"), { force: true, recursive: true });
-  yield* command(workspace, bootstrapEnv, "bun", ["install", "--frozen-lockfile"]);
-  const reinstalledPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPackagePath));
-  yield* assert(reinstalledPackage.version === packageVersion, `The clean consumer did not reinstall Keenko ${packageVersion}`);
+  const verificationStartedAt = yield* startPhase("first-install canonical verification");
   const intentOutput = yield* command(workspace, env, "bun", ["node_modules/@tanstack/intent/dist/cli.mjs", "list", "--json"]);
   yield* assert(
     intentOutput.includes("@tanstack/react-table"),
@@ -747,45 +780,52 @@ const product = E.gen(function* () {
   );
   const checkOutput = yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
   yield* assert(!checkOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Fresh check emitted a module-typeless package warning");
-  yield* completePhase("clean frozen install and generated consumer canonical verification", verificationStartedAt);
+  yield* completePhase("first-install canonical verification", verificationStartedAt);
+
+  if (source._tag === "local") {
+    const shadcnStartedAt = yield* startPhase("deterministic shadcn compatibility");
+    const uiPackagePath = path.join(workspace, "packages/ui/package.json");
+    const uiPackage = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(uiPackagePath));
+    const shadcnVersion = uiPackage.dependencies.shadcn;
+    yield* assert(exactSemver.test(shadcnVersion), `Generated packages/ui does not pin an exact shadcn version: ${shadcnVersion}`);
+    yield* command(path.join(workspace, "apps/web"), { ...bootstrapEnv, REGISTRY_URL: "http://127.0.0.1:4874/r" }, "node", [
+      path.join(workspace, "packages/ui/node_modules/shadcn/dist/index.js"),
+      "add",
+      "fixture-button",
+      "input-otp",
+      "--yes",
+    ]);
+    for (const component of ["fixture-button.tsx", "input-otp.tsx"]) {
+      yield* assert(
+        yield* fs.exists(path.join(workspace, "packages/ui/src/components", component)),
+        `shadcn did not route ${component} to packages/ui`
+      );
+      yield* assert(
+        !(yield* fs.exists(path.join(workspace, "apps/web/src/components/ui", component))),
+        `shadcn created an app-local ${component}`
+      );
+    }
+    const updatedUiPackage = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(uiPackagePath));
+    yield* assert(
+      Object.hasOwn(updatedUiPackage.dependencies, "keenko-shadcn-fixture"),
+      "packages/ui does not own the shadcn fixture dependency"
+    );
+    yield* command(path.join(workspace, "packages/ui"), bootstrapEnv, "bun", [
+      "--eval",
+      'import { marker } from "keenko-shadcn-fixture"; if (marker !== "installed") throw new Error("Missing shadcn fixture dependency");',
+    ]);
+    yield* completePhase("deterministic shadcn compatibility", shadcnStartedAt);
+  }
+
+  const reinstallStartedAt = yield* startPhase("fresh frozen and idempotent reinstall verification");
+  yield* verifyReinstalls(workspace, bootstrapEnv, initialResolution);
+  const reinstalledPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPackagePath));
+  yield* assert(reinstalledPackage.version === packageVersion, `The consumer did not reinstall Keenko ${packageVersion}`);
+  yield* completePhase("fresh frozen and idempotent reinstall verification", reinstallStartedAt);
 
   if (source._tag === "published") return;
 
-  yield* verifyForwardUpgrades(workspace, releasedWorkspaces, packageVersion, bootstrapEnv);
-
-  const shadcnStartedAt = yield* startPhase("deterministic shadcn compatibility");
-  const uiPackagePath = path.join(workspace, "packages/ui/package.json");
-  const uiPackage = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(uiPackagePath));
-  const shadcnVersion = uiPackage.dependencies.shadcn;
-  yield* assert(exactSemver.test(shadcnVersion), `Generated packages/ui does not pin an exact shadcn version: ${shadcnVersion}`);
-  yield* command(path.join(workspace, "apps/web"), { ...bootstrapEnv, REGISTRY_URL: "http://127.0.0.1:4874/r" }, "bun", [
-    "x",
-    "shadcn",
-    "add",
-    "fixture-button",
-    "input-otp",
-    "--yes",
-  ]);
-  for (const component of ["fixture-button.tsx", "input-otp.tsx"]) {
-    yield* assert(
-      yield* fs.exists(path.join(workspace, "packages/ui/src/components", component)),
-      `shadcn did not route ${component} to packages/ui`
-    );
-    yield* assert(
-      !(yield* fs.exists(path.join(workspace, "apps/web/src/components/ui", component))),
-      `shadcn created an app-local ${component}`
-    );
-  }
-  const updatedUiPackage = yield* S.decodeEffect(sDependenciesPackage)(yield* fs.readFileString(uiPackagePath));
-  yield* assert(
-    Object.hasOwn(updatedUiPackage.dependencies, "keenko-shadcn-fixture"),
-    "packages/ui does not own the shadcn fixture dependency"
-  );
-  yield* command(path.join(workspace, "packages/ui"), bootstrapEnv, "bun", [
-    "--eval",
-    'import { marker } from "keenko-shadcn-fixture"; if (marker !== "installed") throw new Error("Missing shadcn fixture dependency");',
-  ]);
-  yield* completePhase("deterministic shadcn compatibility", shadcnStartedAt);
+  yield* verifyForwardUpgrades(target, releasedWorkspaces, packageVersion, bootstrapEnv);
 });
 
 NodeRuntime.runMain(product.pipe(E.scoped, E.provide(NodeServices.layer)));

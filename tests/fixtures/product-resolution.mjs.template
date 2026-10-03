@@ -1,0 +1,29 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join, resolve } from "node:path";
+
+const workspace = resolve(process.argv[1]);
+const root = createRequire(join(workspace, "package.json"));
+const manifest = root("./package.json");
+const plugin = root.resolve("nx/src/plugins/js/utils/typescript");
+const nx = createRequire(plugin);
+const rootTypescript = realpathSync(root.resolve("typescript"));
+const nxTypescript = realpathSync(nx.resolve("typescript"));
+assert.equal(process.versions.node.split(".")[0], "24", "Product tooling must use supported Node 24");
+assert.equal(readFileSync(join(workspace, "bunfig.toml"), "utf8"), '[install]\nlinker = "isolated"\nhoist = false\n');
+assert.equal(existsSync(join(workspace, "node_modules/.bun/node_modules")), false, "Phantom fallback must be disabled");
+assert.equal(nxTypescript, rootTypescript, "Nx must resolve the root direct TypeScript JavaScript API");
+assert.equal(root("typescript/package.json").version, manifest.devDependencies.typescript);
+assert.equal(typeof nx("typescript").readConfigFile, "function", "Nx requires the TypeScript JavaScript API");
+const native = realpathSync(root.resolve("@typescript/native"));
+assert.equal(manifest.devDependencies["@typescript/native"], `npm:typescript@${root("@typescript/native/package.json").version}`);
+assert.notEqual(native, rootTypescript, "The native compiler must remain independent of the JavaScript API");
+const effects = Object.fromEntries(["packages/backend", "packages/shared"].map(directory => {
+  const req = createRequire(join(workspace, directory, "package.json"));
+  const owned = req("./package.json").dependencies.effect;
+  assert.equal(req("effect/package.json").version, owned, `${directory} Effect must agree with its manifest`);
+  assert.equal(req("effect").Effect.runSync(req("effect").Effect.succeed("ok")), "ok");
+  return [directory, realpathSync(req.resolve("effect"))];
+}));
+console.log(JSON.stringify({ rootTypescript, nxTypescript, typescriptVersion: nx("typescript/package.json").version, readConfigFile: typeof nx("typescript").readConfigFile, native, nativeVersion: root("@typescript/native/package.json").version, effects }));
