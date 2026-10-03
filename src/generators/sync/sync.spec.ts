@@ -123,6 +123,66 @@ describe("keenko sync", () => {
       })
     ));
 
+  test("refreshes identity guidance without migrating project-owned identity state", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        const workosPath = ".keenko/docs/stacks/workos-authkit/README.md";
+        tree.write(
+          workosPath,
+          "Use `identity.tokenIdentifier` as the stable authenticated identity key when application data needs an ownership reference."
+        );
+        const projectFiles = {
+          "docs/project/overrides.md": "Use our provider-native identity reference.",
+          "packages/backend/confect/identity.impl.ts": "export const projectIdentity = 'provider-native';\n",
+          "packages/backend/confect/schema.ts": "export const projectSchema = {};\n",
+          "packages/backend/data/authorization.ts": "export const projectPolicy = 'application-owned';\n",
+        };
+        for (const [path, content] of Object.entries(projectFiles)) tree.write(path, content);
+
+        yield* runSync(tree);
+
+        const convex = tree.read(".keenko/docs/stacks/convex/README.md", "utf-8");
+        for (const semantics of [
+          "Keep `identity.tokenIdentifier` as the default stable authenticated identity reference",
+          "when the application does not deliberately need a provider-native identifier",
+          "JWT `sub` and `iss` claims",
+          "`identity.subject` is the JWT `sub`",
+          "intentionally to the native identity of a known provider",
+          "`subject` alone is not a provider-independent identity key",
+          "`identity.issuer` is the JWT `iss`",
+          "identifying the provider that issued the token",
+          "Name provider-native references according to their semantic meaning",
+          "does not prescribe a field name, identity abstraction, or universal application User/Profile model",
+          "../workos-authkit/README.md#provider-native-user-references",
+        ])
+          expect(convex).toContain(semantics);
+
+        const workos = tree.read(workosPath, "utf-8");
+        for (const semantics of [
+          "../convex/README.md#authenticated-identity-references",
+          "Keep `tokenIdentifier` as the default when the application does not need a provider-native identifier",
+          "For normal WorkOS AuthKit user access tokens",
+          "Convex `identity.subject` corresponds to the WorkOS User ID",
+          "do not assume it applies to every WorkOS token type",
+          "correlate directly with WorkOS APIs, synchronized users, or user lifecycle events",
+          "`subject` alone is not a provider-independent identity key",
+          "Keep authorization, resource ownership, permissions, and business policy in Convex/application code",
+          "do not treat WorkOS roles, permissions, organizations, or entitlements as Keenko's general policy model",
+          "The application owns its domain representation and field names",
+          "does not require every project to persist a WorkOS User ID or introduce an application User/Profile model",
+          "propagates through `bun x nx sync`",
+          "does not require changes to application schemas, persisted identity references, source code, or authorization state",
+          "does not change the AuthKit, synchronization, or webhook architecture",
+        ])
+          expect(workos).toContain(semantics);
+        expect(workos).not.toContain(
+          "Use `identity.tokenIdentifier` as the stable authenticated identity key when application data needs an ownership reference."
+        );
+        for (const [path, content] of Object.entries(projectFiles)) expect(tree.read(path, "utf-8")).toBe(content);
+      })
+    ));
+
   test("publishes corrected Confect compatibility and backend data guidance", () =>
     E.runPromise(
       E.gen(function* () {
