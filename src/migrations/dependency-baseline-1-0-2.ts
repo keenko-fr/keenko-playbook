@@ -7,15 +7,23 @@ import { FsTree } from "nx/src/generators/tree";
 
 import type { PackageJson } from "../generators/helpers.js";
 
-type DependencySlots = Record<string, Record<"dependencies" | "devDependencies", Record<string, string>>>;
+type DependencyRole = "root" | "application" | "backend" | "ui" | "shared";
+type DependencySlots = Record<DependencyRole, Record<"dependencies" | "devDependencies", Record<string, string>>>;
 const sections: readonly ("dependencies" | "devDependencies")[] = ["dependencies", "devDependencies"];
 
 // Frozen 1.0.2 slots from the preset. Future compatibility changes need their own migration.
 const target = parseJson<DependencySlots>(readFileSync(new URL("files/dependency-baseline-1-0-2.json", import.meta.url), "utf-8"));
 
 export default function dependencyBaseline102(tree: Tree) {
+  const surfaces: [string, DependencyRole][] = [
+    ["package.json", "root"],
+    ...applicationManifests(tree).map((path): [string, DependencyRole] => [path, "application"]),
+    ["packages/backend/package.json", "backend"],
+    ["packages/ui/package.json", "ui"],
+    ["packages/shared/package.json", "shared"],
+  ];
   const writes = new Map<string, PackageJson>();
-  for (const [path, slots] of Object.entries(target)) {
+  for (const [path, role] of surfaces) {
     if (!tree.exists(path)) throw new Error(`KEE-47 dependency migration requires the supported workspace manifest: ${path}`);
     const manifest = readJson<PackageJson>(tree, path);
     for (const section of sections) {
@@ -23,7 +31,7 @@ export default function dependencyBaseline102(tree: Tree) {
       if (entries !== undefined && (entries === null || typeof entries !== "object" || Array.isArray(entries)))
         throw new Error(`KEE-47 dependency migration requires an object in ${path}#${section}`);
     }
-    if (convergeSlots(manifest, slots)) writes.set(path, manifest);
+    if (convergeSlots(manifest, target[role])) writes.set(path, manifest);
   }
   if (writes.size === 0) return;
   // Format with native Nx before applying any write, and copy back only changed manifests.
@@ -40,7 +48,31 @@ export default function dependencyBaseline102(tree: Tree) {
   });
 }
 
-function convergeSlots(manifest: PackageJson, slots: DependencySlots[string]) {
+function applicationManifests(tree: Tree) {
+  const paths: string[] = [];
+  // KEE-45 classifies direct apps/* manifests before this migration executes.
+  for (const workspace of tree.children("apps").toSorted()) {
+    const path = `apps/${workspace}/package.json`;
+    if (!tree.exists(path)) continue;
+    const { nx } = readJson<PackageJson>(tree, path);
+    if (nx === undefined) continue;
+    if (
+      nx === null ||
+      typeof nx !== "object" ||
+      Array.isArray(nx) ||
+      (nx.tags !== undefined && (!Array.isArray(nx.tags) || nx.tags.some((tag) => typeof tag !== "string")))
+    )
+      throw new Error(`KEE-47 dependency migration requires valid application classification in ${path}#nx.tags`);
+    if (nx.tags?.includes("type:app") === true) {
+      if (nx.tags.filter((tag) => tag.startsWith("type:")).length !== 1)
+        throw new Error(`KEE-47 dependency migration requires unambiguous application classification in ${path}#nx.tags`);
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+function convergeSlots(manifest: PackageJson, slots: DependencySlots[DependencyRole]) {
   let changed = false;
   for (const section of sections) {
     const opposite = section === "dependencies" ? "devDependencies" : "dependencies";
