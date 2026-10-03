@@ -421,6 +421,100 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   };
 });
 
+const verifyBackendTestOwnership = E.fn("product.verifyBackendTestOwnership")(function* (workspace: string, env: Record<string, string>) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const backend = path.join(workspace, "packages/backend");
+  const nodeTest = path.join(backend, "keenko-node-ownership.test.ts");
+  const integrationTest = path.join(backend, "test/keenko-integration-ownership.test.ts");
+  const generatedTest = path.join(backend, "convex/keenko-generated-ownership.test.ts");
+  const report = yield* fs.makeTempFileScoped({ prefix: "keenko-backend-test-ownership-" });
+  yield* fs.makeDirectory(path.dirname(integrationTest), { recursive: true });
+  yield* fs.writeFileString(
+    nodeTest,
+    'import { expect, test } from "vitest"; test("authored Node ownership", () => { expect(typeof EdgeRuntime).toBe("undefined"); });\n'
+  );
+  yield* fs.writeFileString(
+    integrationTest,
+    'import { expect, test } from "vitest"; test("authored integration ownership", () => { expect(typeof EdgeRuntime).toBe("string"); });\n'
+  );
+  yield* fs.writeFileString(generatedTest, 'throw new Error("Generated convex tests must not run");\n');
+  yield* E.gen(function* () {
+    yield* command(backend, env, "bun", ["x", "vitest", "run", "--reporter=json", `--outputFile=${report}`]);
+    const result = yield* S.decodeEffect(
+      S.fromJsonString(
+        S.Struct({
+          numPassedTests: S.Finite,
+          numTotalTests: S.Finite,
+          testResults: S.Array(S.Struct({ assertionResults: S.Array(S.Struct({ fullName: S.String })), name: S.String })),
+        })
+      )
+    )(yield* fs.readFileString(report));
+    yield* assert(
+      result.numTotalTests === 2 && result.numPassedTests === 2 && result.testResults.length === 2,
+      "Backend verification discovered tests outside the two authored ownership fixtures"
+    );
+    yield* assert(
+      result.testResults
+        .flatMap((file) => file.assertionResults.map((test) => test.fullName))
+        .toSorted()
+        .join("|") === "authored Node ownership|authored integration ownership",
+      "Backend authored fixtures did not run exactly once in their intended environments"
+    );
+  }).pipe(
+    E.ensuring(
+      E.forEach([nodeTest, integrationTest, generatedTest], (file) => fs.remove(file, { force: true }), { discard: true }).pipe(E.orDie)
+    )
+  );
+});
+
+const verifyIsolatedBackendTestOwnership = E.fn("product.verifyIsolatedBackendTestOwnership")(function* (
+  workspace: string,
+  env: Record<string, string>
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const phase = `disposable isolated backend ownership: ${path.basename(workspace)}`;
+  const startedAt = yield* startPhase(phase);
+  const proof = yield* fs.makeTempDirectoryScoped({ prefix: `keenko-isolated-${path.basename(workspace)}-` });
+  const archive = yield* fs.makeTempFileScoped({ prefix: "keenko-isolated-source-" });
+  const config = yield* fs.readFileString(path.join(workspace, "bunfig.toml"));
+  const lock = yield* fs.readFileString(path.join(workspace, "bun.lock"));
+  yield* assert(config.includes('linker = "hoisted"'), "Canonical workspace must retain the hoisted linker");
+  // Copy authored/generated state, never the previous installation or Nx/Git caches.
+  yield* command(workspace, env, "tar", ["--exclude=node_modules", "--exclude=.nx", "--exclude=.git", "-cf", archive, "."]);
+  yield* command(proof, env, "tar", ["-xf", archive]);
+  for (const directory of ["", "apps/web", "packages/backend", "packages/ui", "packages/shared"])
+    yield* assert(!(yield* fs.exists(path.join(proof, directory, "node_modules"))), "Isolated proof copied hoisted installation state");
+  const isolatedConfig = config.replace('linker = "hoisted"', 'linker = "isolated"');
+  yield* fs.writeFileString(path.join(proof, "bunfig.toml"), isolatedConfig);
+  yield* assert((yield* command(proof, env, "bun", ["--version"])).trim() === "1.4.2", "Isolated backend proof requires Bun 1.4.2");
+  yield* command(proof, env, "bun", ["install", "--frozen-lockfile"]);
+  yield* assert(
+    (yield* fs.readFileString(path.join(proof, "bunfig.toml"))) === isolatedConfig,
+    "Isolated install changed its linker config"
+  );
+  yield* assert((yield* fs.readFileString(path.join(proof, "bun.lock"))) === lock, "Isolated install changed the reconciled lockfile");
+  const dependency = path.join(proof, "packages/backend/node_modules/@convex-dev/workos-authkit");
+  const installedDependency = yield* fs.realPath(dependency);
+  yield* assert(
+    path.relative(yield* fs.realPath(proof), installedDependency).split(path.sep)[0] !== "..",
+    "Backend dependency resolved outside the isolated proof copy"
+  );
+  const dependencyTests = (yield* fs.readDirectory(dependency, { recursive: true })).filter((file) =>
+    /\.test\.(?:ts|tsx|js|jsx)$/u.test(file)
+  );
+  yield* assert(dependencyTests.length > 0, "Isolated backend has no reachable dependency-owned test files");
+  yield* Console.log(`Isolated backend proof copy: ${proof}; reachable dependency test files: ${dependencyTests.length}`);
+  yield* verifyBackendTestOwnership(proof, env);
+  yield* assert(
+    (yield* fs.readFileString(path.join(workspace, "bunfig.toml"))) === config,
+    "Isolated proof changed canonical linker state"
+  );
+  yield* assert((yield* fs.readFileString(path.join(workspace, "bun.lock"))) === lock, "Isolated proof changed canonical lockfile state");
+  yield* completePhase(phase, startedAt);
+}, E.scoped);
+
 const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
   fresh: string,
   releasedWorkspaces: readonly string[],
@@ -447,11 +541,12 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     yield* command(workspace, env, "bun", ["x", "nx", "migrate", `keenko@${packageVersion}`]);
     const plan = yield* S.decodeEffect(sMigrations)(yield* fs.readFileString(path.join(workspace, "migrations.json")));
     yield* assert(
-      plan.migrations.length === 2 &&
+      plan.migrations.length === 3 &&
         plan.migrations[0]?.name === "1.0.2-application-workspaces" &&
-        plan.migrations[1]?.name === "1.0.2-dependency-baseline" &&
+        plan.migrations[1]?.name === "1.0.2-backend-vitest-exclusions" &&
+        plan.migrations[2]?.name === "1.0.2-dependency-baseline" &&
         plan.migrations.every((migration) => migration.package === "keenko" && migration.version === "1.0.2-rc.0"),
-      `Native Nx did not discover and order the separate KEE-45 and KEE-47 migrations: ${serializeJson(plan)}`
+      `Native Nx did not discover and order the separate KEE-45, KEE-51, and KEE-47 migrations: ${serializeJson(plan)}`
     );
     yield* command(workspace, env, "bun", ["install"]);
     const installed = yield* S.decodeEffect(sVersionPackage)(
@@ -461,6 +556,7 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     for (const artifact of [
       "migrations.json",
       "dist/migrations/application-workspaces-1-0-2.js",
+      "dist/migrations/backend-vitest-exclusions-1-0-2.js",
       "dist/migrations/dependency-baseline-1-0-2.js",
       "dist/migrations/files/dependency-baseline-1-0-2.json",
     ])
@@ -473,21 +569,27 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     const migrationOutput = yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"]);
     const applicationMigrationIndex = migrationOutput.indexOf("1.0.2-application-workspaces");
     yield* assert(
-      applicationMigrationIndex !== -1 && migrationOutput.indexOf("1.0.2-dependency-baseline") > applicationMigrationIndex,
+      applicationMigrationIndex !== -1 &&
+        migrationOutput.indexOf("1.0.2-backend-vitest-exclusions") > applicationMigrationIndex &&
+        migrationOutput.indexOf("1.0.2-dependency-baseline") > migrationOutput.indexOf("1.0.2-backend-vitest-exclusions"),
       "Native Nx ran migrations in an unexpected order"
     );
     yield* verifyDependencySlots(workspace, target, before);
     yield* command(workspace, env, "bun", ["install"]);
     const lockAfter = yield* fs.readFileString(lockPath);
     yield* assert(lockAfter !== lockBefore, "Bun did not reconcile changed dependency state");
+    yield* verifyIsolatedBackendTestOwnership(workspace, env);
     yield* verifyInstalledSlots(workspace, target, lockAfter);
     yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
     yield* command(workspace, env, "bun", ["run", "codegen"]);
+    yield* verifyBackendTestOwnership(workspace, env);
     yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
     yield* command(workspace, env, "bun", ["install", "--frozen-lockfile"]);
     yield* assert((yield* fs.readFileString(lockPath)) === lockAfter, "Frozen reinstall changed the reconciled lockfile");
     yield* verifyInstalledSlots(workspace, target, lockAfter);
-    const canonical = new Map<string, string>();
+    const canonical = new Map<string, string>([
+      ["packages/backend/vitest.config.ts", yield* fs.readFileString(path.join(workspace, "packages/backend/vitest.config.ts"))],
+    ]);
     for (const relative of manifestPaths) canonical.set(relative, yield* fs.readFileString(path.join(workspace, relative)));
     yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"]);
     for (const [relative, contents] of canonical)
@@ -562,6 +664,8 @@ const product = E.gen(function* () {
   yield* completePhase("fresh workspace creation", creationStartedAt);
 
   const workspace = path.join(temporary, identity);
+  yield* verifyBackendTestOwnership(workspace, env);
+  if (!shadcnCompatibility && source._tag === "local") yield* verifyIsolatedBackendTestOwnership(workspace, bootstrapEnv);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
   for (const file of [
     "CONTEXT.md",

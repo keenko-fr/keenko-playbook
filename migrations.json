@@ -5,6 +5,11 @@
       "description": "Make application workspaces first-class in Keenko tooling and verification.",
       "factory": "./dist/migrations/application-workspaces-1-0-2"
     },
+    "1.0.2-backend-vitest-exclusions": {
+      "version": "1.0.2-rc.0",
+      "description": "Preserve Vitest native exclusions in the backend Node test project.",
+      "factory": "./dist/migrations/backend-vitest-exclusions-1-0-2"
+    },
     "1.0.2-dependency-baseline": {
       "version": "1.0.2-rc.0",
       "description": "Converge Keenko-managed dependency slots to the 1.0.2 compatibility baseline.",
