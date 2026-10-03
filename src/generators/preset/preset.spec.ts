@@ -238,7 +238,7 @@ describe("keenko preset", () => {
           Struct.pick(packageVersions, ["@confect/test", "@edge-runtime/vm", "convex-test"])
         );
         expect(readJson<PackageJson>(tree, "packages/ui/package.json").devDependencies).toMatchObject(
-          Struct.pick(packageVersions, ["@testing-library/dom", "@testing-library/react", "jsdom"])
+          Struct.pick(packageVersions, ["@testing-library/dom", "@testing-library/react", "@types/react", "jsdom"])
         );
       })
     ));

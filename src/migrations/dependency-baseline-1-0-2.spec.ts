@@ -35,6 +35,22 @@ const fixture = () => {
 };
 
 describe("1.0.2 dependency-baseline migration", () => {
+  test("restores the UI React declaration slot missing from released 1.0.1", async () => {
+    const tree = fixture();
+    const manifest = readJson<(typeof target)[string]>(tree, "packages/ui/package.json");
+    Reflect.deleteProperty(manifest.devDependencies, "@types/react");
+    manifest.devDependencies["consumer-owned"] = "^9.0.0";
+    tree.write("packages/ui/package.json", JSON.stringify(manifest));
+
+    await migration(tree);
+
+    const upgraded = readJson<typeof manifest>(tree, "packages/ui/package.json");
+    expect(upgraded.devDependencies["@types/react"]).toBe(target["packages/ui/package.json"].devDependencies["@types/react"]);
+    expect(upgraded.devDependencies["@types/react-dom"]).toBeUndefined();
+    expect(upgraded.devDependencies["consumer-owned"]).toBe("^9.0.0");
+    expect(tree.read("bun.lock", "utf-8")).toBe("Bun-owned lockfile\n");
+  });
+
   test("normalizes old, customized, moved, deleted, and duplicate slots across all target manifests", async () => {
     const tree = fixture();
     for (const [path, slots] of Object.entries(target)) {
