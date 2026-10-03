@@ -19,6 +19,11 @@
       "version": "1.0.2-rc.0",
       "description": "Use isolated Bun workspace installation without the phantom-dependency fallback.",
       "factory": "./dist/migrations/bun-linker-1-0-2"
+    },
+    "1.0.2-application-dependency-baseline": {
+      "version": "1.0.2-rc.1",
+      "description": "Replicate the managed application dependency baseline across supported application workspaces, including consumers of rc.0.",
+      "factory": "./dist/migrations/dependency-baseline-1-0-2"
     }
   },
   "packageJsonUpdates": {}
