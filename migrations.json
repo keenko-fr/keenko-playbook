@@ -14,6 +14,11 @@
       "version": "1.0.2-rc.0",
       "description": "Converge Keenko-managed dependency slots to the 1.0.2 compatibility baseline.",
       "factory": "./dist/migrations/dependency-baseline-1-0-2"
+    },
+    "1.0.2-bun-linker": {
+      "version": "1.0.2-rc.0",
+      "description": "Use isolated Bun workspace installation without the phantom-dependency fallback.",
+      "factory": "./dist/migrations/bun-linker-1-0-2"
     }
   },
   "packageJsonUpdates": {}

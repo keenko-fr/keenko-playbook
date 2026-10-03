@@ -447,7 +447,7 @@ describe("keenko preset", () => {
 
         expect(tree.exists("oxfmt.config.ts")).toBe(true);
         expect(tree.exists("oxlint.config.ts")).toBe(true);
-        expect(tree.read("bunfig.toml", "utf-8")).toBe('[install]\nlinker = "hoisted"\n');
+        expect(tree.read("bunfig.toml", "utf-8")).toBe('[install]\nlinker = "isolated"\nhoist = false\n');
         expect(readJson<PackageJson>(tree, "package.json").type).toBe("module");
 
         expect(readJson(tree, "tsconfig.base.json")).toMatchObject({
