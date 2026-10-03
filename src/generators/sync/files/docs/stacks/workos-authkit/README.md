@@ -72,7 +72,17 @@ WorkOS Actions are not part of the Keenko baseline. `WORKOS_ACTION_SECRET` becom
 - `identity.getCurrent` derives the same `CurrentIdentity` representation through Confect's `Auth` service and maps absent identity to the typed `AuthenticationRequired` failure. Never accept a caller-supplied user identifier for authorization.
 - `identity.findSynchronized` is a separate public query for the official component's synchronized infrastructure identity. Before the real webhook secret exists in the deployment, it returns `null` without constructing the component client. After configuration, it obtains raw query context from Confect's generated `QueryCtx` service only because the official `getAuthUser(ctx)` method requires it, and represents the nullable component result as `Option<SynchronizedIdentity>` internally.
 - Normal Confect queries may access the native Convex query context through Confect's `QueryCtx` Effect service when a first-party integration specifically requires that context. Prefer narrower Confect services such as `Auth`, database services, and runners whenever they already own the capability; do not reach for raw context routinely.
-- Use `identity.tokenIdentifier` as the stable authenticated identity key when application data needs an ownership reference. Keep authorization decisions in Convex/application code; do not treat WorkOS roles, permissions, organizations, or entitlements as Keenko's general policy model.
+- Keep authorization, resource ownership, permissions, and business policy in Convex/application code; do not treat WorkOS roles, permissions, organizations, or entitlements as Keenko's general policy model.
+
+## Provider-native user references
+
+The [Convex guide](../convex/README.md#authenticated-identity-references) owns the general distinction between `identity.tokenIdentifier`, `identity.subject`, and `identity.issuer`. Keep `tokenIdentifier` as the default when the application does not need a provider-native identifier.
+
+For normal WorkOS AuthKit user access tokens in the fixed Keenko stack, Convex `identity.subject` corresponds to the WorkOS User ID carried by the JWT `sub` claim. This mapping is specific to user access tokens; do not assume it applies to every WorkOS token type. See the official [WorkOS session-token reference](https://workos.com/docs/reference/authkit/session-tokens).
+
+Persisting that provider-native reference is appropriate when application state must correlate directly with WorkOS APIs, synchronized users, or user lifecycle events. `tokenIdentifier` includes issuer context and does not directly equal the WorkOS User ID. This is a deliberate relationship to a known provider; `subject` alone is not a provider-independent identity key.
+
+The application owns its domain representation and field names. Provider correlation does not require every project to persist a WorkOS User ID or introduce an application User/Profile model. This guidance clarification propagates through `bun x nx sync`; it does not require changes to application schemas, persisted identity references, source code, or authorization state. It does not change the AuthKit, synchronization, or webhook architecture.
 
 ## Deterministic verification
 

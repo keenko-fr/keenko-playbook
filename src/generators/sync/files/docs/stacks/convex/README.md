@@ -24,6 +24,16 @@ Before Keenko `1.0.0`, recreate an older dogfood repository from the current rel
 - Use generated system-field schemas/types rather than recreating `_id`/`_creationTime` manually.
 - Generated Convex code is generator-owned.
 
+## Authenticated identity references
+
+Choose the persisted reference according to the relationship the application needs:
+
+- Keep `identity.tokenIdentifier` as the default stable authenticated identity reference when the application does not deliberately need a provider-native identifier. Convex combines the JWT `sub` and `iss` claims into this globally unique reference.
+- `identity.subject` is the JWT `sub`, whose meaning depends on the provider. Use it when the persisted relationship is intentionally to the native identity of a known provider. `subject` alone is not a provider-independent identity key and may collide across providers.
+- `identity.issuer` is the JWT `iss`, identifying the provider that issued the token. It supplies the provider context that distinguishes otherwise identical subjects; `tokenIdentifier` includes that context.
+
+Name provider-native references according to their semantic meaning when that helps the application model. Keenko does not prescribe a field name, identity abstraction, or universal application User/Profile model. The [WorkOS AuthKit guide](../workos-authkit/README.md#provider-native-user-references) owns the WorkOS user-token mapping and correlation use case.
+
 ## Native boundaries
 
 Use native Convex APIs where components, workflows, HTTP/provider integration, generated/native APIs, reactive pagination, or third-party Convex libraries require or materially benefit from them. Native Convex React APIs may coexist with TanStack Query and Confect when an adapter does not expose or materially improve the required capability. Do not replace a correct native boundary merely to maximize adapter or Confect usage, and do not wrap generated Convex `api` in a Keenko facade.
