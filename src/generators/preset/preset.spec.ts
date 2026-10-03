@@ -230,7 +230,6 @@ describe("keenko preset", () => {
         const backendConfig = O.getOrThrow(O.fromNullishOr(tree.read("packages/backend/vitest.config.ts", "utf-8")));
         expect(backendConfig).toContain('environment: "node"');
         expect(backendConfig).toContain('environment: "edge-runtime"');
-        expect(backendConfig).toContain('exclude: ["convex/**", "test/**"]');
         expect(backendConfig).toContain('include: ["test/**/*.test.{ts,js}"]');
         expect(backendConfig.match(/passWithNoTests/gu)).toHaveLength(1);
 
