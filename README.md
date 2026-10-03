@@ -42,11 +42,13 @@ cd <project>
 bun x nx migrate keenko@<target>
 bun install
 bun x nx migrate --run-migrations
+bun install
 bun x nx sync
 bun run codegen
+bun run check
 ```
 
-Run `bun run check` before merging the result.
+The second `bun install` is unconditional because migrations can change dependency manifests. Bun reconciles installed packages and regenerates `bun.lock`; migrations never text-edit or merge the lockfile.
 
 ## Runtime support
 
@@ -64,7 +66,7 @@ bun run deps:update
 ```
 
 - `check` is the deterministic repository gate.
-- `test:product` is the required Verdaccio-backed fresh-creation acceptance test for the unpublished packed artifact.
+- `test:product` is the required Verdaccio-backed fresh-creation and supported forward-upgrade acceptance test for the unpublished packed artifact.
 - `test:shadcn` is the explicit live-registry compatibility smoke and is not a normal PR or release gate.
 - `test:published` is the release-grade fresh-consumer acceptance test for one exact version already published to npm.
 - `deps:update` updates compatibility pins for maintainer review.

@@ -9,9 +9,33 @@ bun install --frozen-lockfile
 bun run test:product
 ```
 
-This mode starts the repository's `keenko:local-registry` Nx target, builds and packs Keenko, assigns a unique disposable `<repository-version>-product.<unique-run-id>` version, and publishes the archive under the `latest` tag to the loopback Verdaccio registry at `http://127.0.0.1:4873`. A disposable install primes an isolated Bun cache with the pinned `create-nx-workspace` bootstrap through that registry, after which the documented `bunx create-nx-workspace@23.2.1 --preset=keenko` form proves bare-preset resolution selects the unpublished packed artifact. Verdaccio is a local development convenience and is not part of production release acceptance.
+This mode starts the repository's `keenko:local-registry` Nx target with disposable storage, builds and packs Keenko, assigns a unique disposable `<repository-version>-product.<unique-run-id>` version, and publishes the archive under the `latest` tag to the loopback Verdaccio registry at `http://127.0.0.1:4873`. While the repository version is `1.0.1`, the disposable candidate uses `1.0.2-rc.0-product.<unique-run-id>` so native Nx selects the pending 1.0.2 migrations. This changes only the temporary archive's version, never repository release state. A disposable install primes an isolated Bun cache with the pinned `create-nx-workspace` bootstrap through that registry, after which the documented `bunx create-nx-workspace@23.2.1 --preset=keenko` form proves bare-preset resolution selects the unpublished packed artifact. Verdaccio is a local development convenience and is not part of production release acceptance.
 
 Before Keenko `1.0.0`, this acceptance path proves only the current fresh generated state. Pre-1.0 projects are disposable dogfood and are recreated when that state changes; there is no `0.x` upgrade fixture or forward-migration gate. `1.0.0` is the first supported project compatibility baseline. Later releases add native Nx migrations only when an existing supported project requires a persisted repository-state transformation.
+
+### Controlled 1.0.1 forward upgrade
+
+Local `test:product` creates two consumers through `create-nx-workspace --preset=keenko@1.0.1` using the unchanged released npm archive. One retains its generated dependency state; the other customizes managed versions, moves runtime and development slots, deletes a managed slot, leaves a canonical slot unchanged, and adds an unrelated consumer-owned dependency.
+
+The 1.0.1 release used Effect `4.0.0-rc.115`. Its transitive `@effect/platform-node-shared` range now also admits stable Effect 4, which prevents the historical generator from loading. The disposable registry initially serves only the unchanged `platform-node-shared@4.0.0-rc.115` archive recorded in the v1.0.1 lockfile. It makes stable `4.0.0` available after both historical consumers have been generated. No released archive is patched, and no dependency override is added to a consumer.
+
+Both consumers exercise the packed candidate through native Nx:
+
+```sh
+bun x nx migrate keenko@<packed-candidate-version>
+bun install
+bun x nx migrate --run-migrations
+bun install
+bun x nx sync
+bun run codegen
+bun run check
+```
+
+The second install is unconditional. Acceptance verifies that Nx discovers and runs the separate application-workspaces and dependency-baseline migrations in order and that both executable factories and their assets survive packaging. Migration tests verify that the dependency generator never changes `bun.lock`. Nx may itself invoke Bun when manifests change; the explicit second install still always runs. All 74 managed dependency slots in the root and four generated workspace manifests must agree with fresh target generation, while consumer-owned dependencies remain unchanged. A canonical migration rerun must leave the manifests and lockfile unchanged. After the second install, a frozen reinstall must succeed and installed package state must match the target. Both consumers complete sync, codegen, and canonical checks.
+
+The proof is part of the existing `test:product` gate used by CI and the release workflow. It does not run a real consumer migration or publish to npm. `test:published` retains its separate exact-published fresh-consumer proof, and `test:shadcn` remains the separate live-registry smoke.
+
+The divergent fixture currently exposes a Bun 1.4.2 hoisted-install blocker: changing the shared workspace's customized Effect RC to the target `4.0.0` updates its manifest and lockfile but leaves the old workspace-local package installed, shadowing the correct root package. Repeated ordinary, frozen, and forced installs reproduce the stale state. This matches [Bun's open stale-shadowing report](https://github.com/oven-sh/bun/issues/29793). The gate rejects that installed-state mismatch after the second install. KEE-47 release acceptance remains blocked until a Bun fix or an authoritative lifecycle adjustment resolves it; the fixture does not hide the problem with manual directory cleanup or a linker change.
 
 ## Exact published package
 
