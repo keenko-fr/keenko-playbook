@@ -81,7 +81,9 @@ describe("installed Effect policy", () => {
       'import { test } from "bun:test";\nimport { Effect as E } from "effect";\n\ntest("boundary", () => E.runPromise(E.void));\n';
     const probe = path.join(fixture, "tests/boundary.spec.ts");
     const lint = () => {
-      const result = Bun.spawnSync([path.join(repository, "node_modules/.bin/oxlint"), "tests/boundary.spec.ts"], { cwd: fixture });
+      const result = Bun.spawnSync([path.join(repository, "node_modules/.bin/oxlint"), "--format", "unix", "tests/boundary.spec.ts"], {
+        cwd: fixture,
+      });
       return { code: result.exitCode, output: result.stdout.toString() + result.stderr.toString() };
     };
     writeFileSync(probe, source);
@@ -96,7 +98,7 @@ describe("installed Effect policy", () => {
       'import { Effect as E } from "effect";\n\nexport const program = E.gen(function* () { try { yield* E.void; } finally { yield* E.void; } });\n'
     );
     const overlap = lint();
-    expect(overlap.output.match(/error effect\(noTryCatch\)/gu)).toHaveLength(1);
+    expect(overlap.output.match(/effect\(noTryCatch\)/gu), overlap.output).toHaveLength(1);
     expect(overlap.output).not.toContain("try-catch-in-effect-gen");
     rmSync(fixture, { force: true, recursive: true });
   }, 30_000);
