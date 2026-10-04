@@ -19,6 +19,21 @@ assert.equal(typeof nx("typescript").readConfigFile, "function", "Nx requires th
 const native = realpathSync(root.resolve("@typescript/native"));
 assert.equal(manifest.devDependencies["@typescript/native"], `npm:typescript@${root("@typescript/native/package.json").version}`);
 assert.notEqual(native, rootTypescript, "The native compiler must remain independent of the JavaScript API");
+const backend = createRequire(join(workspace, "packages/backend/package.json"));
+const authkitManifest = backend("@convex-dev/workos-authkit/package.json");
+assert.equal(authkitManifest.version, "0.2.10");
+assert.deepEqual(authkitManifest.exports["./test"], { types: "./dist/test.d.ts", default: "./src/test.ts" });
+const authkitEntry = realpathSync(backend.resolve("@convex-dev/workos-authkit/test"));
+const authkitRequire = createRequire(authkitEntry);
+// These are erased development-only references, not runtime dependencies of the adapter.
+// Prove they have not become phantom dependencies at the upstream package boundary.
+for (const name of ["convex-test", "vite/package.json"])
+  assert.throws(() => authkitRequire.resolve(name), { code: "MODULE_NOT_FOUND" });
+assert.equal(manifest.patchedDependencies["@convex-dev/workos-authkit@0.2.10"], "patches/keenko-workos-authkit-0.2.10.patch");
+const authkitTypes = realpathSync(join(authkitEntry, "../../dist/test.d.ts"));
+assert.doesNotMatch(readFileSync(authkitTypes, "utf8"), /(?:convex-test|vite\/client)/u);
+const convexTest = realpathSync(backend.resolve("convex-test"));
+const vite = realpathSync(createRequire(root.resolve("vitest/package.json")).resolve("vite/package.json"));
 const effects = Object.fromEntries(["packages/backend", "packages/shared"].map(directory => {
   const req = createRequire(join(workspace, directory, "package.json"));
   const owned = req("./package.json").dependencies.effect;
@@ -26,4 +41,4 @@ const effects = Object.fromEntries(["packages/backend", "packages/shared"].map(d
   assert.equal(req("effect").Effect.runSync(req("effect").Effect.succeed("ok")), "ok");
   return [directory, realpathSync(req.resolve("effect"))];
 }));
-console.log(JSON.stringify({ rootTypescript, nxTypescript, typescriptVersion: nx("typescript/package.json").version, readConfigFile: typeof nx("typescript").readConfigFile, native, nativeVersion: root("@typescript/native/package.json").version, effects }));
+console.log(JSON.stringify({ rootTypescript, nxTypescript, typescriptVersion: nx("typescript/package.json").version, readConfigFile: typeof nx("typescript").readConfigFile, native, nativeVersion: root("@typescript/native/package.json").version, effects, authkitEntry, authkitTypes, convexTest, vite }));

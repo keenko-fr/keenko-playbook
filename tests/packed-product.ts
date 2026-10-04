@@ -589,6 +589,7 @@ const verifyResolution = E.fn("product.verifyResolution")(function* (workspace: 
   const path = yield* Path.Path;
   const script = yield* fs.readFileString(yield* path.fromFileUrl(new URL("fixtures/product-resolution.mjs.template", import.meta.url)));
   const resolution = (yield* command(workspace, env, "node", ["--input-type=module", "--eval", script, workspace])).trim();
+  yield* verifyAuthkitTest(workspace, env);
   const compiler = yield* command(workspace, env, "node", ["node_modules/@typescript/native/bin/tsc", "--version"]);
   const manifest = yield* S.decodeEffect(sDependencySections)(yield* fs.readFileString(path.join(workspace, "package.json")));
   yield* assert(
@@ -601,6 +602,36 @@ const verifyResolution = E.fn("product.verifyResolution")(function* (workspace: 
   ])).trim();
   yield* Console.log(`Product resolution in ${workspace}: ${resolution}; native compiler: ${compiler.trim()}; Bun Effect: ${effect}`);
   return `${resolution}\n${effect}`;
+});
+
+const verifyAuthkitTest = E.fn("product.verifyAuthkitTest")(function* (workspace: string, env: Record<string, string>) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const backend = path.join(workspace, "packages/backend");
+  const fixture = path.join(backend, "test/kee-53");
+  yield* fs.makeDirectory(fixture, { recursive: true });
+  yield* E.gen(function* () {
+    for (const [source, target] of [
+      ["authkit-test.vitest.ts.template", "authkit.test.ts"],
+      ["authkit-test.types.ts.template", "authkit.types.ts"],
+    ])
+      yield* fs.writeFileString(
+        path.join(fixture, target),
+        yield* fs.readFileString(yield* path.fromFileUrl(new URL(`fixtures/${source}`, import.meta.url)))
+      );
+    yield* fs.writeFileString(
+      path.join(fixture, "tsconfig.json"),
+      serializeJson({
+        compilerOptions: { module: "ESNext", moduleResolution: "Bundler", skipLibCheck: false, strict: true, target: "ES2023", types: [] },
+        include: ["authkit.types.ts"],
+      })
+    );
+    yield* command(backend, env, "node", ["../../node_modules/@typescript/native/bin/tsc", "--noEmit", "-p", "test/kee-53/tsconfig.json"]);
+    yield* command(backend, env, "node", ["../../node_modules/@typescript/native/bin/tsc", "--noEmit", "-p", "tsconfig.json"]);
+    const output = yield* command(backend, env, "bun", ["x", "vitest", "run", "--project=integration", "test/kee-53/authkit.test.ts"]);
+    yield* assert(output.includes("2 passed"), "AuthKit public test helper did not execute both default and custom registrations");
+    yield* Console.log("AuthKit test proof: strict declarations, backend typecheck, 2 real component-query tests passed.");
+  }).pipe(E.ensuring(fs.remove(fixture, { force: true, recursive: true }).pipe(E.orDie)));
 });
 
 const verifyReinstalls = E.fn("product.verifyReinstalls")(function* (
@@ -684,6 +715,7 @@ const prepareUpgradeFixture = E.fn("product.prepareUpgradeFixture")(function* (
       ? []
       : [{ name: "1.0.2-application-dependency-baseline", package: "keenko", version: "1.0.2-rc.1" }]),
     { name: "1.0.2-effect-policy-baseline", package: "keenko", version: "1.0.2-rc.2" },
+    { name: "1.0.2-authkit-test", package: "keenko", version: "1.0.2-rc.3" },
   ];
   return {
     applications,
@@ -767,6 +799,9 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
       "dist/migrations/backend-vitest-exclusions-1-0-2.js",
       "dist/migrations/dependency-baseline-1-0-2.js",
       "dist/migrations/bun-linker-1-0-2.js",
+      "dist/migrations/authkit-test-1-0-2.js",
+      "dist/compatibility/authkit-test.js",
+      "dist/compatibility/files/workos-authkit-0.2.10.patch",
       "dist/migrations/files/dependency-baseline-1-0-2.json",
     ])
       yield* assert(
@@ -793,10 +828,10 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     );
     const lockAfter = yield* fs.readFileString(lockPath);
     yield* assert(lockAfter !== lockBefore, "Bun did not reconcile changed dependency state");
-    const initialResolution = yield* verifyResolution(workspace, env);
     yield* verifyInstalledSlots(workspace, target, lockAfter);
     yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
     yield* command(workspace, env, "bun", ["run", "codegen"]);
+    const initialResolution = yield* verifyResolution(workspace, env);
     yield* verifyBackendTestOwnership(workspace, env);
     yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
     yield* verifyReinstalls(workspace, env, initialResolution);
@@ -804,6 +839,10 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     const canonical = new Map<string, string>([
       ["bunfig.toml", yield* fs.readFileString(path.join(workspace, "bunfig.toml"))],
       ["packages/backend/vitest.config.ts", yield* fs.readFileString(path.join(workspace, "packages/backend/vitest.config.ts"))],
+      [
+        "patches/keenko-workos-authkit-0.2.10.patch",
+        yield* fs.readFileString(path.join(workspace, "patches/keenko-workos-authkit-0.2.10.patch")),
+      ],
     ]);
     for (const relative of manifestPaths) canonical.set(relative, yield* fs.readFileString(path.join(workspace, relative)));
     yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"]);

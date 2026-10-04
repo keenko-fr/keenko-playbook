@@ -7,6 +7,7 @@ import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { YAML } from "bun";
 import { Effect as E, FileSystem, Layer as L, Option as O, Path, Struct } from "effect";
 
+import { authkitPatchKey, authkitPatchPath } from "../../compatibility/authkit-test.js";
 import type { PackageJson } from "../helpers.js";
 import { packageVersions, runtimeVersions } from "../versions.js";
 import { START_ROUTE_TREE_FOOTER, webDependencies, webDevDependencies } from "./helpers/apps-web.js";
@@ -85,6 +86,18 @@ const readTemplate = (source: URL) =>
 
 // TESTS -----------------------------------------------------------------------------------------------------------------------------------
 describe("keenko preset", () => {
+  test("generates the version-specific native Bun AuthKit test patch", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = yield* generatePreset();
+        expect(readJson<{ patchedDependencies: Record<string, string> }>(tree, "package.json").patchedDependencies[authkitPatchKey]).toBe(
+          authkitPatchPath
+        );
+        expect(tree.read(authkitPatchPath, "utf-8")).toBe(
+          yield* readTemplate(new URL("../../compatibility/files/workos-authkit-0.2.10.patch", import.meta.url))
+        );
+      })
+    ));
   test("disables the Nx TUI for initial codegen while preserving the parent environment", () => {
     expect(makeInitialCodegenCommand("workspace")).toMatchObject({
       _tag: "StandardCommand",

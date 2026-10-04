@@ -1,0 +1,35 @@
+diff --git a/dist/test.d.ts b/dist/test.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3c52363e59c51eb7ea005f02a5c50948a63188b9
+--- /dev/null
++++ b/dist/test.d.ts
+@@ -0,0 +1,13 @@
++// KEE-53: declaration for AuthKit 0.2.10's public test adapter.
++// Runtime still uses the upstream Vitest/Vite source and nested registrations.
++import type { GenericSchema, SchemaDefinition } from "convex/server";
++import schema from "./component/schema.js";
++
++declare const test: {
++  register(t: {
++    registerComponent(name: string, schema: SchemaDefinition<GenericSchema, boolean>, modules: Record<string, () => Promise<unknown>>): void;
++  }, name?: string): void;
++  schema: typeof schema;
++  modules: Record<string, () => Promise<unknown>>;
++};
++export default test;
+diff --git a/package.json b/package.json
+index c60bfd417a46dd9643084310b7bb24da0020ff4f..d6f735610f286a064569c963278644458b5bb85f 100644
+--- a/package.json
++++ b/package.json
+@@ -46,7 +46,10 @@
+       "types": "./dist/react/index.d.ts",
+       "default": "./dist/react/index.js"
+     },
+-    "./test": "./src/test.ts",
++    "./test": {
++      "types": "./dist/test.d.ts",
++      "default": "./src/test.ts"
++    },
+     "./_generated/component.js": {
+       "types": "./dist/component/_generated/component.d.ts"
+     },

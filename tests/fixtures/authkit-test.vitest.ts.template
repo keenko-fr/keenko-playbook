@@ -1,0 +1,23 @@
+/* oxlint-disable effect/noAsyncFunction, effect/noAs, effect/noGlobals, typescript/no-unsafe-type-assertion -- Exercise the real public AuthKit adapter and Convex component references through the native Vitest host. */
+import type { ComponentApi } from "@convex-dev/workos-authkit/_generated/component.js";
+import authKit from "@convex-dev/workos-authkit/test";
+import { convexTest } from "convex-test";
+import { componentsGeneric } from "convex/server";
+import { expect, test, vi } from "vitest";
+
+for (const name of [undefined, "customAuthKit"])
+  test(`registers and executes the public AuthKit helper: ${name ?? "default"}`, async () => {
+    const t = convexTest(authKit.schema, authKit.modules);
+    const registered = vi.spyOn(t, "registerComponent");
+    authKit.register(t, name);
+    const componentName = name ?? "workOSAuthKit";
+    expect(registered.mock.calls.map(([path]) => path)).toEqual([
+      componentName,
+      `${componentName}/backfillWorkflow`,
+      `${componentName}/backfillWorkflow/workpool`,
+      `${componentName}/backfillWorkflow/workpool/batchWorker`,
+    ]);
+    expect(Object.keys(authKit.modules).some(key => key.endsWith("/lib.ts"))).toBe(true);
+    const component = componentsGeneric()[componentName] as unknown as ComponentApi;
+    expect(await t.query(component.lib.getAuthUser, { id: "user_missing" })).toBeNull();
+  });
