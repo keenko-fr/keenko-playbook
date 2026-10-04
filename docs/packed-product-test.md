@@ -45,7 +45,7 @@ KEE-51's backend discovery boundary runs on these actual canonical isolated inst
 
 ## Exact published package
 
-After Nx Release has published an exact version to npm, run the release-grade acceptance with that version:
+After both readiness stages in [Release workflow and recovery](#release-workflow-and-recovery) succeed, run the release-grade acceptance with the exact published version and the selector for its release mode:
 
 ```sh
 bun run test:published -- <exact-version>
@@ -94,12 +94,48 @@ Stable mode requires the repository to already be on an RC version. It derives t
 
 Nx remains the sole versioning, changelog, Git tag, push, GitHub release, and npm publication authority. `--skip-publish` suppresses only the top-level command's implicit npm publication; the explicit Nx publish phase publishes the already-versioned package and does not perform another version transition or consume another version plan. npm dist-tag behavior is part of the release contract: RC publication moves only `rc`, while stable publication moves only `latest`. After both Nx phases succeed, the workflow reads the version Nx wrote to the root `package.json`; it does not calculate a published version independently.
 
-Before publication, the workflow records the current npm `latest` and `rc` versions. After publication and registry propagation, RC mode verifies that `rc` equals the newly published version while `latest` remains unchanged. Stable mode verifies that `latest` equals the newly published version while `rc` remains unchanged.
+Before publication, the workflow records npm's `latest` and `rc` versions as `PREVIOUS_LATEST` and `PREVIOUS_RC`. These values are the original pre-publication registry snapshot. If `rc` is absent, `PREVIOUS_RC` is an empty string; the quoted argument below preserves that empty value.
 
-Before published acceptance, `bun run release:wait-for-published -- <exact-version>` creates a fresh temporary package project and isolated Bun cache on each attempt, installs the exact package selector from `https://registry.npmjs.org` through Bun's real install path, and verifies the installed `node_modules/keenko/package.json` version. It retries every 10 seconds, makes at most 25 attempts, and has a hard five-minute timeout. A different installed version does not satisfy the check, and both temporarily unavailable packages and transient resolver failures are retried within the same bound.
+After publication, the workflow invokes the waiter with the Nx-published version, release mode, and original snapshot:
 
-Once Bun can install the exact version, the workflow first verifies that exact artifact with `bun run test:published -- <exact-version>`. It then verifies the public selector separately: RC releases use `keenko@rc`, while stable releases use bare `keenko`. The expected installed version remains the exact version published by Nx.
+```sh
+bun run release:wait-for-published -- \
+  "$PUBLISHED_VERSION" \
+  "$RELEASE_MODE" \
+  "$PREVIOUS_LATEST" \
+  "$PREVIOUS_RC"
+```
 
-If registry propagation exceeds the bound, the workflow fails with the exact selector, attempt count, timeout, and last install failure. Rerun the unchanged `bun run release:wait-for-published -- <exact-version>` command after npm propagation completes, then rerun the corresponding published acceptance commands; do not rerun Nx Release or publication.
+The waiter runs two sequential bounded readiness stages:
+
+1. The exact published version must become Bun-installable from `https://registry.npmjs.org`. Each attempt creates a fresh temporary package project and isolated Bun cache, installs the exact package selector through Bun's real install path, and verifies the installed `node_modules/keenko/package.json` version. A different installed version does not satisfy this proof.
+2. npm dist-tags must converge. Both required tags must match their expected values in the same registry observation; exact installation alone does not prove either tag.
+
+The mode invariants are:
+
+```text
+RC:
+rc     = PUBLISHED_VERSION
+latest = PREVIOUS_LATEST
+
+stable:
+latest = PUBLISHED_VERSION
+rc     = PREVIOUS_RC
+```
+
+When `PREVIOUS_RC` is empty, stable verification requires `rc` to remain absent. Each readiness stage retries every 10 seconds, makes at most 25 attempts, and has its own hard five-minute timeout. Temporarily unavailable packages, stale or missing tags, and transient registry or resolver failures retry within those bounds. Failure reports the selectors, expected versions, attempt count, timeout, and last observed mismatch or registry/install error.
+
+Only after both readiness stages succeed does the workflow verify the exact published artifact and then its public selector. RC releases use `keenko@rc`; stable releases use bare `keenko`. Both checks expect the exact version published by Nx:
+
+```sh
+bun run test:published -- "$PUBLISHED_VERSION"
+if [ "$RELEASE_MODE" = "rc" ]; then
+  bun run test:published -- "$PUBLISHED_VERSION" "keenko@rc"
+else
+  bun run test:published -- "$PUBLISHED_VERSION" "keenko"
+fi
+```
+
+If publication succeeded but registry convergence exceeded the bound, do not rerun Nx versioning or Nx publication. Preserve the original pre-publication registry snapshot and rerun the four-argument waiter above with the original `PUBLISHED_VERSION`, `RELEASE_MODE`, `PREVIOUS_LATEST`, and `PREVIOUS_RC`, including an empty previous-RC value. Do not reconstruct either previous tag value from the registry after publication: those values describe pre-publication state. Only after both readiness stages succeed should recovery rerun the corresponding published acceptance commands above. The backward-compatible one-argument waiter proves only exact installation and is insufficient for release readiness or recovery.
 
 If published acceptance exposes a product defect, the workflow fails visibly. The npm publication and release tag are immutable release events: do not unpublish, delete the tag, rewrite the release, or force-push history. Diagnose the consumer failure and ship a subsequent corrective release through the same Nx version-plan process.
