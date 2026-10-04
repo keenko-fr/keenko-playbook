@@ -929,7 +929,7 @@ describe("keenko preset", () => {
 
         expect(tree.exists(".keenko/docs/core/tooling.md")).toBe(true);
 
-        for (const stack of ["convex", "workos-authkit"])
+        for (const stack of ["confect", "convex", "workos-authkit"])
           expect(tree.read(`.keenko/docs/stacks/${stack}/README.md`, "utf-8")).toBe(
             yield* readTemplate(new URL(`../sync/files/docs/stacks/${stack}/README.md`, import.meta.url))
           );
