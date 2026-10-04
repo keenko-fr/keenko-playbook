@@ -129,6 +129,14 @@ const verifyStableWorkflow = E.fn("keenko.release.stableWorkflow")(function* (re
           git: S.Struct({ commit: S.Literal(true), push: S.Literal(true), tag: S.Literal(true) }),
           projectChangelogs: S.Struct({ createRelease: S.Struct({ provider: S.Literal("github") }) }),
         }),
+        conventionalCommits: S.Struct({
+          types: S.Struct({
+            fix: S.Struct({
+              changelog: S.Struct({ hidden: S.Literal(false), title: S.Literal("🩹 Fixes") }),
+              semverBump: S.Literal("patch"),
+            }),
+          }),
+        }),
         version: S.Struct({
           git: S.Struct({ commit: S.Literal(false), push: S.Literal(false), stageChanges: S.Literal(true), tag: S.Literal(false) }),
         }),
@@ -167,6 +175,11 @@ const makeStablePromotionFixture = E.fn("keenko.release.stableFixture")(function
   yield* fs.makeDirectory(plans, { recursive: true });
   const materialChanges = ["KEE-44: preserve early RC material change", "include material change before the final RC"];
   for (const [index, message] of materialChanges.entries()) {
+    if (index === 1) {
+      yield* fs.writeFileString(path.join(fixture, "native-fix.txt"), "Preserve native Nx classification.\n");
+      yield* runFixtureCommand("git", fixture, ["add", "native-fix.txt"]);
+      yield* runFixtureCommand("git", fixture, ["commit", "--quiet", "-m", "fix: preserve native Nx classification"]);
+    }
     yield* fs.writeFileString(path.join(fixture, "material.txt"), `${message}\n`);
     yield* fs.writeFileString(
       path.join(plans, `change-${index}.md`),
@@ -189,6 +202,65 @@ const makeStablePromotionFixture = E.fn("keenko.release.stableFixture")(function
   yield* runFixtureCommand("git", fixture, ["add", "nx.json"]);
   yield* runFixtureCommand("git", fixture, ["commit", "--quiet", "-m", "chore: configure local stable push"]);
   return { fixture, remote };
+});
+
+const verifyRejectedStableVersion = E.fn("keenko.release.rejectStableVersion")(function* (
+  fixture: string,
+  remote: string,
+  script: string,
+  environment: Record<string, string>,
+  version: string
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const manifestPath = path.join(fixture, "package.json");
+  const originalManifest = yield* fs.readFileString(manifestPath);
+  const codec = S.fromJsonString(S.Record(S.String, S.Unknown));
+  const manifest = yield* S.decodeEffect(codec)(originalManifest);
+  const rejectedManifest = yield* S.encodeEffect(codec)({ ...manifest, version });
+  yield* fs.writeFileString(manifestPath, rejectedManifest);
+  const head = yield* runFixtureCommand("git", fixture, ["rev-parse", "HEAD"]);
+  const refs = yield* runFixtureCommand("git", fixture, ["show-ref"]);
+  const remoteRefs = yield* runFixtureCommand("git", remote, ["show-ref"]);
+  const changelog = yield* fs.readFileString(path.join(fixture, "CHANGELOG.md"));
+  const commandLog = path.join(fixture, "release-commands.log");
+  yield* fs.writeFileString(commandLog, "");
+  const rejected = yield* spawner.spawn(
+    ChildProcess.make("/bin/bash", ["-e", "-c", script], {
+      cwd: fixture,
+      env: environment,
+      extendEnv: true,
+      forceKillAfter: "5 seconds",
+      stderr: "ignore",
+      stdout: "ignore",
+    })
+  );
+  if (
+    Number(yield* rejected.exitCode) === 0 ||
+    (yield* fs.readFileString(manifestPath)) !== rejectedManifest ||
+    (yield* runFixtureCommand("git", fixture, ["rev-parse", "HEAD"])) !== head ||
+    (yield* runFixtureCommand("git", fixture, ["show-ref"])) !== refs ||
+    (yield* runFixtureCommand("git", remote, ["show-ref"])) !== remoteRefs ||
+    (yield* fs.readFileString(path.join(fixture, "CHANGELOG.md"))) !== changelog ||
+    (yield* fs.readFileString(commandLog)) !== ""
+  )
+    return yield* new ReleaseVersionFailure({ message: `Stable workflow did not reject ${version} before all release actions` });
+  yield* fs.writeFileString(manifestPath, originalManifest);
+});
+
+const verifyStableEntryClassification = E.fn("keenko.release.stableClassification")(function* (entry: string) {
+  const fixes = entry.split("### 🩹 Fixes\n")[1]?.split("\n### ")[0] ?? "";
+  const genericChanges = entry
+    .split("### Changes\n")
+    .slice(1)
+    .map((section) => section.split("\n### ")[0] ?? "")
+    .join("\n");
+  yield* assertContains(fixes, "- preserve native Nx classification", "Native fix did not retain Nx's Fixes classification");
+  for (const material of ["preserve early RC material change", "include material change before the final RC"])
+    yield* assertContains(genericChanges, material, "Unknown squash title did not retain generic Changes handling");
+  if (genericChanges.includes("preserve native Nx classification"))
+    return yield* new ReleaseVersionFailure({ message: "Native fix was moved into the generic Changes bucket" });
 });
 
 const verifyStablePromotion = E.fn("keenko.release.stablePromotion")(function* (
@@ -214,7 +286,7 @@ const verifyStablePromotion = E.fn("keenko.release.stablePromotion")(function* (
   ]);
   const finalRcEntry = finalRcOnly.split("NATIVE_ENTRY")[1] ?? "";
   yield* assertContains(finalRcEntry, "version bump only", "Final-RC control did not isolate the mechanical promotion");
-  if (finalRcEntry.includes("material change"))
+  if (finalRcEntry.includes("material change") || finalRcEntry.includes("preserve native Nx classification"))
     return yield* new ReleaseVersionFailure({ message: "Final-RC control unexpectedly included earlier material changes" });
 
   // Replay the canonical workflow. All version/changelog/Git actions are real Nx;
@@ -222,16 +294,18 @@ const verifyStablePromotion = E.fn("keenko.release.stablePromotion")(function* (
   const bin = yield* fs.makeTempDirectoryScoped({ prefix: "keenko-release-bin-" });
   yield* fs.writeFileString(
     path.join(bin, "bun"),
-    '#!/bin/sh\nif [ "$1" != x ] || [ "$2" != nx ]; then exec "$REAL_BUN" "$@"; fi\nshift 2\nif [ "$2" = publish ]; then exec "$REAL_NX" "$@" --dry-run --outputStyle=static; fi\nexec "$REAL_NX" "$@"\n'
+    '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FIXTURE_COMMAND_LOG"\nif [ "$1" != x ] || [ "$2" != nx ]; then exec "$REAL_BUN" "$@"; fi\nshift 2\nif [ "$2" = publish ]; then exec "$REAL_NX" "$@" --dry-run --outputStyle=static; fi\nexec "$REAL_NX" "$@"\n'
   );
   yield* fs.chmod(path.join(bin, "bun"), 0o755);
   const environment = {
+    FIXTURE_COMMAND_LOG: path.join(fixture, "release-commands.log"),
     PATH: `${bin}:${yield* Config.String("PATH")}`,
     PREVIOUS_LATEST: "1.0.1",
     REAL_BUN: (yield* runFixtureCommand("bun", fixture, ["-e", "console.log(process.execPath)"])).trim(),
     REAL_NX: nx,
     RELEASE_MODE: "stable",
   };
+  yield* verifyRejectedStableVersion(fixture, remote, script, environment, "1.0.2-beta.1");
   const headBefore = (yield* runFixtureCommand("git", fixture, ["rev-parse", "HEAD"])).trim();
   const manifestBefore = yield* fs.readFileString(path.join(fixture, "package.json"));
   for (const previousLatest of ["", "latest", "1.0.1-rc.0", "9.0.0"]) {
@@ -257,6 +331,7 @@ const verifyStablePromotion = E.fn("keenko.release.stablePromotion")(function* (
   const stableEntry = (yield* fs.readFileString(path.join(fixture, "CHANGELOG.md"))).split("\n## 1.0.2-rc.1")[0] ?? "";
   for (const material of ["preserve early RC material change", "include material change before the final RC"])
     yield* assertContains(stableEntry, material, "Stable notes omitted material changes from the RC line");
+  yield* verifyStableEntryClassification(stableEntry);
   if (stableEntry.includes("version bump only"))
     return yield* new ReleaseVersionFailure({ message: "Stable entry collapsed to mechanical promotion notes" });
   if (stableEntry.match(/^## 1\.0\.2 /gmu)?.length !== 1)
@@ -281,18 +356,7 @@ const verifyStablePromotion = E.fn("keenko.release.stablePromotion")(function* (
     '"version": "1.0.2"',
     "Nx release commit did not contain the stable version"
   );
-  const alreadyStable = yield* spawner.spawn(
-    ChildProcess.make("/bin/bash", ["-e", "-c", script], {
-      cwd: fixture,
-      env: environment,
-      extendEnv: true,
-      forceKillAfter: "5 seconds",
-      stderr: "ignore",
-      stdout: "ignore",
-    })
-  );
-  if (Number(yield* alreadyStable.exitCode) === 0)
-    return yield* new ReleaseVersionFailure({ message: "Stable workflow accepted an already-stable version" });
+  yield* verifyRejectedStableVersion(fixture, remote, script, environment, "1.0.2");
 });
 
 const program = E.gen(function* () {

@@ -88,7 +88,7 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
 
-          if [[ "$RELEASE_MODE" == "stable" && "$VERSION" != *-* ]]; then
+          if [[ "$RELEASE_MODE" == "stable" ]] && ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]]; then
             echo "Stable release requires the repository to already be on an RC version; got $VERSION"
             exit 1
           fi
@@ -145,12 +145,12 @@ jobs:
             bun x nx release publish --tag rc
           else
             VERSION="$(node -p "require('./package.json').version")"
-            STABLE_TARGET="${VERSION%%-*}"
 
-            if [[ "$STABLE_TARGET" == "$VERSION" ]]; then
+            if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]]; then
               echo "Stable mode requires an RC version; got $VERSION"
               exit 1
             fi
+            STABLE_TARGET="${VERSION%%-*}"
 
             if ! [[ "$PREVIOUS_LATEST" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
               echo "Stable mode requires a valid previous npm latest stable version; got $PREVIOUS_LATEST"
