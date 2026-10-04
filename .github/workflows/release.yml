@@ -130,6 +130,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.release-app.outputs.token }}
           RELEASE_MODE: ${{ inputs.mode }}
+          PREVIOUS_LATEST: ${{ steps.registry-before.outputs.latest }}
         run: |
           if [ "$RELEASE_MODE" = "rc" ]; then
             bun x nx release --skip-publish --preid rc
@@ -151,7 +152,32 @@ jobs:
               exit 1
             fi
 
-            bun x nx release "$STABLE_TARGET" --skip-publish
+            if ! [[ "$PREVIOUS_LATEST" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "Stable mode requires a valid previous npm latest stable version; got $PREVIOUS_LATEST"
+              exit 1
+            fi
+
+            git rev-parse --verify "refs/tags/v$PREVIOUS_LATEST^{commit}" >/dev/null
+            git merge-base --is-ancestor "refs/tags/v$PREVIOUS_LATEST" HEAD
+
+            bun x nx release version "$STABLE_TARGET"
+            # Nx 23.2.1 CLI changelogs use current plans, including after RCs consumed them.
+            # Override only stable changelog generation; Nx owns all release actions.
+            node --input-type=module -e '
+              import { ReleaseClient } from "nx/release";
+              import { getGitDiff, parseCommits } from "nx/src/command-line/release/utils/git.js";
+              import { DEFAULT_CONVENTIONAL_COMMITS_CONFIG } from "nx/src/command-line/release/config/conventional-commits.js";
+              const types = Object.fromEntries(
+                parseCommits(await getGitDiff(process.argv[2]))
+                  .filter(({ type }) => type === "__INVALID__" || !Object.hasOwn(DEFAULT_CONVENTIONAL_COMMITS_CONFIG.types, type))
+                  .map(({ type }) => [type, { semverBump: "none", changelog: { title: "Changes", hidden: false } }])
+              );
+              await new ReleaseClient({
+                versionPlans: false,
+                changelog: { workspaceChangelog: false },
+                conventionalCommits: { types }
+              }).releaseChangelog({ version: process.argv[1], from: process.argv[2] });
+            ' "$STABLE_TARGET" "v$PREVIOUS_LATEST"
             bun x nx release publish --tag latest
           fi
 
