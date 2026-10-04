@@ -83,3 +83,13 @@ Regenerate affected artifacts and run focused plus canonical verification.
 For version-sensitive APIs, trust installed source and types first, then current first-party documentation. Model memory is not a source.
 
 Temporary compatibility workarounds must be narrow and documented. Do not permanently hide an upstream mismatch behind a generic facade.
+
+## AuthKit 0.2.10 test compatibility (KEE-53)
+
+The public `@convex-dev/workos-authkit/test` export points to TypeScript source. Its type-only `convex-test` import and nested helpers' `vite/client` references are development dependencies of the upstream packages, absent from their installed dependency contracts. Isolated Bun correctly prevents access to those undeclared modules. Backend's direct `convex-test` slot does not repair the upstream boundary.
+
+Until upstream supplies a compatible release, Keenko generates one native Bun patch, `patches/keenko-workos-authkit-0.2.10.patch`, and its exact root `patchedDependencies["@convex-dev/workos-authkit@0.2.10"]` mapping. The patch gives only the public test export a `types` condition and a declaration using the already-declared Convex peer. It retains the concrete component schema and requires the component-registration method used by the adapter. Vitest/Vite still transforms and runs the unchanged upstream TypeScript helper, including nested workflow/workpool registrations. Its erased development-only references need no runtime dependency edges. Backend still owns `convex-test`; Vitest owns its Vite transformer. No consumer dependency slot changes.
+
+The focused `1.0.2-authkit-test` Nx migration adds the same two owned fields. It preserves unrelated patches and project state, rejects conflicting customization before writing, and is idempotent. The canonical second `bun install` applies the patch and regenerates `bun.lock`. Sync owns guidance, not patch installation. This is a correction for this exact package defect, not a general patching policy.
+
+When adopting an upstream-fixed AuthKit version, stop generating this patch and add a focused native migration removing only the recognized mapping and matching asset. Preserve unrelated patches and reject conflicting owned state. Retain the historical migration factory and asset in the npm artifact while direct upgrades from supported older releases still need them. Bun then reconciles the lockfile. Verify the same public-entrypoint typecheck and real component-query tests against upstream before removing the correction.

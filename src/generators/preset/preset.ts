@@ -11,6 +11,7 @@ import {
 import { Effect as E, HashSet as HS, Layer as L, Path, Schema as S, Struct } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { installAuthkitTestPatch } from "../../compatibility/authkit-test.js";
 import { WorkspaceFailure } from "../errors.js";
 import type { PackageJson } from "../helpers.js";
 import { syncManagedState } from "../sync/managed-state.js";
@@ -77,6 +78,7 @@ export const presetProgram = E.fn("keenko.preset.generate")(function* (tree: Tre
   const rootFiles = yield* path.fromFileUrl(new URL("files/root", import.meta.url)).pipe(E.orDie);
 
   configureRootPackageJson(tree, workspace);
+  installAuthkitTestPatch(tree);
   configureNx(tree);
   generateFiles(tree, rootFiles, ".", { runtimeVersions });
   tree.delete(".editorconfig");

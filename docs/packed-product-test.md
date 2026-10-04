@@ -43,6 +43,14 @@ Fresh creation uses the canonical isolated linker with the virtual-store phantom
 
 KEE-51's backend discovery boundary runs on these actual canonical isolated installations. Backend-local dependency-owned tests must be reachable, while only the authored Node fixture and Edge Runtime integration fixture run, exactly once in their intended projects. Generated Convex and dependency-owned tests remain excluded. This retains the focused backend ownership proof within the complete KEE-50 product gate.
 
+### AuthKit isolated-install regression (KEE-53)
+
+The repository regression first installs the unchanged rc.2 dependency roles in a neutral temporary workspace and observes both missing `convex-test` and `vite/client` diagnostics through the real public AuthKit test import. It then applies the focused native migration and proves strict declaration checking with `skipLibCheck=false`, real default/custom component registration, and component queries through Vitest. The upstream runtime source remains byte-for-byte unchanged. Removing the owned mapping and asset followed by ordinary Bun installation restores the original package and diagnostics, proving patch removal needs no dependency-directory cleanup.
+
+Fresh and upgraded packed consumers run that public-entrypoint proof before the canonical check and after frozen and ordinary reinstalls. They also typecheck the fixture through the normal backend configuration. Resolution probes show backend owns `convex-test`, Vitest owns Vite, and neither has acquired phantom visibility from the real AuthKit package path. The corrected declaration does not need those erased source-only imports. The unchanged runtime adapter registers AuthKit, its backfill workflow, workpool, and batch worker.
+
+Nx selects `1.0.2-authkit-test` at `1.0.2-rc.3` after the existing migrations. Artifact checks require its factory, compatibility installer, and patch asset. Migration reruns preserve the patch, manifests and Bun lockfile. See the generated dependency guidance for the exact temporary ownership and future upstream-removal procedure. Local acceptance uses an unpublished packed candidate; it does not establish published rc.3 acceptance.
+
 ## Exact published package
 
 After both readiness stages in [Release workflow and recovery](#release-workflow-and-recovery) succeed, run the release-grade acceptance with the exact published version and the selector for its release mode:

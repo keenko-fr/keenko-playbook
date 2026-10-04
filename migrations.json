@@ -29,6 +29,11 @@
       "version": "1.0.2-rc.2",
       "description": "Converge the managed Effect lint plugin to 0.27.0, including consumers of published rc.1.",
       "factory": "./dist/migrations/dependency-baseline-1-0-2"
+    },
+    "1.0.2-authkit-test": {
+      "version": "1.0.2-rc.3",
+      "description": "Make AuthKit 0.2.10's public test adapter typecheck under isolated Bun without phantom dependencies.",
+      "factory": "./dist/migrations/authkit-test-1-0-2"
     }
   },
   "packageJsonUpdates": {}

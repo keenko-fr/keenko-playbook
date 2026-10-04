@@ -1,0 +1,16 @@
+import authKit from "@convex-dev/workos-authkit/test";
+import { convexTest } from "convex-test";
+import type { DataModelFromSchemaDefinition } from "convex/server";
+
+const t = convexTest(authKit.schema, authKit.modules);
+authKit.register(t);
+authKit.register(t, "customAuthKit");
+
+// Retain the concrete upstream schema and module map.
+export type User = DataModelFromSchemaDefinition<typeof authKit.schema>["users"]["document"];
+export const email: User["email"] = "identity@example.test";
+
+export function rejectInvalidAdapter() {
+  // @ts-expect-error The adapter requires Convex component registration.
+  authKit.register({});
+}
