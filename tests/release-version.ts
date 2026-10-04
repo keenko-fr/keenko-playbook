@@ -105,8 +105,12 @@ const program = E.gen(function* () {
   yield* assertContains(nextRc, "new version 1.0.0-rc.1", "Nx did not increment a later RC");
 
   const policyFixture = yield* makeReleaseFixture(nodeModules, packageManager, "1.0.2-rc.1", "prerelease");
+  yield* fs.writeFileString(
+    path.join(policyFixture, ".nx/version-plans/publication-registry-convergence.md"),
+    "---\n__default__: prerelease\n---\n\nWait for publication registry convergence.\n"
+  );
   const policyRc = yield* runVersionDryRun(nx, policyFixture, ["--preid", "rc"]);
-  yield* assertContains(policyRc, "new version 1.0.2-rc.2", "Nx did not select the post-rc.1 policy migration boundary");
+  yield* assertContains(policyRc, "new version 1.0.2-rc.2", "Combined prerelease plans did not select one post-rc.1 candidate");
 
   const nextPatchRcFixture = yield* makeReleaseFixture(nodeModules, packageManager, "1.0.0", "prepatch");
   const nextPatchRc = yield* runReleaseDryRun(nx, nextPatchRcFixture, ["--preid", "rc"]);
@@ -213,23 +217,23 @@ const program = E.gen(function* () {
 
   yield* assertContains(
     release,
-    'test "$CURRENT_RC" = "$PUBLISHED_VERSION"',
-    "RC publication does not verify that the rc dist-tag moved to the published version"
+    'bun run release:wait-for-published -- "$PUBLISHED_VERSION" "$RELEASE_MODE" "$PREVIOUS_LATEST" "$PREVIOUS_RC"',
+    "Release workflow does not wait for exact installation and both mode-specific dist-tags"
   );
-
-  yield* assertContains(
-    release,
-    'test "$CURRENT_LATEST" = "$PREVIOUS_LATEST"',
-    "RC publication does not verify that latest stayed unchanged"
-  );
-
-  yield* assertContains(
-    release,
-    'test "$CURRENT_LATEST" = "$PUBLISHED_VERSION"',
-    "Stable publication does not verify that latest moved to the published version"
-  );
-
-  yield* assertContains(release, 'test "$CURRENT_RC" = "$PREVIOUS_RC"', "Stable publication does not verify that rc stayed unchanged");
+  if (release.includes("CURRENT_RC=") || release.includes("CURRENT_LATEST="))
+    return yield* new ReleaseVersionFailure({ message: "Release workflow still uses immediate post-publication tag assertions" });
+  const convergence = release.indexOf("- name: Wait for published package and npm dist-tags");
+  if (
+    convergence < release.indexOf("- name: Read Nx-published version") ||
+    convergence > release.indexOf("- name: Verify published product") ||
+    convergence > release.indexOf("- name: Verify published preset selector")
+  )
+    return yield* new ReleaseVersionFailure({ message: "Published acceptance must follow successful registry convergence" });
+  if (
+    release.match(/bun x nx release publish --tag rc/gu)?.length !== 1 ||
+    release.match(/bun x nx release publish --tag latest/gu)?.length !== 1
+  )
+    return yield* new ReleaseVersionFailure({ message: "Each release mode must publish exactly once" });
 
   yield* assertContains(
     release,

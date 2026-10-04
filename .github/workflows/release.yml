@@ -118,8 +118,10 @@ jobs:
       - name: Read current npm dist-tags
         id: registry-before
         run: |
-          latest="$(npm view keenko@latest version)"
-          rc="$(npm view keenko@rc version 2>/dev/null || true)"
+          tags="$(npm view keenko dist-tags --json --registry https://registry.npmjs.org --prefer-online)"
+          latest="$(node -p 'JSON.parse(process.argv[1]).latest ?? ""' "$tags")"
+          rc="$(node -p 'JSON.parse(process.argv[1]).rc ?? ""' "$tags")"
+          test -n "$latest"
 
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
@@ -159,26 +161,13 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for published version to be Bun-installable
-        run: bun run release:wait-for-published -- "${{ steps.published.outputs.version }}"
-
-      - name: Verify npm dist-tags
+      - name: Wait for published package and npm dist-tags
         env:
           RELEASE_MODE: ${{ inputs.mode }}
           PUBLISHED_VERSION: ${{ steps.published.outputs.version }}
           PREVIOUS_LATEST: ${{ steps.registry-before.outputs.latest }}
           PREVIOUS_RC: ${{ steps.registry-before.outputs.rc }}
-        run: |
-          CURRENT_LATEST="$(npm view keenko@latest version)"
-          CURRENT_RC="$(npm view keenko@rc version 2>/dev/null || true)"
-
-          if [ "$RELEASE_MODE" = "rc" ]; then
-            test "$CURRENT_RC" = "$PUBLISHED_VERSION"
-            test "$CURRENT_LATEST" = "$PREVIOUS_LATEST"
-          else
-            test "$CURRENT_LATEST" = "$PUBLISHED_VERSION"
-            test "$CURRENT_RC" = "$PREVIOUS_RC"
-          fi
+        run: bun run release:wait-for-published -- "$PUBLISHED_VERSION" "$RELEASE_MODE" "$PREVIOUS_LATEST" "$PREVIOUS_RC"
 
       - name: Verify published product
         run: bun run test:published -- "${{ steps.published.outputs.version }}"
