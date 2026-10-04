@@ -164,7 +164,21 @@ const hasAccount = reader
 
 Keep `collect` when the operation genuinely needs every matching row. For an ordinary bounded read, use `take(n)` or `Stream.take(n)` followed by consumption. Reserve `QueryStream.paginate` for an actual paginated query contract that needs stream cursor/key semantics, not as a replacement for an ordinary bounded read.
 
-A QueryStream is an Effect Stream with stored index keys, layout, and direction. Plain `Stream.filter`, `Stream.map`, and other Effect Stream transforms return ordinary streams without QueryStream metadata. They are appropriate when the stream will be consumed immediately and that metadata is no longer useful. Use `QueryStream.filter`, `QueryStream.map`, or their effectful variants only when subsequent QueryStream composition, ordering, or pagination needs the retained keys/layout. Mapping emitted values does not recompute stored keys.
+A QueryStream is an Effect Stream with stored index keys, layout, and direction. Plain `Stream.filter`, `Stream.map`, and other Effect Stream transforms return ordinary streams without QueryStream metadata. They are appropriate once no later step requires QueryStream-specific operations or retained QueryStream metadata/semantics. Use `QueryStream.filter`, `QueryStream.map`, or their effectful variants when a later QueryStream-only operation, such as `QueryStream.unique`, must remain available, or when ordering, pagination, or keyed composition requires retained metadata. `unique` requires a QueryStream as input; this requirement does not mean it needs the stored keys/layout. Mapping emitted values does not recompute stored keys.
+
+If an explicit `0..1` query requires a predicate before `unique`, retain the QueryStream through that transform. For example, using the same table and index:
+
+```ts
+const optionalCustomerAccount = reader
+  .table("accounts")
+  .stream("by_external_id", (q) => q.eq("externalId", externalId))
+  .pipe(
+    QueryStream.filter((account) => account.externalId.startsWith("customer:")),
+    QueryStream.unique
+  );
+```
+
+`QueryStream.filterEffect` also retains the QueryStream for a later `unique`. Ordinary `Stream.filter` would return an ordinary Stream that `QueryStream.unique` cannot consume. Choose the transform from the actual downstream contract, not stylistic consistency.
 
 Use ordered `merge`, key-prefix deduplication through `distinct`, key-range `narrow`, `reverse`, joins through `flatMap`, and similar QueryStream operations only when their specific query/key semantics are materially required. The verified version exports `distinct`, not `deduplicate`. This is not a requirement to rewrite ordinary reads with streams.
 
