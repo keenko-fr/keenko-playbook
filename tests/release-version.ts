@@ -1,5 +1,5 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Effect as E, FileSystem, Path, Schema as S } from "effect";
+import { Config, Effect as E, FileSystem, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { runtimeVersions } from "../src/generators/versions.js";
@@ -79,6 +79,286 @@ const makeReleaseFixture = E.fn("keenko.releaseVersion.fixture")(function* (
 const assertContains = (output: string, expected: string, context: string) =>
   output.includes(expected) ? E.void : E.fail(new ReleaseVersionFailure({ message: `${context}:\n${output}` }));
 
+const runFixtureCommand = E.fn("keenko.release.fixtureCommand")(function* (executable: string, cwd: string, args: readonly string[]) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  return yield* spawner.string(ChildProcess.make(executable, args, { cwd, forceKillAfter: "5 seconds" }), { includeStderr: true });
+});
+
+const verifyStableWorkflow = E.fn("keenko.release.stableWorkflow")(function* (repository: string, release: string) {
+  const step = release.split("      - name: Release with Nx\n")[1]?.split("      - name:")[0] ?? "";
+  const script = (step.split("        run: |\n")[1] ?? "").replaceAll(/^ {10}/gmu, "");
+  const nativeChangelog = /node --input-type=module -e '(?<code>[\s\S]+?)'/u.exec(script)?.groups?.code ?? "";
+  if (nativeChangelog === "") return yield* new ReleaseVersionFailure({ message: "Stable workflow has no native Nx changelog call" });
+
+  yield* assertContains(
+    step,
+    // oxlint-disable-next-line no-template-curly-in-string -- Literal GitHub Actions snapshot wiring.
+    "PREVIOUS_LATEST: ${{ steps.registry-before.outputs.latest }}",
+    "Stable changelog does not receive the original registry snapshot"
+  );
+  yield* assertContains(script, '\' "$STABLE_TARGET" "v$PREVIOUS_LATEST"', "Stable changelog does not receive the previous stable ref");
+  const versionCommand = script.indexOf('bun x nx release version "$STABLE_TARGET"');
+  const changelogCommand = script.indexOf("node --input-type=module -e");
+  const publishCommand = script.indexOf("bun x nx release publish --tag latest");
+  if (versionCommand === -1 || changelogCommand <= versionCommand || publishCommand <= changelogCommand)
+    return yield* new ReleaseVersionFailure({ message: "Stable workflow must version, generate its changelog, then publish" });
+  if (/git (?:commit|tag|push)\b|gh release\b|api\.github\.com|generate-notes/gu.test(script))
+    return yield* new ReleaseVersionFailure({ message: "Release actions must remain Nx-owned" });
+  if (release.match(/npm view keenko dist-tags/gu)?.length !== 1)
+    return yield* new ReleaseVersionFailure({ message: "Release must share one pre-publication registry snapshot" });
+
+  // Inspect native defaults with the actual stable override, without contacting GitHub.
+  const ownershipOutput = yield* runFixtureCommand("node", repository, [
+    "--input-type=module",
+    "-e",
+    nativeChangelog.replace(
+      ".releaseChangelog({ version: process.argv[1], from: process.argv[2] })",
+      '.releaseChangelog({ version: process.argv[1], printConfig: "debug" })'
+    ),
+    "1.0.2",
+    "v1.0.1",
+  ]);
+  const ownershipJson =
+    ownershipOutput.split("START FINAL INTERNAL CONFIG\n")[1]?.split("=============================================================")[0] ??
+    "";
+  if (ownershipJson === "") return yield* new ReleaseVersionFailure({ message: "Nx did not print resolved stable ownership" });
+  yield* S.decodeEffect(
+    S.fromJsonString(
+      S.Struct({
+        changelog: S.Struct({
+          git: S.Struct({ commit: S.Literal(true), push: S.Literal(true), tag: S.Literal(true) }),
+          projectChangelogs: S.Struct({ createRelease: S.Struct({ provider: S.Literal("github") }) }),
+        }),
+        conventionalCommits: S.Struct({
+          types: S.Struct({
+            fix: S.Struct({
+              changelog: S.Struct({ hidden: S.Literal(false), title: S.Literal("🩹 Fixes") }),
+              semverBump: S.Literal("patch"),
+            }),
+          }),
+        }),
+        version: S.Struct({
+          git: S.Struct({ commit: S.Literal(false), push: S.Literal(false), stageChanges: S.Literal(true), tag: S.Literal(false) }),
+        }),
+      })
+    )
+  )(ownershipJson);
+  return script;
+});
+
+const makeStablePromotionFixture = E.fn("keenko.release.stableFixture")(function* (
+  nx: string,
+  nodeModules: string,
+  packageManager: string
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const fixture = yield* makeReleaseFixture(nodeModules, packageManager, "1.0.1", "none");
+  // GitHub is disabled only in this offline fixture. Push uses a disposable local remote.
+  const config = {
+    release: {
+      changelog: { projectChangelogs: true, workspaceChangelog: false },
+      projects: ["keenko"],
+      version: { adjustSemverBumpsForZeroMajorVersion: false },
+      versionPlans: true,
+    },
+  };
+  yield* fs.writeFileString(path.join(fixture, "nx.json"), yield* S.encodeEffect(S.fromJsonString(S.Unknown))(config));
+  yield* runFixtureCommand("git", fixture, ["add", "nx.json"]);
+  yield* runFixtureCommand("git", fixture, ["commit", "--quiet", "-m", "chore: configure offline release"]);
+  yield* runFixtureCommand("git", fixture, ["tag", "v1.0.1"]);
+  const remote = yield* fs.makeTempDirectoryScoped({ prefix: "keenko-release-remote-" });
+  yield* runFixtureCommand("git", remote, ["init", "--bare", "--quiet"]);
+  yield* runFixtureCommand("git", fixture, ["remote", "add", "origin", remote]);
+  yield* runFixtureCommand("git", fixture, ["push", "--quiet", "--set-upstream", "origin", "HEAD"]);
+  const plans = path.join(fixture, ".nx/version-plans");
+  yield* fs.makeDirectory(plans, { recursive: true });
+  const materialChanges = ["KEE-44: preserve early RC material change", "include material change before the final RC"];
+  for (const [index, message] of materialChanges.entries()) {
+    if (index === 1) {
+      yield* fs.writeFileString(path.join(fixture, "native-fix.txt"), "Preserve native Nx classification.\n");
+      yield* runFixtureCommand("git", fixture, ["add", "native-fix.txt"]);
+      yield* runFixtureCommand("git", fixture, ["commit", "--quiet", "-m", "fix: preserve native Nx classification"]);
+    }
+    yield* fs.writeFileString(path.join(fixture, "material.txt"), `${message}\n`);
+    yield* fs.writeFileString(
+      path.join(plans, `change-${index}.md`),
+      `---\n__default__: ${index === 0 ? "prepatch" : "prerelease"}\n---\n\n${message}\n`
+    );
+    yield* runFixtureCommand("git", fixture, ["add", "material.txt", ".nx/version-plans"]);
+    yield* runFixtureCommand("git", fixture, ["commit", "--quiet", "-m", message]);
+    const rc = yield* runFixtureCommand(nx, fixture, ["release", "--skip-publish", "--preid", "rc"]);
+    yield* assertContains(rc, `new version 1.0.2-rc.${index}`, "Native RC history did not resolve the expected candidate");
+  }
+  if ((yield* fs.readDirectory(plans)).length !== 0)
+    return yield* new ReleaseVersionFailure({ message: "RC releases did not consume their plans" });
+  // Top-level RC release rejects granular Git config; enable local push only for stable promotion.
+  yield* fs.writeFileString(
+    path.join(fixture, "nx.json"),
+    yield* S.encodeEffect(S.fromJsonString(S.Unknown))({
+      release: { ...config.release, changelog: { ...config.release.changelog, git: { push: true } } },
+    })
+  );
+  yield* runFixtureCommand("git", fixture, ["add", "nx.json"]);
+  yield* runFixtureCommand("git", fixture, ["commit", "--quiet", "-m", "chore: configure local stable push"]);
+  return { fixture, remote };
+});
+
+const verifyRejectedStableVersion = E.fn("keenko.release.rejectStableVersion")(function* (
+  fixture: string,
+  remote: string,
+  script: string,
+  environment: Record<string, string>,
+  version: string
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const manifestPath = path.join(fixture, "package.json");
+  const originalManifest = yield* fs.readFileString(manifestPath);
+  const codec = S.fromJsonString(S.Record(S.String, S.Unknown));
+  const manifest = yield* S.decodeEffect(codec)(originalManifest);
+  const rejectedManifest = yield* S.encodeEffect(codec)({ ...manifest, version });
+  yield* fs.writeFileString(manifestPath, rejectedManifest);
+  const head = yield* runFixtureCommand("git", fixture, ["rev-parse", "HEAD"]);
+  const refs = yield* runFixtureCommand("git", fixture, ["show-ref"]);
+  const remoteRefs = yield* runFixtureCommand("git", remote, ["show-ref"]);
+  const changelog = yield* fs.readFileString(path.join(fixture, "CHANGELOG.md"));
+  const commandLog = path.join(fixture, "release-commands.log");
+  yield* fs.writeFileString(commandLog, "");
+  const rejected = yield* spawner.spawn(
+    ChildProcess.make("/bin/bash", ["-e", "-c", script], {
+      cwd: fixture,
+      env: environment,
+      extendEnv: true,
+      forceKillAfter: "5 seconds",
+      stderr: "ignore",
+      stdout: "ignore",
+    })
+  );
+  if (
+    Number(yield* rejected.exitCode) === 0 ||
+    (yield* fs.readFileString(manifestPath)) !== rejectedManifest ||
+    (yield* runFixtureCommand("git", fixture, ["rev-parse", "HEAD"])) !== head ||
+    (yield* runFixtureCommand("git", fixture, ["show-ref"])) !== refs ||
+    (yield* runFixtureCommand("git", remote, ["show-ref"])) !== remoteRefs ||
+    (yield* fs.readFileString(path.join(fixture, "CHANGELOG.md"))) !== changelog ||
+    (yield* fs.readFileString(commandLog)) !== ""
+  )
+    return yield* new ReleaseVersionFailure({ message: `Stable workflow did not reject ${version} before all release actions` });
+  yield* fs.writeFileString(manifestPath, originalManifest);
+});
+
+const verifyStableEntryClassification = E.fn("keenko.release.stableClassification")(function* (entry: string) {
+  const fixes = entry.split("### 🩹 Fixes\n")[1]?.split("\n### ")[0] ?? "";
+  const genericChanges = entry
+    .split("### Changes\n")
+    .slice(1)
+    .map((section) => section.split("\n### ")[0] ?? "")
+    .join("\n");
+  yield* assertContains(fixes, "- preserve native Nx classification", "Native fix did not retain Nx's Fixes classification");
+  for (const material of ["preserve early RC material change", "include material change before the final RC"])
+    yield* assertContains(genericChanges, material, "Unknown squash title did not retain generic Changes handling");
+  if (genericChanges.includes("preserve native Nx classification"))
+    return yield* new ReleaseVersionFailure({ message: "Native fix was moved into the generic Changes bucket" });
+});
+
+const verifyStablePromotion = E.fn("keenko.release.stablePromotion")(function* (
+  repository: string,
+  nx: string,
+  nodeModules: string,
+  packageManager: string,
+  release: string
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const script = yield* verifyStableWorkflow(repository, release);
+  const { fixture, remote } = yield* makeStablePromotionFixture(nx, nodeModules, packageManager);
+  // A native final-RC-only range omits both changes. Test the entry itself, not older entries in the file.
+  const finalRcOnly = yield* runFixtureCommand("node", fixture, [
+    "--input-type=module",
+    "-e",
+    `import { ReleaseClient } from "nx/release";
+     const result = await new ReleaseClient({ versionPlans: false, changelog: { workspaceChangelog: false } })
+       .releaseChangelog({ version: "1.0.2", from: "v1.0.2-rc.1", dryRun: true });
+     console.log("NATIVE_ENTRY", result.projectChangelogs.keenko.contents);`,
+  ]);
+  const finalRcEntry = finalRcOnly.split("NATIVE_ENTRY")[1] ?? "";
+  yield* assertContains(finalRcEntry, "version bump only", "Final-RC control did not isolate the mechanical promotion");
+  if (finalRcEntry.includes("material change") || finalRcEntry.includes("preserve native Nx classification"))
+    return yield* new ReleaseVersionFailure({ message: "Final-RC control unexpectedly included earlier material changes" });
+
+  // Replay the canonical workflow. All version/changelog/Git actions are real Nx;
+  // only publication is changed to Nx's native dry run, so no registry is contacted.
+  const bin = yield* fs.makeTempDirectoryScoped({ prefix: "keenko-release-bin-" });
+  yield* fs.writeFileString(
+    path.join(bin, "bun"),
+    '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FIXTURE_COMMAND_LOG"\nif [ "$1" != x ] || [ "$2" != nx ]; then exec "$REAL_BUN" "$@"; fi\nshift 2\nif [ "$2" = publish ]; then exec "$REAL_NX" "$@" --dry-run --outputStyle=static; fi\nexec "$REAL_NX" "$@"\n'
+  );
+  yield* fs.chmod(path.join(bin, "bun"), 0o755);
+  const environment = {
+    FIXTURE_COMMAND_LOG: path.join(fixture, "release-commands.log"),
+    PATH: `${bin}:${yield* Config.String("PATH")}`,
+    PREVIOUS_LATEST: "1.0.1",
+    REAL_BUN: (yield* runFixtureCommand("bun", fixture, ["-e", "console.log(process.execPath)"])).trim(),
+    REAL_NX: nx,
+    RELEASE_MODE: "stable",
+  };
+  yield* verifyRejectedStableVersion(fixture, remote, script, environment, "1.0.2-beta.1");
+  const headBefore = (yield* runFixtureCommand("git", fixture, ["rev-parse", "HEAD"])).trim();
+  const manifestBefore = yield* fs.readFileString(path.join(fixture, "package.json"));
+  for (const previousLatest of ["", "latest", "1.0.1-rc.0", "9.0.0"]) {
+    const rejected = yield* spawner.spawn(
+      ChildProcess.make("/bin/bash", ["-e", "-c", script], {
+        cwd: fixture,
+        env: { ...environment, PREVIOUS_LATEST: previousLatest },
+        extendEnv: true,
+        forceKillAfter: "5 seconds",
+        stderr: "ignore",
+        stdout: "ignore",
+      })
+    );
+    if (Number(yield* rejected.exitCode) === 0 || (yield* fs.readFileString(path.join(fixture, "package.json"))) !== manifestBefore)
+      return yield* new ReleaseVersionFailure({ message: `Invalid previous latest ${previousLatest} was not rejected before versioning` });
+  }
+  const promotion = yield* spawner.string(
+    ChildProcess.make("/bin/bash", ["-e", "-c", script], { cwd: fixture, env: environment, extendEnv: true, forceKillAfter: "5 seconds" }),
+    { includeStderr: true }
+  );
+  yield* assertContains(promotion, "Staging changed files with git", "Nx version did not stage its transition");
+  yield* assertContains(promotion, 'with tag "latest"', "Stable publish did not use latest");
+  const stableEntry = (yield* fs.readFileString(path.join(fixture, "CHANGELOG.md"))).split("\n## 1.0.2-rc.1")[0] ?? "";
+  for (const material of ["preserve early RC material change", "include material change before the final RC"])
+    yield* assertContains(stableEntry, material, "Stable notes omitted material changes from the RC line");
+  yield* verifyStableEntryClassification(stableEntry);
+  if (stableEntry.includes("version bump only"))
+    return yield* new ReleaseVersionFailure({ message: "Stable entry collapsed to mechanical promotion notes" });
+  if (stableEntry.match(/^## 1\.0\.2 /gmu)?.length !== 1)
+    return yield* new ReleaseVersionFailure({ message: "Stable promotion must produce one stable changelog entry" });
+  const headAfter = (yield* runFixtureCommand("git", fixture, ["rev-parse", "HEAD"])).trim();
+  const parent = (yield* runFixtureCommand("git", fixture, ["rev-parse", "HEAD^"])).trim();
+  const tag = (yield* runFixtureCommand("git", fixture, ["rev-parse", "v1.0.2^{commit}"])).trim();
+  const pushedTag = (yield* runFixtureCommand("git", remote, ["rev-parse", "v1.0.2^{commit}"])).trim();
+  const pushedHead = (yield* runFixtureCommand("git", remote, ["rev-parse", "HEAD"])).trim();
+  const status = (yield* runFixtureCommand("git", fixture, ["status", "--porcelain", "--untracked-files=no"])).trim();
+  if (
+    headAfter === headBefore ||
+    parent !== headBefore ||
+    tag !== headAfter ||
+    pushedTag !== headAfter ||
+    pushedHead !== headAfter ||
+    status !== ""
+  )
+    return yield* new ReleaseVersionFailure({ message: "Nx changelog must own one release commit, tag, push, and all staged changes" });
+  yield* assertContains(
+    yield* runFixtureCommand("git", fixture, ["show", "v1.0.2:package.json"]),
+    '"version": "1.0.2"',
+    "Nx release commit did not contain the stable version"
+  );
+  yield* verifyRejectedStableVersion(fixture, remote, script, environment, "1.0.2");
+});
+
 const program = E.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -86,6 +366,8 @@ const program = E.gen(function* () {
   const nx = path.join(repository, "node_modules/.bin/nx");
   const nodeModules = path.join(repository, "node_modules");
   const packageManager = `bun@${runtimeVersions.bun}`;
+  const release = yield* fs.readFileString(path.join(repository, ".github/workflows/release.yml"));
+  yield* verifyStablePromotion(repository, nx, nodeModules, packageManager, release);
   const firstRcFixture = yield* makeReleaseFixture(nodeModules, packageManager, "0.9.0", "premajor");
   const firstRcRelease = yield* runReleaseDryRun(nx, firstRcFixture, ["--preid", "rc"]);
   yield* assertContains(firstRcRelease, "new version 1.0.0-rc.0", "The top-level RC release command did not resolve the first RC");
@@ -109,6 +391,10 @@ const program = E.gen(function* () {
     path.join(policyFixture, ".nx/version-plans/publication-registry-convergence.md"),
     "---\n__default__: prerelease\n---\n\nWait for publication registry convergence.\n"
   );
+  yield* fs.writeFileString(
+    path.join(policyFixture, ".nx/version-plans/stable-release-notes.md"),
+    "---\n__default__: prerelease\n---\n\nGenerate full stable promotion notes.\n"
+  );
   const policyRc = yield* runVersionDryRun(nx, policyFixture, ["--preid", "rc"]);
   yield* assertContains(policyRc, "new version 1.0.2-rc.2", "Combined prerelease plans did not select one post-rc.1 candidate");
 
@@ -122,14 +408,6 @@ const program = E.gen(function* () {
   yield* assertContains(nextPatchRc, "Skipped publishing packages.", "The next patch RC dry run did not skip implicit publication");
 
   const stableFixture = yield* makeReleaseFixture(nodeModules, packageManager, "1.0.0-rc.7", "none");
-  const stableRelease = yield* runReleaseDryRun(nx, stableFixture, ["1.0.0"]);
-  yield* assertContains(stableRelease, "new version 1.0.0", "The top-level stable release command did not resolve stable 1.0.0");
-  yield* assertContains(
-    stableRelease,
-    "Skipped publishing packages.",
-    "The top-level stable release command did not skip implicit publication"
-  );
-
   const stable = yield* runVersionDryRun(nx, stableFixture, ["1.0.0"]);
   yield* assertContains(stable, 'Applied explicit semver value "1.0.0"', "Nx did not apply the explicit stable version");
   yield* assertContains(stable, "new version 1.0.0", "Nx did not promote the accepted RC to stable 1.0.0");
@@ -160,7 +438,6 @@ const program = E.gen(function* () {
     "PR CI does not compare the exact pull-request base and head SHAs"
   );
 
-  const release = yield* fs.readFileString(path.join(repository, ".github/workflows/release.yml"));
   yield* assertContains(
     release,
     "bun x nx release --skip-publish --preid rc",
@@ -176,8 +453,8 @@ const program = E.gen(function* () {
 
   yield* assertContains(
     release,
-    'bun x nx release "$STABLE_TARGET" --skip-publish',
-    "Stable mode does not release the derived stable target without implicit publication"
+    'bun x nx release version "$STABLE_TARGET"',
+    "Stable mode does not version the derived stable target through Nx"
   );
   yield* assertContains(
     release,

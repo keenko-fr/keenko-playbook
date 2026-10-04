@@ -437,7 +437,7 @@ describe("published dist-tag convergence", () => {
         )).trim();
         for (const [name, script] of Object.entries({
           bun: `#!/bin/sh\nprintf '%s\\n' "$@"\n`,
-          node: `#!/bin/sh\nif [ "$2" = "require('./package.json').version" ]; then printf '%s\\n' '${published}'; else exec "$REAL_NODE" "$@"; fi\n`,
+          node: `#!/bin/sh\nif [ "$1" = "--input-type=module" ]; then exit 0; fi\nif [ "$2" = "require('./package.json').version" ]; then printf '%s\\n' '${published}'; else exec "$REAL_NODE" "$@"; fi\n`,
           npm: `#!/bin/sh\nprintf '%s\\n' '{"latest":"1.0.1"}'\n`,
         })) {
           const file = path.join(directory, name);
@@ -447,6 +447,7 @@ describe("published dist-tag convergence", () => {
         const environment = {
           GITHUB_OUTPUT: output,
           PATH: `${directory}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
+          PREVIOUS_LATEST: previousLatest,
           REAL_NODE: nodeExecutable,
         };
         yield* spawner.string(
