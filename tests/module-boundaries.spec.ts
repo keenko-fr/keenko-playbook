@@ -1,4 +1,5 @@
-/* oxlint-disable effect/noGlobals, effect/noNodeBuiltinImport, effect/noNullish -- Synchronous platform adapters and process environment forwarding keep this generated-tool integration fixture narrow. */
+/* oxlint-disable effect/noEffectRunInTests -- bun:test callbacks return E.runPromise to bridge the native Bun runner to the repository Effect workflow. */
+/* oxlint-disable effect/noGlobals, effect/noNodeBuiltinImport, effect/noModulePathFacts, effect/noNullish -- This native Bun host adapter resolves repository tooling from its module location; synchronous platform adapters and process environment forwarding keep this generated-tool integration fixture narrow. */
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

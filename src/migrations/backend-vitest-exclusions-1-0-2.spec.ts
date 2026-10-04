@@ -1,3 +1,4 @@
+/* oxlint-disable effect/noEffectRunInTests -- bun:test callbacks return E.runPromise to bridge the native Bun runner to the repository Effect workflow. */
 import { describe, expect, test } from "bun:test";
 // oxlint-disable-next-line effect/noNodeBuiltinImport -- Read the frozen historical release fixture.
 import { readFileSync } from "node:fs";
@@ -58,7 +59,12 @@ try {
 } finally { await vitest.close(); }
 `;
   const child = yield* spawner.spawn(
-    ChildProcess.make("node", ["--input-type=module", "--eval", script], { cwd: root, stderr: "inherit", stdout: "pipe" })
+    ChildProcess.make("node", ["--input-type=module", "--eval", script], {
+      cwd: root,
+      forceKillAfter: "5 seconds",
+      stderr: "inherit",
+      stdout: "pipe",
+    })
   );
   expect(Number(yield* child.exitCode)).toBe(0);
   return yield* S.decodeEffect(sDiscovery)(yield* fs.readFileString(path.join(root, "discovery.json")));

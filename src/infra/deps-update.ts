@@ -20,8 +20,8 @@ export const compatibilityVersionOverrides = {
   // jsdom 30.1.1 breaks Vitest 4's EventTarget environment setup.
   jsdom: "30.0.1",
   nx: "23.2.1",
-  // New recommended rules require a separate test-runner and coding-convention review.
-  "oxlint-plugin-effect": "0.12.1",
+  // KEE-49 qualified this AST-policy baseline; later upgrades require an installed-preset convention review.
+  "oxlint-plugin-effect": "0.27.0",
   // Nx consumes the TypeScript 6 JavaScript API; @typescript/native owns compilation.
   typescript: "6.0.2",
   // @nx/vitest 23.2.1 supports Vitest 3/4, not Vitest 5.
@@ -110,7 +110,7 @@ const sRegistryVersion = S.fromJsonString(S.String);
 export const resolveRegistryVersion: RegistryResolver = E.fn("keenko.deps.resolveRegistryVersion")(function* (packageName, selector) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const output = yield* spawner
-    .string(ChildProcess.make("bun", ["pm", "view", `${packageName}@${selector}`, "version", "--json"]), {
+    .string(ChildProcess.make("bun", ["pm", "view", `${packageName}@${selector}`, "version", "--json"], { forceKillAfter: "5 seconds" }), {
       includeStderr: true,
     })
     .pipe(E.mapError(() => new DependencyUpdateFailure({ issue: "registry_resolution_failed", packageName, selector })));
@@ -193,16 +193,18 @@ export const updateDependencySources = E.fn("keenko.deps.updateSources")(functio
 const refreshLockfile: LockfileRefresher = E.fn("keenko.deps.refreshLockfile")(function* (workspace) {
   const path = yield* Path.Path;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const handle = yield* spawner.spawn(ChildProcess.make("bun", ["install"], { cwd: path.resolve(workspace) })).pipe(
-    E.mapError(
-      (error) =>
-        new DependencyUpdateFailure({
-          command: "bun install",
-          installerOutput: String(error),
-          issue: "lockfile_refresh_failed",
-        })
-    )
-  );
+  const handle = yield* spawner
+    .spawn(ChildProcess.make("bun", ["install"], { cwd: path.resolve(workspace), forceKillAfter: "5 seconds" }))
+    .pipe(
+      E.mapError(
+        (error) =>
+          new DependencyUpdateFailure({
+            command: "bun install",
+            installerOutput: String(error),
+            issue: "lockfile_refresh_failed",
+          })
+      )
+    );
   const [output, exitCode] = yield* E.all([Stream.mkString(Stream.decodeText(handle.all)), handle.exitCode], {
     concurrency: "unbounded",
   }).pipe(

@@ -73,12 +73,12 @@ const addInlineConstraint = (tree: ReturnType<typeof makeTree>, constraint: stri
 };
 
 describe("1.0.2 application-workspace migration", () => {
-  test("migrates the frozen released Oxlint baseline to the actual generator target", async () => {
+  test("migrates the frozen released Oxlint baseline to its frozen application-workspace target", async () => {
     const tree = makeTree();
     tree.write("oxlint.config.ts", releasedOxlint);
     await migration(tree);
     expect(tree.read("oxlint.config.ts", "utf-8")).toBe(
-      readFileSync(new URL("../generators/preset/files/root/oxlint.config.ts.template", import.meta.url), "utf-8")
+      readFileSync(new URL("__fixtures__/oxlint.application-workspaces-1-0-2.ts.template", import.meta.url), "utf-8")
     );
     const before = snapshotChanges(tree);
     await migration(tree);

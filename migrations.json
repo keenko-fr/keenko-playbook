@@ -24,6 +24,11 @@
       "version": "1.0.2-rc.1",
       "description": "Replicate the managed application dependency baseline across supported application workspaces, including consumers of rc.0.",
       "factory": "./dist/migrations/dependency-baseline-1-0-2"
+    },
+    "1.0.2-effect-policy-baseline": {
+      "version": "1.0.2-rc.2",
+      "description": "Converge the managed Effect lint plugin to 0.27.0, including consumers of published rc.1.",
+      "factory": "./dist/migrations/dependency-baseline-1-0-2"
     }
   },
   "packageJsonUpdates": {}

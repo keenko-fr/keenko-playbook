@@ -1,4 +1,4 @@
-/* oxlint-disable effect/noAsyncFunction, effect/noGlobals, effect/noNewPromise, effect/noNodeBuiltinImport, effect/noTestLifecycleHooks, eslint/no-await-in-loop -- This test orchestrates a disposable native package installation and child Vitest process. */
+/* oxlint-disable effect/noAsyncFunction, effect/noGlobals, effect/noNewPromise, effect/noNodeBuiltinImport, effect/noModulePathFacts, effect/noTestLifecycleHooks, eslint/no-await-in-loop -- This native Bun host adapter resolves repository templates from its module location and orchestrates a disposable native package installation and child Vitest process. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

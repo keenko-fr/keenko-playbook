@@ -1,3 +1,4 @@
+/* oxlint-disable effect/noEffectRunInTests -- bun:test callbacks return E.runPromise to bridge the native Bun runner to the repository Effect workflow. */
 import { describe, expect, test } from "bun:test";
 
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
