@@ -115,6 +115,77 @@ Internal diagnostic Failure causes do not automatically cross a public Confect/s
 
 Confect queries remain Convex queries. Do not make reactive query results depend on wall clock, randomness, or mutable process state. Persist the relevant facts or evaluate time-sensitive policy at an appropriate non-query boundary.
 
+### Query cardinality and consumption
+
+Choose the read API from the contract's cardinality and how the result will be consumed:
+
+| Requirement | API |
+| --- | --- |
+| Single resource; duplicate matching rows are an invariant/data defect | Indexed `reader.table(...).get(index, ...)` |
+| Explicit `0..1`; the caller needs a typed cardinality-violation outcome | `QueryStream.unique` |
+| Existence only | An index-constrained QueryStream consumed with `Stream.runHead`, then `Option.isSome` |
+| All matching rows are genuinely required | `reader.table(...).index(...).collect()` |
+| Pagination or composition requiring retained stream keys/layout | The appropriate QueryStream operation |
+
+These APIs are not interchangeable style choices. Do not introduce QueryStream merely for stylistic consistency or mechanically replace indexed single-resource lookups or legitimate collection reads.
+
+For the supported Confect `10.0.0-next.25` baseline, indexed `get(index, ...)` already calls Convex's `unique()` internally. Zero rows produce typed `GetByIndexFailure`; one row is decoded and returned; multiple rows cause a defect through the rejected uniqueness check. Keep indexed `get` when duplicates violate a single-resource invariant. Preserve the existing `get`/optional `find` absence distinction owned by [backend architecture](../../conventions/backend-architecture.md); absence is not automatically a defect.
+
+`QueryStream.unique` instead consumes an explicitly `0..1` stream:
+
+```text
+0 rows  → None
+1 row   → Some(value)
+2+ rows → NotUniqueError
+```
+
+Use it when the caller needs to distinguish or handle duplicates through typed `NotUniqueError`. It inspects at most two emitted values, though filtering can require reading additional documents. It does not replace the existing indexed `get` invariant contract.
+
+An existence read needs only the first matching value. Constrain the index range, consume with Effect's `Stream.runHead`, and map its `Option` to a boolean. Do not call `collect` or `Stream.runCollect` merely to test `results.length > 0`. `runHead` returns `None` for an empty stream and `Some` for the first value; it does not check uniqueness. This bounds the consumed result, not necessarily physical reads: filtering can scan additional documents before finding a match or exhausting the range.
+
+With `reader` and `externalId` in scope, an `accounts` table indexed by `externalId` illustrates three different contracts:
+
+```ts
+import { QueryStream } from "@confect/server";
+import { Effect as E, Option as O, Stream } from "effect";
+
+const singleAccount = reader.table("accounts").get("by_external_id", externalId);
+
+const optionalAccount = reader
+  .table("accounts")
+  .stream("by_external_id", (q) => q.eq("externalId", externalId))
+  .pipe(QueryStream.unique);
+
+const hasAccount = reader
+  .table("accounts")
+  .stream("by_external_id", (q) => q.eq("externalId", externalId))
+  .pipe(Stream.runHead, E.map(O.isSome));
+```
+
+Keep `collect` when the operation genuinely needs every matching row. For an ordinary bounded read, use `take(n)` or `Stream.take(n)` followed by consumption. Reserve `QueryStream.paginate` for an actual paginated query contract that needs stream cursor/key semantics, not as a replacement for an ordinary bounded read.
+
+A QueryStream is an Effect Stream with stored index keys, layout, and direction. Plain `Stream.filter`, `Stream.map`, and other Effect Stream transforms return ordinary streams without QueryStream metadata. They are appropriate once no later step requires QueryStream-specific operations or retained QueryStream metadata/semantics. Use `QueryStream.filter`, `QueryStream.map`, or their effectful variants when a later QueryStream-only operation, such as `QueryStream.unique`, must remain available, or when ordering, pagination, or keyed composition requires retained metadata. `unique` requires a QueryStream as input; this requirement does not mean it needs the stored keys/layout. Mapping emitted values does not recompute stored keys.
+
+If an explicit `0..1` query requires a predicate before `unique`, retain the QueryStream through that transform. For example, using the same table and index:
+
+```ts
+const optionalCustomerAccount = reader
+  .table("accounts")
+  .stream("by_external_id", (q) => q.eq("externalId", externalId))
+  .pipe(
+    QueryStream.filter((account) => account.externalId.startsWith("customer:")),
+    QueryStream.unique
+  );
+```
+
+`QueryStream.filterEffect` also retains the QueryStream for a later `unique`. Ordinary `Stream.filter` would return an ordinary Stream that `QueryStream.unique` cannot consume. Choose the transform from the actual downstream contract, not stylistic consistency.
+
+Use ordered `merge`, key-prefix deduplication through `distinct`, key-range `narrow`, `reverse`, joins through `flatMap`, and similar QueryStream operations only when their specific query/key semantics are materially required. The verified version exports `distinct`, not `deduplicate`. This is not a requirement to rewrite ordinary reads with streams.
+
+QueryStream is experimental in Confect `10.0.0-next.25`; its API may change between prereleases. Reverify installed source/types before adopting syntax on another baseline. See first-party [reading](https://confect.dev/server/database/reading) and [streams](https://confect.dev/server/database/streams) documentation for API details. Stream pagination also has its own reactive-client integration requirements; verify those before exposing a paginated contract.
+
+Data-local boolean persistence predicates such as `hasCurrentByFooId` belong under the existing `FIND` section. [Backend file topology](../../conventions/backend-file-topology.md) remains the grammar owner; do not introduce `PREDICATE`, `EXISTS`, or synonymous headings.
+
 ## Persistence patches
 
 Preserve the semantic difference between `S.optionalKey` and `S.optional`; explicit `undefined` may be meaningful for clearing an optional Convex field. Prefer focused patch contracts when invariants exist; use broad partial patches only when every field is independently patchable.

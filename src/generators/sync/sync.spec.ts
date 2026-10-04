@@ -206,6 +206,49 @@ describe("keenko sync", () => {
       })
     ));
 
+  test("refreshes Confect cardinality guidance without changing consumer reads or data-file grammar", () =>
+    E.runPromise(
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        const guidePath = ".keenko/docs/stacks/confect/README.md";
+        tree.write(guidePath, "# Stale Confect guidance\n");
+        const dataPath = "packages/backend/data/accounts.ts";
+        const data = 'export const projectOwnedRead = "indexed-get";\n';
+        tree.write(dataPath, data);
+
+        yield* runSync(tree);
+
+        const guide = tree.read(guidePath, "utf-8");
+        expect(guide).toBe(yield* readSource(new URL("files/docs/stacks/confect/README.md", import.meta.url)));
+        for (const semantics of [
+          "Single resource; duplicate matching rows are an invariant/data defect",
+          "Explicit `0..1`; the caller needs a typed cardinality-violation outcome",
+          "already calls Convex's `unique()` internally",
+          "2+ rows → NotUniqueError",
+          ".pipe(Stream.runHead, E.map(O.isSome))",
+          "Keep `collect` when the operation genuinely needs every matching row",
+          "Plain `Stream.filter`, `Stream.map`",
+          "once no later step requires QueryStream-specific operations or retained QueryStream metadata/semantics",
+          "when a later QueryStream-only operation, such as `QueryStream.unique`, must remain available",
+          'QueryStream.filter((account) => account.externalId.startsWith("customer:"))',
+          "`QueryStream.filterEffect` also retains the QueryStream for a later `unique`",
+          "Do not introduce QueryStream merely for stylistic consistency",
+          "QueryStream is experimental in Confect `10.0.0-next.25`",
+          "belong under the existing `FIND` section",
+        ])
+          expect(guide).toContain(semantics);
+        expect(tree.read(".keenko/docs/conventions/backend-file-topology.md", "utf-8")).toBe(
+          yield* readSource(new URL("files/docs/conventions/backend-file-topology.md", import.meta.url))
+        );
+        expect(tree.read(dataPath, "utf-8")).toBe(data);
+
+        yield* runSync(tree);
+
+        expect(tree.read(guidePath, "utf-8")).toBe(guide);
+        expect(tree.read(dataPath, "utf-8")).toBe(data);
+      })
+    ));
+
   test("removes stale files from the Keenko-owned documentation snapshot", () =>
     E.runPromise(
       E.gen(function* () {
