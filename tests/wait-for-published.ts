@@ -80,6 +80,7 @@ const installExactPackage: ExactPackageInstaller = E.fn("keenko.release.installE
             NPM_CONFIG_REGISTRY: publicRegistry,
           },
           extendEnv: true,
+          forceKillAfter: "5 seconds",
         }
       )
     );

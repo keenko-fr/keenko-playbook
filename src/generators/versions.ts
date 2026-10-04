@@ -50,7 +50,7 @@ export const packageVersions = {
   nx: "23.2.1",
   oxfmt: "0.71.0",
   oxlint: "1.86.0",
-  "oxlint-plugin-effect": "0.12.1",
+  "oxlint-plugin-effect": "0.27.0",
   "oxlint-tsgolint": "7.0.2003",
   react: "19.3.0",
   "react-dom": "19.3.0",

@@ -169,7 +169,7 @@ describe("1.0.2 dependency-baseline migration", () => {
     expect(tree.listChanges()).toEqual(before);
   });
 
-  test.each(["1.0.1", "1.0.2-rc.0"])("native Nx selects the correction from %s", async (sourceVersion) => {
+  test.each(["1.0.1", "1.0.2-rc.0", "1.0.2-rc.1"])("native Nx selects the correction from %s", async (sourceVersion) => {
     const migrationConfig = readJsonFile<ResolvedMigrationConfiguration>("migrations.json");
     const migrator = new Migrator({
       fetch: async (_packageName, targetVersion) => ({ ...migrationConfig, version: targetVersion }),
@@ -179,18 +179,21 @@ describe("1.0.2 dependency-baseline migration", () => {
       packageJson: { dependencies: { keenko: sourceVersion }, name: "migration-fixture", version: "0.0.0" },
       to: {},
     });
-    const plan = await migrator.migrate("keenko", "1.0.2-rc.1");
+    const plan = await migrator.migrate("keenko", "1.0.2-rc.2");
     expect(plan.migrations.map(({ name }) => name)).toEqual([
       ...(sourceVersion === "1.0.1"
         ? ["1.0.2-application-workspaces", "1.0.2-backend-vitest-exclusions", "1.0.2-dependency-baseline", "1.0.2-bun-linker"]
         : []),
-      "1.0.2-application-dependency-baseline",
+      ...(sourceVersion === "1.0.2-rc.1" ? [] : ["1.0.2-application-dependency-baseline"]),
+      "1.0.2-effect-policy-baseline",
     ]);
-    expect(plan.migrations.at(-1)?.version).toBe("1.0.2-rc.1");
+    expect(plan.migrations.at(-1)?.version).toBe("1.0.2-rc.2");
     const originalOnly = {
       ...migrationConfig,
       generators: Object.fromEntries(
-        Object.entries(migrationConfig.generators ?? {}).filter(([name]) => name !== "1.0.2-application-dependency-baseline")
+        Object.entries(migrationConfig.generators ?? {}).filter(
+          ([name]) => name !== "1.0.2-application-dependency-baseline" && name !== "1.0.2-effect-policy-baseline"
+        )
       ),
     };
     const oldMigrator = new Migrator({

@@ -8,22 +8,31 @@ class ReleaseVersionFailure extends S.TaggedError<ReleaseVersionFailure>()("Rele
 
 const runVersionDryRun = E.fn("keenko.releaseVersion.dryRun")(function* (executable: string, cwd: string, arguments_: readonly string[]) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  return yield* spawner.string(ChildProcess.make(executable, ["release", "version", ...arguments_, "--dry-run"], { cwd }), {
-    includeStderr: true,
-  });
+  return yield* spawner.string(
+    ChildProcess.make(executable, ["release", "version", ...arguments_, "--dry-run"], { cwd, forceKillAfter: "5 seconds" }),
+    {
+      includeStderr: true,
+    }
+  );
 });
 
 const runReleaseDryRun = E.fn("keenko.release.dryRun")(function* (executable: string, cwd: string, arguments_: readonly string[]) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  return yield* spawner.string(ChildProcess.make(executable, ["release", ...arguments_, "--skip-publish", "--dry-run"], { cwd }), {
-    includeStderr: true,
-  });
+  return yield* spawner.string(
+    ChildProcess.make(executable, ["release", ...arguments_, "--skip-publish", "--dry-run"], { cwd, forceKillAfter: "5 seconds" }),
+    {
+      includeStderr: true,
+    }
+  );
 });
 
 const runPublishDryRun = E.fn("keenko.releasePublish.dryRun")(function* (executable: string, cwd: string, tag: "latest" | "rc") {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   return yield* spawner.string(
-    ChildProcess.make(executable, ["release", "publish", "--tag", tag, "--dry-run", "--outputStyle=static"], { cwd }),
+    ChildProcess.make(executable, ["release", "publish", "--tag", tag, "--dry-run", "--outputStyle=static"], {
+      cwd,
+      forceKillAfter: "5 seconds",
+    }),
     { includeStderr: true }
   );
 });
@@ -60,7 +69,7 @@ const makeReleaseFixture = E.fn("keenko.releaseVersion.fixture")(function* (
     ["add", "package.json", "nx.json", ...(bump === "none" ? [] : [".nx/version-plans"])],
     ["commit", "--quiet", "-m", "Initialize release fixture"],
   ])
-    yield* spawner.string(ChildProcess.make("git", arguments_, { cwd: root }), { includeStderr: true });
+    yield* spawner.string(ChildProcess.make("git", arguments_, { cwd: root, forceKillAfter: "5 seconds" }), { includeStderr: true });
 
   yield* fs.symlink(nodeModules, path.join(root, "node_modules"));
 
@@ -94,6 +103,10 @@ const program = E.gen(function* () {
   const nextRc = yield* runVersionDryRun(nx, continuationFixture, ["--preid", "rc"]);
   yield* assertContains(nextRc, 'Applied semver relative bump "prerelease"', "Nx did not apply a later-RC prerelease plan");
   yield* assertContains(nextRc, "new version 1.0.0-rc.1", "Nx did not increment a later RC");
+
+  const policyFixture = yield* makeReleaseFixture(nodeModules, packageManager, "1.0.2-rc.1", "prerelease");
+  const policyRc = yield* runVersionDryRun(nx, policyFixture, ["--preid", "rc"]);
+  yield* assertContains(policyRc, "new version 1.0.2-rc.2", "Nx did not select the post-rc.1 policy migration boundary");
 
   const nextPatchRcFixture = yield* makeReleaseFixture(nodeModules, packageManager, "1.0.0", "prepatch");
   const nextPatchRc = yield* runReleaseDryRun(nx, nextPatchRcFixture, ["--preid", "rc"]);
@@ -152,7 +165,7 @@ const program = E.gen(function* () {
   yield* assertContains(release, "bun x nx release publish --tag rc", "RC mode does not publish through Nx with the rc dist-tag");
   yield* assertContains(
     release,
-    // oxlint-disable-next-line no-template-curly-in-string
+    // oxlint-disable-next-line no-template-curly-in-string -- This assertion checks literal shell parameter expansion in the release workflow.
     'STABLE_TARGET="${VERSION%%-*}"',
     "Stable mode does not derive the stable target from the current RC version"
   );
@@ -191,7 +204,7 @@ const program = E.gen(function* () {
 
   yield* assertContains(
     release,
-    // oxlint-disable-next-line no-template-curly-in-string
+    // oxlint-disable-next-line no-template-curly-in-string -- This assertion checks literal shell parameter expansion in the release workflow.
     'STABLE_TARGET="${VERSION%%-*}"',
     "Stable mode does not derive its target from the accepted RC"
   );
@@ -232,7 +245,7 @@ const program = E.gen(function* () {
 
   yield* assertContains(
     release,
-    // oxlint-disable-next-line no-template-curly-in-string
+    // oxlint-disable-next-line no-template-curly-in-string -- This assertion checks the literal GitHub Actions version expression passed to published verification.
     'bun run test:published -- "${{ steps.published.outputs.version }}"',
     "Release workflow does not verify the exact published version"
   );

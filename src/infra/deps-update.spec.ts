@@ -1,3 +1,4 @@
+/* oxlint-disable effect/noEffectRunInTests -- bun:test callbacks return E.runPromise to bridge the native Bun runner to the repository Effect workflow. */
 import { describe, expect, test } from "bun:test";
 
 import { NodeServices } from "@effect/platform-node";
@@ -119,7 +120,7 @@ describe("dependency updater", () => {
       "@nx/oxlint": "23.2.1",
       jsdom: "30.0.1",
       nx: "23.2.1",
-      "oxlint-plugin-effect": "0.12.1",
+      "oxlint-plugin-effect": "0.27.0",
       typescript: "6.0.2",
       vitest: "4.0.18",
     });

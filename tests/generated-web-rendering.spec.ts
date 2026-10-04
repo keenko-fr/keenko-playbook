@@ -1,6 +1,7 @@
-/* oxlint-disable effect/noAsyncFunction, effect/noGlobals, effect/noNewPromise, effect/noNodeBuiltinImport, effect/noTestLifecycleHooks -- This test orchestrates a disposable generated rendering fixture and child Vitest process. */
+/* oxlint-disable effect/noAsyncFunction, effect/noGlobals, effect/noNewPromise, effect/noNodeBuiltinImport, effect/noModulePathFacts, effect/noTestLifecycleHooks -- This native Bun host adapter resolves repository templates from its module location and orchestrates a disposable generated rendering fixture and child Vitest process. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 const repository = path.resolve(import.meta.dir, "..");
@@ -15,8 +16,8 @@ const materializeRoute = async (name: string) => {
 };
 
 const materialize = async () => {
-  await mkdir(path.join(repository, "tmp"), { recursive: true });
-  fixtureRoot = await mkdtemp(path.join(repository, "tmp", "generated-web-rendering-"));
+  fixtureRoot = await mkdtemp(path.join(tmpdir(), "generated-web-rendering-"));
+  await symlink(path.join(repository, "node_modules"), path.join(fixtureRoot, "node_modules"), "dir");
   await mkdir(path.join(fixtureRoot, "routes"), { recursive: true });
 
   await Promise.all([

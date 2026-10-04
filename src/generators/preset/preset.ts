@@ -102,6 +102,7 @@ export const makeInitialCodegenCommand = (workspace: string) =>
     cwd: workspace,
     env: { NX_TUI: "false" },
     extendEnv: true,
+    forceKillAfter: "5 seconds",
     stderr: "inherit",
     stdout: "inherit",
   });

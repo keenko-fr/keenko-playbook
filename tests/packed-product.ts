@@ -5,7 +5,10 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 
-type PackageSource = { readonly _tag: "local" } | { readonly _tag: "published"; readonly version: string; readonly preset: string };
+const sPackageSource = S.Union([S.TaggedStruct("local", {}), S.TaggedStruct("published", { preset: S.String, version: S.String })]).pipe(
+  S.toTaggedUnion("_tag")
+);
+type PackageSource = S.Schema.Type<typeof sPackageSource>;
 interface Verification {
   readonly shadcnCompatibility: boolean;
   readonly source: PackageSource;
@@ -91,6 +94,7 @@ const command = E.fn("product.command")(
           cwd,
           env,
           extendEnv: true,
+          forceKillAfter: "5 seconds",
         }
       )
     );
@@ -343,6 +347,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
         cwd: repository,
         env: npmEnv,
         extendEnv: true,
+        forceKillAfter: "5 seconds",
         stderr: "inherit",
         stdout: "inherit",
       }
@@ -360,7 +365,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
       NPM_CONFIG_USERCONFIG: path.join(temporary, "public-npmrc"),
     };
     yield* fs.writeFileString(publicEnv.NPM_CONFIG_USERCONFIG, "registry=https://registry.npmjs.org\n");
-    for (const selector of ["keenko@1.0.1", "keenko@1.0.2-rc.0", "@effect/platform-node-shared@4.0.0-rc.115"])
+    for (const selector of ["keenko@1.0.1", "keenko@1.0.2-rc.0", "keenko@1.0.2-rc.1", "@effect/platform-node-shared@4.0.0-rc.115"])
       yield* command(temporary, publicEnv, "npm", ["pack", selector, "--pack-destination", archives, "--ignore-scripts"]);
     for (const archive of ["keenko-1.0.1.tgz", "effect-platform-node-shared-4.0.0-rc.115.tgz"])
       yield* command(temporary, npmEnv, "npm", [
@@ -406,31 +411,36 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
       "--loglevel=error",
     ]);
     yield* completePhase("released 1.0.1 consumer creation", releasedStartedAt);
-    const rcStartedAt = yield* startPhase("published rc.0 consumer creation");
-    yield* command(temporary, npmEnv, "npm", [
-      "publish",
-      path.join(archives, "keenko-1.0.2-rc.0.tgz"),
-      "--ignore-scripts",
-      "--provenance=false",
-      "--access",
-      "public",
-      "--tag",
-      "rc",
-      "--loglevel=error",
-    ]);
-    yield* createWorkspace(
-      temporary,
-      { ...bootstrapEnv, BUN_INSTALL_CACHE_DIR: path.join(temporary, "published-rc-bun-cache") },
-      "upgrade-published-rc",
-      "keenko@1.0.2-rc.0"
-    );
-    const rcWorkspace = path.join(temporary, "upgrade-published-rc");
-    const rcInstalled = yield* S.decodeEffect(sVersionPackage)(
-      yield* fs.readFileString(path.join(rcWorkspace, "node_modules/keenko/package.json"))
-    );
-    yield* assert(rcInstalled.version === "1.0.2-rc.0", "The RC source consumer was not generated with published keenko@1.0.2-rc.0");
-    releasedWorkspaces.push(rcWorkspace);
-    yield* completePhase("published rc.0 consumer creation", rcStartedAt);
+    for (const version of ["1.0.2-rc.0", "1.0.2-rc.1"]) {
+      const rcStartedAt = yield* startPhase(`published ${version} consumer creation`);
+      yield* command(temporary, npmEnv, "npm", [
+        "publish",
+        path.join(archives, `keenko-${version}.tgz`),
+        "--ignore-scripts",
+        "--provenance=false",
+        "--access",
+        "public",
+        "--tag",
+        "rc",
+        "--loglevel=error",
+      ]);
+      const identity = version === "1.0.2-rc.0" ? "upgrade-published-rc" : "upgrade-published-rc1";
+      yield* createWorkspace(
+        temporary,
+        { ...bootstrapEnv, BUN_INSTALL_CACHE_DIR: path.join(temporary, `published-${version}-bun-cache`) },
+        identity,
+        `keenko@${version}`
+      );
+      const rcWorkspace = path.join(temporary, identity);
+      const rcInstalled = yield* S.decodeEffect(sVersionPackage)(
+        yield* fs.readFileString(path.join(rcWorkspace, "node_modules/keenko/package.json"))
+      );
+      yield* assert(rcInstalled.version === version, `The RC source consumer was not generated with published keenko@${version}`);
+      const rcSlots = yield* S.decodeEffect(sDependencySections)(yield* fs.readFileString(path.join(rcWorkspace, "package.json")));
+      yield* assert(rcSlots.devDependencies?.["oxlint-plugin-effect"] === "0.12.1", `Published ${version} did not start on plugin 0.12.1`);
+      releasedWorkspaces.push(rcWorkspace);
+      yield* completePhase(`published ${version} consumer creation`, rcStartedAt);
+    }
   }
 
   yield* command(repository, env, "bun", ["run", "build"]);
@@ -637,8 +647,9 @@ const prepareUpgradeFixture = E.fn("product.prepareUpgradeFixture")(function* (
   const path = yield* Path.Path;
   const sSections = S.decodeEffect(sDependencySections);
   const identity = path.basename(workspace);
-  const publishedRc = identity === "upgrade-published-rc";
-  const sourceVersion = publishedRc ? "1.0.2-rc.0" : "1.0.1";
+  const publishedRc = identity.startsWith("upgrade-published-rc");
+  let sourceVersion = publishedRc ? "1.0.2-rc.0" : "1.0.1";
+  if (identity === "upgrade-published-rc1") sourceVersion = "1.0.2-rc.1";
   let applications = ["web"];
   if (identity === "upgrade-renamed") applications = ["portal"];
   if (identity === "upgrade-multiple") applications = ["web", "console", "studio"];
@@ -669,7 +680,10 @@ const prepareUpgradeFixture = E.fn("product.prepareUpgradeFixture")(function* (
       : ["1.0.2-application-workspaces", "1.0.2-backend-vitest-exclusions", "1.0.2-dependency-baseline", "1.0.2-bun-linker"].map(
           (name) => ({ name, package: "keenko", version: "1.0.2-rc.0" })
         )),
-    { name: "1.0.2-application-dependency-baseline", package: "keenko", version: "1.0.2-rc.1" },
+    ...(sourceVersion === "1.0.2-rc.1"
+      ? []
+      : [{ name: "1.0.2-application-dependency-baseline", package: "keenko", version: "1.0.2-rc.1" }]),
+    { name: "1.0.2-effect-policy-baseline", package: "keenko", version: "1.0.2-rc.2" },
   ];
   return {
     applications,
@@ -703,7 +717,7 @@ const verifyMigrationExecution = E.fn("product.verifyMigrationExecution")(functi
   if (O.isSome(canonicalInitialApp))
     yield* assert(
       (yield* fs.readFileString(path.join(workspace, "apps/web/package.json"))) === canonicalInitialApp.value,
-      "Corrective migration changed the canonical rc.0 initial application"
+      "Dependency migration changed the canonical published RC initial application"
     );
   for (const application of applications) {
     const manifest = yield* S.decodeEffect(S.fromJsonString(S.Struct({ nx: S.Struct({ tags: S.Array(S.String) }) })))(
@@ -811,6 +825,7 @@ const startShadcnFixtureRegistry = E.fn("product.startShadcnFixtureRegistry")(fu
       cwd: repository,
       env: { SHADCN_FIXTURE_VERSION: fixtureVersion },
       extendEnv: true,
+      forceKillAfter: "5 seconds",
       stderr: "inherit",
       stdout: "inherit",
     })
@@ -873,6 +888,12 @@ const product = E.gen(function* () {
   yield* assert(
     Object.keys(roles).join("|") === "root|application|backend|ui|shared",
     "Packed dependency baseline is not the five-role snapshot"
+  );
+  yield* assert(roles.root.devDependencies["oxlint-plugin-effect"] === "0.27.0", "Frozen managed plugin baseline is not 0.27.0");
+  const consumerLint = yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"));
+  yield* assert(
+    !consumerLint.includes("effect/noEffectRunInTests"),
+    "Repository Bun-test exception leaked into the generated consumer config"
   );
   const target = roleBaseline(roles, ["web"]);
   yield* verifySlotCount(target, 1);

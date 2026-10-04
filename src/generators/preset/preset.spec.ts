@@ -1,3 +1,4 @@
+/* oxlint-disable effect/noEffectRunInTests -- bun:test callbacks return E.runPromise to bridge the native Bun runner to the repository Effect workflow. */
 import { describe, expect, test } from "bun:test";
 
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
@@ -142,7 +143,7 @@ describe("keenko preset", () => {
         expect(YAML.parse(workflow)).toEqual({
           concurrency: {
             "cancel-in-progress": true,
-            // oxlint-disable-next-line no-template-curly-in-string
+            // oxlint-disable-next-line no-template-curly-in-string -- This assertion checks literal GitHub Actions expressions written into the generated workflow.
             group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
           },
           jobs: {
@@ -759,6 +760,8 @@ describe("keenko preset", () => {
           "// GROUP -----------------------------------------------------------------------------------------------------------------------------------"
         );
         expect(oxlintConfig).toContain('files: ["packages/backend/**/*.ts"]');
+        expect(oxlintConfig).not.toContain("effect/noEffectRunInTests");
+        expect(rootPackageJson.devDependencies?.["oxlint-plugin-effect"]).toBe("0.27.0");
         expect(oxlintConfig).not.toContain("packages/backend/confect/identity.impl.ts");
         expect(oxlintConfig).not.toContain("packages/backend/confect/authentication.ts");
         for (const rule of ["effect/noAsyncFunction", "effect/noNewError", "effect/noNullish", "effect/noThrowStatement"])
