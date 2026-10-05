@@ -440,6 +440,29 @@ Do not expose HTTP status as stable application failure data unless an actual co
 
 ## Native testing seams
 
+Vitest is the general test runner. Use the public `@effect/vitest` integration when a test body executes an Effect. Use ordinary Vitest for tests that do not execute Effects.
+
+```ts
+import { it } from "@effect/vitest";
+import { Effect } from "effect";
+import { expect, test } from "vitest";
+
+it.effect("executes an Effect", () =>
+  Effect.gen(function* () {
+    const value = yield* Effect.succeed(42);
+    expect(value).toBe(42);
+  })
+);
+
+test("checks an ordinary value", () => {
+  expect(2 + 2).toBe(4);
+});
+```
+
+`it.effect` provides Effect test services and a scope. Use `it.live` when the test needs the live clock or real platform work. Compose provider and framework helpers, including `@confect/test` and `convex-test`, inside the Effect-aware body with the services and layers the test needs. Keep those backend integrations backend-owned; `vitest` and `@effect/vitest` remain root-owned tooling.
+
+Do not use `Effect.runPromise` merely to bridge an Effect test body into an ordinary Vitest callback. The official integration owns that boundary, and `effect/noEffectRunInTests` remains enabled. This rule does not require Effect test APIs for bodies that contain no Effect.
+
 The architecture exposes native Effect seams.
 
 At feature level:

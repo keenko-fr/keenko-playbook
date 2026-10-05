@@ -14,18 +14,22 @@ export const prereleaseChannels = {
 
 // Qualified tuple holds. Re-evaluate these whenever the named constraint changes.
 export const compatibilityVersionOverrides = {
+  // KEE-54 qualifies matching stable Effect and its official test integration.
+  "@effect/vitest": "4.0.1",
   // Keep the Nx integrations on one qualified version.
-  "@nx/devkit": "23.2.1",
-  "@nx/oxlint": "23.2.1",
-  // jsdom 30.1.1 breaks Vitest 4's EventTarget environment setup.
+  "@nx/devkit": "23.3.0-beta.9",
+  "@nx/oxlint": "23.3.0-beta.9",
+  "@nx/vitest": "23.3.0-beta.9",
+  effect: "4.0.1",
+  // Keep the qualified jsdom environment until it receives a separate runtime review.
   jsdom: "30.0.1",
-  nx: "23.2.1",
+  nx: "23.3.0-beta.9",
   // KEE-49 qualified this AST-policy baseline; later upgrades require an installed-preset convention review.
   "oxlint-plugin-effect": "0.27.0",
   // Nx consumes the TypeScript 6 JavaScript API; @typescript/native owns compilation.
   typescript: "6.0.2",
-  // @nx/vitest 23.2.1 supports Vitest 3/4, not Vitest 5.
-  vitest: "4.0.18",
+  // KEE-54 qualifies Vitest 5 with native Nx migration support.
+  vitest: "5.0.3",
 };
 
 const alignedRootPackages = {

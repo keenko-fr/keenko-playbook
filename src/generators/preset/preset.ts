@@ -26,6 +26,7 @@ import { sPresetGeneratorSchema, type PresetGeneratorSchema } from "./schema.js"
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
 export const devDependencies = Struct.pick(packageVersions, [
   "@effect/tsgo",
+  "@effect/vitest",
   "@nx/oxlint",
   "@nx/vitest",
   "@tanstack/intent",

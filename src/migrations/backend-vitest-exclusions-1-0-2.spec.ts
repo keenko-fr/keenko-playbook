@@ -1,12 +1,12 @@
-/* oxlint-disable effect/noEffectRunInTests -- bun:test callbacks return E.runPromise to bridge the native Bun runner to the repository Effect workflow. */
-import { describe, expect, test } from "bun:test";
 // oxlint-disable-next-line effect/noNodeBuiltinImport -- Read the frozen historical release fixture.
 import { readFileSync } from "node:fs";
 
 import { NodeServices } from "@effect/platform-node";
+import { it } from "@effect/vitest";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
 import { Effect as E, FileSystem, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { describe, expect, test } from "vitest";
 
 import { presetProgram } from "../generators/preset/preset.js";
 import migration from "./backend-vitest-exclusions-1-0-2.js";
@@ -33,6 +33,7 @@ const discover = E.fn("test.backendVitest.discover")(function* (source: string) 
   const path = yield* Path.Path;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const root = yield* fs.makeTempDirectoryScoped({ prefix: "keenko-backend-vitest-" });
+  yield* fs.writeFileString(path.join(root, "package.json"), '{"type":"module"}\n');
   yield* fs.makeDirectory(path.join(root, "node_modules"));
   yield* fs.symlink(yield* path.fromFileUrl(new URL("../../node_modules/vitest", import.meta.url)), path.join(root, "node_modules/vitest"));
   const dependency = yield* fs.makeTempDirectoryScoped({ prefix: "keenko-dependency-tests-" });
@@ -50,7 +51,7 @@ import { relative } from "node:path";
 import { writeFileSync } from "node:fs";
 const vitest = await createVitest("test", { root: process.cwd(), config: "vitest.config.ts", watch: false });
 try {
-  await vitest.init();
+  await vitest.standalone();
   const projects = await Promise.all(vitest.projects.map(async project => ({
     name: project.name, environment: project.config.environment, exclude: project.config.exclude,
     files: (await project.globTestFiles()).testFiles.map(file => relative(process.cwd(), file)).sort(),
@@ -83,40 +84,36 @@ const verifyDiscovery = E.fn("test.backendVitest.verify")(function* (source: str
 });
 
 describe("1.0.2 backend Vitest exclusion migration", () => {
-  test(
+  it.live(
     "loads fresh generated config with native exclusions and unchanged test ownership",
     () =>
-      E.runPromise(
-        E.gen(function* () {
-          const tree = createTreeWithEmptyWorkspace();
-          yield* presetProgram(tree, { name: "vitest-proof" });
-          const source = tree.read(configPath, "utf-8");
-          expect(source).not.toBeNull();
-          yield* verifyDiscovery(source ?? "");
-        }).pipe(E.scoped, E.provide(NodeServices.layer))
-      ),
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        yield* presetProgram(tree, { name: "vitest-proof" });
+        const source = tree.read(configPath, "utf-8");
+        expect(source).not.toBeNull();
+        yield* verifyDiscovery(source ?? "");
+      }).pipe(E.scoped, E.provide(NodeServices.layer)),
     30_000
   );
 
-  test(
+  it.live(
     "restores native exclusions for the released configuration and is idempotent",
     () =>
-      E.runPromise(
-        E.gen(function* () {
-          const old = yield* discover(historical);
-          expect(old.projects.find((project) => project.name === "node")?.files).toContain(
-            "node_modules/backend-dependency/upstream.test.ts"
-          );
-          const tree = fixture();
-          migration(tree);
-          const migrated = tree.read(configPath, "utf-8") ?? "";
-          yield* verifyDiscovery(migrated);
-          const before = tree.listChanges();
-          migration(tree);
-          expect(tree.listChanges()).toEqual(before);
-          expect(tree.read("bun.lock", "utf-8")).toBe("Bun-owned lockfile\n");
-        }).pipe(E.scoped, E.provide(NodeServices.layer))
-      ),
+      E.gen(function* () {
+        const old = yield* discover(historical);
+        expect(old.projects.find((project) => project.name === "node")?.files).toContain(
+          "node_modules/backend-dependency/upstream.test.ts"
+        );
+        const tree = fixture();
+        migration(tree);
+        const migrated = tree.read(configPath, "utf-8") ?? "";
+        yield* verifyDiscovery(migrated);
+        const before = tree.listChanges();
+        migration(tree);
+        expect(tree.listChanges()).toEqual(before);
+        expect(tree.read("bun.lock", "utf-8")).toBe("Bun-owned lockfile\n");
+      }).pipe(E.scoped, E.provide(NodeServices.layer)),
     30_000
   );
 
