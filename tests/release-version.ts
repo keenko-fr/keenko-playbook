@@ -432,11 +432,15 @@ const program = E.gen(function* () {
   const pullRequestBase = `\${{ github.event.pull_request.base.sha }}`;
   const pullRequestHead = `\${{ github.event.pull_request.head.sha }}`;
   yield* assertContains(ci, "fetch-depth: 0", "PR CI does not fetch the comparison commits");
+  yield* assertContains(ci, `PLAN_BASE: ${pullRequestBase}`, "PR CI does not use the exact pull-request base SHA");
+  yield* assertContains(ci, `PLAN_HEAD: ${pullRequestHead}`, "PR CI does not use the exact pull-request head SHA");
   yield* assertContains(
     ci,
-    `release plan:check --base="${pullRequestBase}" --head="${pullRequestHead}"`,
-    "PR CI does not compare the exact pull-request base and head SHAs"
+    'git diff --name-only --no-renames "$(git merge-base "$PLAN_BASE" "$PLAN_HEAD")" "$PLAN_HEAD"',
+    "PR CI does not preserve the native Nx base/head changed-file calculation"
   );
+  yield* assertContains(ci, "shell: bash", "PR CI must fail when either command in the release-plan pipeline fails");
+  yield* assertContains(ci, "bun x nx release plan:check --stdin", "PR CI does not pass changed files to native Nx plan checking");
 
   yield* assertContains(
     release,
