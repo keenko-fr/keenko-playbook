@@ -125,7 +125,7 @@ Commit `e4624d2`, the KEE-14 reconstruction, wrote package name `keenko` while r
 
 Only `src/migrations/files/compatibility-baseline-1-0-2.json`, the existing unpublished KEE-55 rc.4 boundary, is updated. It now records tsgo 0.48.1 and Oxfmt 0.72.0 at root, React Vite plugin 6.1.2 in applications, and jsdom 30.1.2 in applications/UI. Platform-node is the plugin's runtime dependency, so it needs no new direct consumer slot. No migration factory or published rc.0 through rc.3 snapshot is rewritten. The earlier KEE-54 rc.4 preparation remains intact.
 
-Reusable release policy in README, canonical dependency guidance and packed-product documentation now permits an explicit corrective prepublication cutoff and full requalification. The tuple freezes after final successful pre-RC qualification. There is no unrelated refresh during actual RC dogfood or between accepted RC and stable. Prose does not duplicate selected package versions.
+Maintainer release policy in the root README and packed-product documentation permits an explicit corrective prepublication cutoff and full requalification. The tuple freezes after final successful pre-RC qualification. There is no unrelated refresh during actual RC dogfood or between accepted RC and stable. This policy is excluded from generated consumer guidance. Prose does not duplicate selected package versions.
 
 Both native prerelease plans remain unchanged. Native Nx resolves exactly `1.0.2-rc.3 → 1.0.2-rc.4`; no additional version plan is needed and no rc.5 is created. Repository package release version and release history remain unchanged.
 
