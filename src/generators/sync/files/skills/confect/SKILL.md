@@ -29,6 +29,6 @@ Use this workflow for `@confect/*`, Confect specs/implementations/refs/codegen, 
 
 - Do not restate or invent Confect architecture inside this skill; the canonical docs above are authoritative.
 - Do not wrap generated Confect or native Convex APIs merely to rename them.
-- Do not guess prerelease APIs from memory.
+- Do not guess version-specific APIs from memory.
 - Do not edit generated code.
 - Do not claim verification that was not run.

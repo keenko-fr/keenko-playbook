@@ -1,0 +1,28 @@
+import { FunctionImpl, GroupImpl } from "@confect/server";
+import { Effect as E, Layer as L } from "effect";
+
+import refs from "./_generated/refs";
+import schema from "./_generated/schema";
+import { DatabaseReader, QueryRunner } from "./_generated/services";
+import spec from "./compatibility.spec";
+
+const find = FunctionImpl.make(schema, spec, "find", ({ key }) =>
+  E.gen(function* () {
+    const reader = yield* DatabaseReader;
+    return yield* reader
+      .table("compatibilityRows")
+      .get("by_key", key)
+      .pipe(
+        E.asSome,
+        E.catchTag("GetByIndexFailure", () => E.succeedNone),
+        E.orDie
+      );
+  })
+);
+const forward = FunctionImpl.make(schema, spec, "forward", ({ key }) =>
+  E.gen(function* () {
+    const { runQuery } = yield* QueryRunner;
+    return yield* runQuery(refs.public.compatibility.find, { key }).pipe(E.orDie);
+  })
+);
+export default GroupImpl.make(schema, spec).pipe(L.provide(find), L.provide(forward), GroupImpl.finalize);

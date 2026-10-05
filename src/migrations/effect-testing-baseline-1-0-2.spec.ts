@@ -2,18 +2,16 @@
 // oxlint-disable-next-line effect/noNodeBuiltinImport -- Inspect the immutable release snapshots.
 import { readFileSync } from "node:fs";
 
-import { NodeFileSystem, NodePath, NodeServices } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { parseJson, readJson, readJsonFile, serializeJson } from "@nx/devkit";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
-import { Effect as E, FileSystem, Layer, Path } from "effect";
+import { Effect as E, FileSystem, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-line/migrate/migrate";
 import { FsTree } from "nx/src/generators/tree";
 import { describe, expect, test } from "vitest";
 
-import { presetProgram } from "../generators/preset/preset.js";
-import { packageVersions } from "../generators/versions.js";
 import historicalMigration from "./dependency-baseline-1-0-2.js";
 import migration from "./effect-testing-baseline-1-0-2.js";
 
@@ -46,30 +44,6 @@ const fixture = (applications: readonly string[]) => {
 };
 
 describe("KEE-54 rc.4 testing boundary", () => {
-  it.live("derives the 76-slot frozen target from fresh manifests and keeps tooling root-owned", () =>
-    E.gen(function* () {
-      const tree = createTreeWithEmptyWorkspace();
-      yield* presetProgram(tree, { name: "testing-tuple" });
-      const manifests = { ...fixed, application: "apps/web/package.json" };
-      let count = 0;
-      for (const [role, path] of Object.entries(manifests)) {
-        const manifest = readJson<Slots>(tree, path);
-        for (const section of sections) {
-          const managed = Object.fromEntries(Object.keys(roles[role][section]).map((name) => [name, manifest[section]?.[name]]));
-          expect(managed).toEqual(roles[role][section]);
-          count += Object.keys(managed).length;
-        }
-        if (role !== "root") {
-          expect(manifest.dependencies?.["@effect/vitest"]).toBeUndefined();
-          expect(manifest.devDependencies?.["@effect/vitest"]).toBeUndefined();
-          expect(manifest.devDependencies?.vitest).toBeUndefined();
-        }
-      }
-      expect(count).toBe(76);
-      expect(readJson<Slots>(tree, fixed.backend).devDependencies["@confect/test"]).toBe(packageVersions["@confect/test"]);
-    }).pipe(E.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)))
-  );
-
   test.each([["portal"], ["portal", "console"], ["portal", "console", "studio"]])(
     "converges %j through history and preserves consumer slots",
     async (...applications) => {

@@ -69,9 +69,11 @@ bun run deps:update
 - `test:product` is the required Verdaccio-backed fresh-creation and supported forward-upgrade acceptance test for the unpublished packed artifact.
 - `test:shadcn` is the explicit live-registry compatibility smoke and is not a normal PR or release gate.
 - `test:published` is the release-grade fresh-consumer acceptance test for one exact version already published to npm.
-- `deps:update` updates compatibility pins for maintainer review.
+- `deps:update` discovers registry candidates for maintainer compatibility review; successful installation alone does not qualify them.
 
 ## Release
+
+Each Keenko release cycle requires a full dependency compatibility sweep before candidate dogfood. Select the newest compatible versions and qualify coupled packages together. `packageVersions` is the canonical current-version source. Freeze the qualified tuple for RC dogfood: corrective RCs receive only changes needed to correct the candidate, with no unrelated dependency refresh. Promote the accepted RC to stable without refreshing dependencies.
 
 User-visible and project-visible changes require an Nx version plan. Releases are manually initiated through the repository's [Release workflow](.github/workflows/release.yml); Nx Release owns versioning, changelog generation, tagging, and npm publication.
 

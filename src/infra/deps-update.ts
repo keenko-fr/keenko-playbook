@@ -5,30 +5,25 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { packageVersions, runtimeVersions } from "../generators/versions.js";
 
 // POLICY ---------------------------------------------------------------------------------------------------------------------------------
-export const prereleaseChannels = {
-  "@confect/cli": "next",
-  "@confect/core": "next",
-  "@confect/server": "next",
-  "@confect/test": "next",
-};
+export const prereleaseChannels: Readonly<Record<string, string>> = {};
 
-// Qualified tuple holds. Re-evaluate these whenever the named constraint changes.
+// Holds reflect current upstream contracts; requalify the whole tuple before changing them.
 export const compatibilityVersionOverrides = {
-  // KEE-54 qualifies matching stable Effect and its official test integration.
+  // @effect/vitest requires Effect ^4.0.1 and Vitest >=5 <6. Keep their tested pair together.
   "@effect/vitest": "4.0.1",
-  // Keep the Nx integrations on one qualified version.
+  // Stable @nx/vitest supports only Vitest 3/4. beta.9 is the newest Nx line supporting Vitest 5.
   "@nx/devkit": "23.3.0-beta.9",
   "@nx/oxlint": "23.3.0-beta.9",
   "@nx/vitest": "23.3.0-beta.9",
+  // Both AuthKit integrations exclude Node SDK 11; use the newest shared SDK 10 release.
+  "@workos-inc/node": "10.14.0",
   effect: "4.0.1",
-  // Keep the qualified jsdom environment until it receives a separate runtime review.
+  // jsdom 30.1.x fails Vitest 5 environment setup with an invalid EventTarget receiver.
   jsdom: "30.0.1",
   nx: "23.3.0-beta.9",
-  // KEE-49 qualified this AST-policy baseline; later upgrades require an installed-preset convention review.
-  "oxlint-plugin-effect": "0.27.0",
-  // Nx consumes the TypeScript 6 JavaScript API; @typescript/native owns compilation.
-  typescript: "6.0.2",
-  // KEE-54 qualifies Vite 8 and Vitest 5 with native Nx migration support.
+  // Nx and Keenko migrations require the JavaScript compiler API absent from TypeScript 7.
+  typescript: "6.0.3",
+  // Vitest 5 and the selected Nx integration support Vite through major 8, and Effect's tests require Vitest 5.
   vite: "8.3.2",
   vitest: "5.0.3",
 };

@@ -3,6 +3,8 @@ import { parseJson, serializeJson } from "@nx/devkit";
 import { Clock, Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { packageVersions } from "../src/generators/versions.js";
+
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 
 const sPackageSource = S.Union([S.TaggedStruct("local", {}), S.TaggedStruct("published", { preset: S.String, version: S.String })]).pipe(
@@ -600,6 +602,31 @@ const verifyBackendTestOwnership = E.fn("product.verifyBackendTestOwnership")(fu
   );
 });
 
+const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspace: string, env: Record<string, string>) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const backend = path.join(workspace, "packages/backend");
+  const fixture = yield* path.fromFileUrl(new URL("fixtures/confect-compatibility", import.meta.url));
+  const files = ["tables/compatibilityRows.ts", "compatibility.spec.ts", "compatibility.impl.ts"];
+  for (const relative of files) {
+    const target = path.join(backend, "confect", relative);
+    yield* fs.makeDirectory(path.dirname(target), { recursive: true });
+    yield* fs.writeFileString(target, yield* fs.readFileString(path.join(fixture, `${relative}.template`)));
+  }
+  const testFile = path.join(backend, "test/keenko-confect.test.ts");
+  yield* fs.makeDirectory(path.dirname(testFile), { recursive: true });
+  yield* fs.writeFileString(testFile, yield* fs.readFileString(path.join(fixture, "contract.test.ts.template")));
+  yield* command(workspace, env, "bun", ["run", "codegen"]);
+  yield* command(workspace, env, "bun", ["x", "nx", "run", "backend:typecheck", "--outputStyle=static"]);
+  yield* command(backend, env, "bun", ["x", "vitest", "run", "test/keenko-confect.test.ts"]);
+  yield* Console.log(
+    `Stable Confect compatibility passed in ${workspace}: generated containers, field-map args, core tables, named runner, direct test layer, registered decoder, and KEE-52 cardinality.`
+  );
+  for (const relative of files) yield* fs.remove(path.join(backend, "confect", relative));
+  yield* fs.remove(testFile);
+  yield* command(workspace, env, "bun", ["run", "codegen"]);
+});
+
 const verifyResolution = E.fn("product.verifyResolution")(function* (workspace: string, env: Record<string, string>) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -811,6 +838,7 @@ const prepareUpgradeFixture = E.fn("product.prepareUpgradeFixture")(function* (
       : []),
     ...(sourceVersion === "1.0.2-rc.3" ? [] : [{ name: "1.0.2-authkit-test", package: "keenko", version: "1.0.2-rc.3" }]),
     { name: "1.0.2-effect-testing-baseline", package: "keenko", version: "1.0.2-rc.4" },
+    { name: "1.0.2-compatibility-baseline", package: "keenko", version: "1.0.2-rc.4" },
     { name: "migrate-to-vitest-5", package: "@nx/vitest", version: "23.3.0-beta.8" },
   ];
   return {
@@ -884,16 +912,18 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
       "dist/migrations/bun-linker-1-0-2.js",
       "dist/migrations/authkit-test-1-0-2.js",
       "dist/migrations/effect-testing-baseline-1-0-2.js",
+      "dist/migrations/compatibility-baseline-1-0-2.js",
       "dist/compatibility/authkit-test.js",
       "dist/compatibility/files/workos-authkit-0.2.10.patch",
       "dist/migrations/files/effect-testing-baseline-1-0-2.json",
+      "dist/migrations/files/compatibility-baseline-1-0-2.json",
     ])
       yield* assert(
         yield* fs.exists(path.join(workspace, "node_modules/keenko", artifact)),
         `Missing packed migration artifact: ${artifact}`
       );
     const packedRoles = yield* S.decodeEffect(sDependencyBaseline)(
-      yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/effect-testing-baseline-1-0-2.json"))
+      yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/compatibility-baseline-1-0-2.json"))
     );
     yield* assert(
       serializeJson(packedRoles) === serializeJson(roles),
@@ -923,6 +953,7 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     const initialResolution = yield* verifyResolution(workspace, env);
     yield* verifyBackendTestOwnership(workspace, env);
     yield* verifyTestingTuple(workspace, env, applications);
+    yield* verifyConfectTuple(workspace, env);
     yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
     yield* verifyReinstalls(workspace, env, initialResolution);
     yield* verifySyncRerun(workspace, env);
@@ -1020,13 +1051,16 @@ const product = E.gen(function* () {
   const workspace = path.join(temporary, identity);
   const initialResolution = yield* verifyResolution(workspace, env);
   const roles = yield* S.decodeEffect(sDependencyBaseline)(
-    yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/effect-testing-baseline-1-0-2.json"))
+    yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/compatibility-baseline-1-0-2.json"))
   );
   yield* assert(
     Object.keys(roles).join("|") === "root|application|backend|ui|shared",
     "Packed dependency baseline is not the five-role snapshot"
   );
-  yield* assert(roles.root.devDependencies["oxlint-plugin-effect"] === "0.27.0", "Frozen managed plugin baseline is not 0.27.0");
+  yield* assert(
+    roles.root.devDependencies["oxlint-plugin-effect"] === packageVersions["oxlint-plugin-effect"],
+    "Frozen managed plugin baseline differs from packageVersions"
+  );
   const consumerLint = yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"));
   yield* assert(
     !consumerLint.includes("effect/noEffectRunInTests"),
@@ -1038,6 +1072,7 @@ const product = E.gen(function* () {
   yield* verifyInstalledSlots(workspace, target, yield* fs.readFileString(path.join(workspace, "bun.lock")));
   yield* verifyBackendTestOwnership(workspace, env);
   yield* verifyTestingTuple(workspace, env, ["web"]);
+  yield* verifyConfectTuple(workspace, env);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
   for (const file of [
     "CONTEXT.md",

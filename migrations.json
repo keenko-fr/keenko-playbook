@@ -39,6 +39,11 @@
       "version": "1.0.2-rc.4",
       "description": "Converge the managed testing tuple and preserve native Nx migration instructions after native preparation.",
       "factory": "./dist/migrations/effect-testing-baseline-1-0-2"
+    },
+    "1.0.2-compatibility-baseline": {
+      "version": "1.0.2-rc.4",
+      "description": "Converge managed consumer slots to the final qualified tuple, including stable Confect 10. Run codegen to regenerate its bindings.",
+      "factory": "./dist/migrations/compatibility-baseline-1-0-2"
     }
   },
   "packageJsonUpdates": {

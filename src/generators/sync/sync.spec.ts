@@ -225,7 +225,7 @@ describe("keenko sync", () => {
         'QueryStream.filter((account) => account.externalId.startsWith("customer:"))',
         "`QueryStream.filterEffect` also retains the QueryStream for a later `unique`",
         "Do not introduce QueryStream merely for stylistic consistency",
-        "QueryStream is experimental in Confect `10.0.0-next.25`",
+        "QueryStream is experimental in Confect `10.0.0`",
         "belong under the existing `FIND` section",
       ])
         expect(guide).toContain(semantics);

@@ -7,6 +7,7 @@ import {
   compatibilityVersionOverrides,
   DependencyUpdateFailure,
   isExactPackageVersion,
+  prereleaseChannels,
   updateDependencies,
   updateDependencySources,
   type LockfileRefresher,
@@ -47,7 +48,7 @@ const fixture = E.fn("test.deps.fixture")(function* () {
 });
 
 describe("dependency updater", () => {
-  it.live("resolves stable Effect and retained Confect prereleases to exact versions", () =>
+  it.live("resolves stable Effect and stable Confect to exact versions", () =>
     provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
@@ -57,7 +58,7 @@ describe("dependency updater", () => {
         const resolver: RegistryResolver = (packageName, selector) =>
           E.sync(() => {
             calls.push([packageName, selector]);
-            return selector === "next" ? "10.0.0-next.30" : "4.0.0";
+            return packageName === "@confect/core" ? "10.0.0" : "4.0.0";
           });
 
         const updates = yield* updateDependencySources(
@@ -76,11 +77,11 @@ describe("dependency updater", () => {
         const manifest = yield* S.decodeEffect(sTestManifest)(yield* fs.readFileString(path.join(root, "package.json")));
 
         expect(calls).toEqual([
-          ["@confect/core", "next"],
+          ["@confect/core", "latest"],
           ["@effect/platform-node", "latest"],
         ]);
         expect(updates).toEqual({
-          "@confect/core": "10.0.0-next.30",
+          "@confect/core": "10.0.0",
           "@effect/platform-node": "4.0.0",
           "@nx/devkit": "23.3.0-beta.9",
           "@nx/oxlint": "23.3.0-beta.9",
@@ -114,21 +115,39 @@ describe("dependency updater", () => {
   });
 
   test("keeps registry-incompatible members on explicit exact versions", () => {
+    expect(prereleaseChannels).toEqual({});
     expect(compatibilityVersionOverrides).toEqual({
       "@effect/vitest": "4.0.1",
       "@nx/devkit": "23.3.0-beta.9",
       "@nx/oxlint": "23.3.0-beta.9",
       "@nx/vitest": "23.3.0-beta.9",
+      "@workos-inc/node": "10.14.0",
       effect: "4.0.1",
       jsdom: "30.0.1",
       nx: "23.3.0-beta.9",
-      "oxlint-plugin-effect": "0.27.0",
-      typescript: "6.0.2",
+      typescript: "6.0.3",
       vite: "8.3.2",
       vitest: "5.0.3",
     });
     expect(Object.values(compatibilityVersionOverrides).every(isExactPackageVersion)).toBe(true);
   });
+
+  it.live("prevents all constrained tuple members from drifting to incompatible latest versions", () =>
+    provideNodeServices(
+      E.gen(function* () {
+        const root = yield* fixture();
+        const calls: string[] = [];
+        const resolver: RegistryResolver = (name) =>
+          E.sync(() => {
+            calls.push(name);
+            return "99.0.0";
+          });
+        const updates = yield* updateDependencySources(root, compatibilityVersionOverrides, resolver);
+        expect(updates).toEqual(compatibilityVersionOverrides);
+        expect(calls).toEqual([]);
+      }).pipe(E.scoped)
+    )
+  );
 
   it.live("holds Vite at 8.3.2 without resolving an unsupported registry latest", () =>
     provideNodeServices(
@@ -283,7 +302,7 @@ describe("dependency updater", () => {
     )
   );
 
-  it.live("keeps ordinary packages on latest while preserving prerelease channels and exact holds", () =>
+  it.live("keeps ordinary packages on latest while retaining only required tuple holds", () =>
     provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
@@ -292,7 +311,7 @@ describe("dependency updater", () => {
           E.sync(() => {
             calls.push([packageName, selector]);
             if (packageName === "effect") return "4.0.0";
-            if (selector === "next") return "10.0.0-next.30";
+            if (packageName === "@confect/core") return "10.0.0";
             return "9.8.7";
           });
 
@@ -309,12 +328,12 @@ describe("dependency updater", () => {
         );
 
         expect(calls).toEqual([
-          ["@confect/core", "next"],
+          ["@confect/core", "latest"],
           ["oxlint", "latest"],
           ["react", "latest"],
         ]);
         expect(updates).toEqual({
-          "@confect/core": "10.0.0-next.30",
+          "@confect/core": "10.0.0",
           effect: "4.0.1",
           nx: "23.3.0-beta.9",
           oxlint: "9.8.7",

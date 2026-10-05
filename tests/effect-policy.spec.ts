@@ -18,6 +18,7 @@ const effectSpecs = [
   "src/generators/sync/sync.spec.ts",
   "src/infra/deps-update.spec.ts",
   "src/migrations/backend-vitest-exclusions-1-0-2.spec.ts",
+  "src/migrations/compatibility-baseline-1-0-2.spec.ts",
   "tests/module-boundaries.spec.ts",
   "tests/wait-for-published.spec.ts",
 ];
@@ -55,7 +56,7 @@ describe("installed Effect policy", () => {
         expect(rules.get(`effect/${rule}`)).toBeUndefined();
     }
     rmSync(fixture, { force: true, recursive: true });
-    expect(packageVersions["oxlint-plugin-effect"]).toBe("0.27.0");
+    expect(packageVersions["oxlint-plugin-effect"]).toBe("0.27.1");
     const template = readFileSync(path.join(repository, consumerTemplate), "utf-8");
     expect(template).not.toContain("effect/noEffectRunInTests");
     for (const spec of effectSpecs) {
