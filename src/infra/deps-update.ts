@@ -28,7 +28,8 @@ export const compatibilityVersionOverrides = {
   "oxlint-plugin-effect": "0.27.0",
   // Nx consumes the TypeScript 6 JavaScript API; @typescript/native owns compilation.
   typescript: "6.0.2",
-  // KEE-54 qualifies Vitest 5 with native Nx migration support.
+  // KEE-54 qualifies Vite 8 and Vitest 5 with native Nx migration support.
+  vite: "8.3.2",
   vitest: "5.0.3",
 };
 

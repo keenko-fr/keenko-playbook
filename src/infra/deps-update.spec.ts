@@ -124,10 +124,42 @@ describe("dependency updater", () => {
       nx: "23.3.0-beta.9",
       "oxlint-plugin-effect": "0.27.0",
       typescript: "6.0.2",
+      vite: "8.3.2",
       vitest: "5.0.3",
     });
     expect(Object.values(compatibilityVersionOverrides).every(isExactPackageVersion)).toBe(true);
   });
+
+  it.live("holds Vite at 8.3.2 without resolving an unsupported registry latest", () =>
+    provideNodeServices(
+      E.gen(function* () {
+        const root = yield* fixture();
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const versionsPath = path.join(root, "src/generators/versions.ts");
+        const manifestPath = path.join(root, "package.json");
+        yield* fs.writeFileString(
+          versionsPath,
+          'export const packageVersions = {\n  vite: "8.3.2",\n} satisfies Record<string, string>;\n'
+        );
+        yield* fs.writeFileString(manifestPath, '{\n  "dependencies": {},\n  "devDependencies": {\n    "vite": "8.3.2"\n  }\n}\n');
+        const calls: (readonly [string, string])[] = [];
+        const resolver: RegistryResolver = (packageName, selector) =>
+          E.sync(() => {
+            calls.push([packageName, selector]);
+            return "9.0.0";
+          });
+
+        const updates = yield* updateDependencySources(root, { vite: "8.3.2" }, resolver);
+
+        expect(calls).toEqual([]);
+        expect(updates.vite).toBe("8.3.2");
+        expect(yield* fs.readFileString(versionsPath)).toContain('vite: "8.3.2"');
+        const manifest = yield* S.decodeEffect(sTestManifest)(yield* fs.readFileString(manifestPath));
+        expect(manifest.devDependencies.vite).toBe("8.3.2");
+      }).pipe(E.scoped)
+    )
+  );
 
   it.live("registry failure is modeled and leaves all files unchanged", () =>
     provideNodeServices(
