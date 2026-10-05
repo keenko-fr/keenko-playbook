@@ -73,7 +73,7 @@ bun run deps:update
 
 ## Release
 
-Each Keenko release cycle requires a full dependency compatibility sweep before candidate dogfood. Select the newest compatible versions and qualify coupled packages together. `packageVersions` is the canonical current-version source. Freeze the qualified tuple for RC dogfood: corrective RCs receive only changes needed to correct the candidate, with no unrelated dependency refresh. Promote the accepted RC to stable without refreshing dependencies.
+Each Keenko release cycle requires a full dependency compatibility sweep before candidate dogfood. Select the newest compatible versions and qualify coupled packages together. `packageVersions` is the canonical current-version source. If a release-blocking corrective pass explicitly reopens qualification before publication, establish a new qualification cutoff and requalify the candidates available at that cutoff. Freeze the tuple after the final successful pre-RC qualification. Versions published after that cutoff belong to the next release cycle unless a human explicitly reopens qualification again. During actual RC dogfood, corrective RCs receive only changes needed to correct the candidate, with no unrelated dependency refresh. Promote the accepted RC to stable without refreshing dependencies.
 
 User-visible and project-visible changes require an Nx version plan. Releases are manually initiated through the repository's [Release workflow](.github/workflows/release.yml); Nx Release owns versioning, changelog generation, tagging, and npm publication.
 

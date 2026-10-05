@@ -37,7 +37,10 @@ afterAll(() => rm(fixtureRoot, { force: true, recursive: true }));
 
 describe("generated web rendering", () => {
   test("renders locale-sensitive navigation and explicit identity states", async () => {
-    const process = Bun.spawn(["bun", vitest, "run"], {
+    // Resolve the repository's Node before entering a fixture with no runtime configuration.
+    const node = Bun.spawnSync(["node", "--print", "process.execPath"], { cwd: repository });
+    expect(node.exitCode, node.stderr.toString()).toBe(0);
+    const process = Bun.spawn([node.stdout.toString().trim(), vitest, "run"], {
       cwd: fixtureRoot,
       stderr: "pipe",
       stdout: "pipe",

@@ -1,5 +1,7 @@
 # KEE-55 compatibility qualification
 
+This records the original sweep. The [corrective qualification](kee-55-corrective.md) supersedes its cutoff, tuple and holds before rc.4 publication.
+
 Preflight on 2026-10-05. Starting remote `main`: `59f90e5be23e16f0955a3ad013aaf0822a5e7da1`. Public npm ends at `1.0.2-rc.3`; rc.4 is unpublished. Linear KEE-55 was read without mutation.
 
 The table covers all 63 canonical pins and six additional repository dependency names. Registry candidates are the newest published stable versions, independent of updater holds. The discovery column records the unchanged updater run before policy edits.

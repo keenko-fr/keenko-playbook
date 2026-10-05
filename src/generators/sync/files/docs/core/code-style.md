@@ -31,8 +31,8 @@ import * as usersData from "../data/users";
 Always namespace-import a features module using the same rule:
 
 ```ts
-import * as features from "../features/watchlist";
 import * as usersFeatures from "../features/users";
+import * as features from "../features/watchlist";
 ```
 
 Do not redundantly name same-concept imports `watchlistData` or `watchlistFeatures` when the consuming file already supplies the `watchlist` context.

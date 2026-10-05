@@ -100,4 +100,6 @@ Each Keenko release cycle qualifies the newest compatible versions of every mana
 
 `deps:update` discovers stable candidates for all managed packages. For packages deliberately qualified on a prerelease channel, it also discovers the configured prerelease candidate. Compatibility holds preserve the selected version until the tuple is requalified. Holds do not replace registry discovery or compatibility qualification.
 
-Freeze the qualified tuple for RC dogfood. Corrective RCs make only the compatibility corrections they require; do not refresh unrelated packages between candidates. Promote the accepted RC to stable without refreshing the tuple.
+A release-blocking corrective pass may explicitly reopen qualification before publication. Record a new qualification cutoff, rediscover all candidates available at that cutoff, and requalify coupled tuples through the complete product contract. Freeze the tuple after the final successful pre-RC qualification. Later publications belong to the next release cycle unless a human explicitly reopens qualification again.
+
+During actual RC dogfood, corrective RCs make only the compatibility corrections they require; do not refresh unrelated packages between candidates. Promote the accepted RC to stable without refreshing the tuple.

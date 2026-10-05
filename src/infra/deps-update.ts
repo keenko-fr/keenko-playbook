@@ -10,23 +10,17 @@ export const prereleaseChannels = { nx: "next" } satisfies Readonly<Record<strin
 
 // Holds reflect current upstream contracts; requalify the whole tuple before changing them.
 export const compatibilityVersionOverrides = {
-  // @effect/vitest requires Effect ^4.0.1 and Vitest >=5 <6. Keep their tested pair together.
-  "@effect/vitest": "4.0.1",
   // Stable @nx/vitest supports only Vitest 3/4. beta.9 is the newest Nx line supporting Vitest 5.
   "@nx/devkit": "23.3.0-beta.9",
   "@nx/oxlint": "23.3.0-beta.9",
   "@nx/vitest": "23.3.0-beta.9",
   // Both AuthKit integrations exclude Node SDK 11; use the newest shared SDK 10 release.
   "@workos-inc/node": "10.14.0",
-  effect: "4.0.1",
-  // jsdom 30.1.x fails Vitest 5 environment setup with an invalid EventTarget receiver.
-  jsdom: "30.0.1",
   nx: "23.3.0-beta.9",
+  // @effect/tsgo 0.48.1 rejects Oxlint 1.87.0 when patching its native binding.
+  oxlint: "1.86.0",
   // Nx and Keenko migrations require the JavaScript compiler API absent from TypeScript 7.
   typescript: "6.0.3",
-  // Vitest 5 and the selected Nx integration support Vite through major 8, and Effect's tests require Vitest 5.
-  vite: "8.3.2",
-  vitest: "5.0.3",
 };
 
 const alignedRootPackages = {

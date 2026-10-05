@@ -103,7 +103,7 @@ describe("dependency updater", () => {
           "@nx/devkit": "23.3.0-beta.9",
           "@nx/js": "23.3.0-beta.9",
           "@nx/oxlint": "23.3.0-beta.9",
-          effect: "4.0.1",
+          effect: "4.0.0",
           nx: "23.3.0-beta.9",
         });
         expect(
@@ -112,12 +112,12 @@ describe("dependency updater", () => {
           )
         ).toBe(true);
         expect(versions).toContain('"@effect/platform-node": "4.0.0"');
-        expect(versions).toContain('effect: "4.0.1"');
+        expect(versions).toContain('effect: "4.0.0"');
         expect(versions).toContain('"@nx/devkit": "23.3.0-beta.9"');
         expect(versions).toContain('"@nx/oxlint": "23.3.0-beta.9"');
         expect(versions).toContain('nx: "23.3.0-beta.9"');
         expect(manifest.dependencies["@effect/platform-node"]).toBe("4.0.0");
-        expect(manifest.dependencies.effect).toBe("4.0.1");
+        expect(manifest.dependencies.effect).toBe("4.0.0");
         expect(manifest.dependencies["@nx/devkit"]).toBe("23.3.0-beta.9");
         expect(manifest.devDependencies["@nx/oxlint"]).toBe("23.3.0-beta.9");
         expect(manifest.devDependencies.nx).toBe("23.3.0-beta.9");
@@ -139,17 +139,13 @@ describe("dependency updater", () => {
   test("keeps registry-incompatible members on explicit exact versions", () => {
     expect(prereleaseChannels).toEqual({ nx: "next" });
     expect(compatibilityVersionOverrides).toEqual({
-      "@effect/vitest": "4.0.1",
       "@nx/devkit": "23.3.0-beta.9",
       "@nx/oxlint": "23.3.0-beta.9",
       "@nx/vitest": "23.3.0-beta.9",
       "@workos-inc/node": "10.14.0",
-      effect: "4.0.1",
-      jsdom: "30.0.1",
       nx: "23.3.0-beta.9",
+      oxlint: "1.86.0",
       typescript: "6.0.3",
-      vite: "8.3.2",
-      vitest: "5.0.3",
     });
     expect(Object.values(compatibilityVersionOverrides).every(isExactPackageVersion)).toBe(true);
   });
@@ -173,7 +169,6 @@ describe("dependency updater", () => {
         const updates = yield* updateDependencySources(root, compatibilityVersionOverrides, resolver);
         expect(selectedVersions(updates)).toEqual(compatibilityVersionOverrides);
         expect(calls).toEqual([
-          "@effect/vitest",
           "@nx/devkit",
           "@nx/devkit",
           "@nx/oxlint",
@@ -181,13 +176,10 @@ describe("dependency updater", () => {
           "@nx/vitest",
           "@nx/vitest",
           "@workos-inc/node",
-          "effect",
-          "jsdom",
           "nx",
           "nx",
+          "oxlint",
           "typescript",
-          "vite",
-          "vitest",
         ]);
         for (const [name, selected] of Object.entries(compatibilityVersionOverrides)) {
           expect(updates[name]).toMatchObject({ held: true, selected, selector: "latest", stableCandidate: "99.0.0" });
@@ -325,8 +317,8 @@ describe("dependency updater", () => {
     )
   );
 
-  for (const candidate of ["9.0.0", "8.3.2"])
-    it.live(`discovers Vite candidate ${candidate} while holding the selected version at 8.3.2`, () =>
+  for (const candidate of ["1.87.0", "1.86.0"])
+    it.live(`discovers Oxlint candidate ${candidate} while holding the selected version at 1.86.0`, () =>
       provideNodeServices(
         E.gen(function* () {
           const root = yield* fixture();
@@ -336,9 +328,9 @@ describe("dependency updater", () => {
           const manifestPath = path.join(root, "package.json");
           yield* fs.writeFileString(
             versionsPath,
-            'export const packageVersions = {\n  vite: "8.3.2",\n} satisfies Record<string, string>;\n'
+            'export const packageVersions = {\n  oxlint: "1.86.0",\n} satisfies Record<string, string>;\n'
           );
-          yield* fs.writeFileString(manifestPath, '{\n  "dependencies": {},\n  "devDependencies": {\n    "vite": "8.3.2"\n  }\n}\n');
+          yield* fs.writeFileString(manifestPath, '{\n  "dependencies": {},\n  "devDependencies": {\n    "oxlint": "1.86.0"\n  }\n}\n');
           const calls: (readonly [string, string])[] = [];
           const resolver: RegistryResolver = (packageName, selector) =>
             E.sync(() => {
@@ -346,16 +338,16 @@ describe("dependency updater", () => {
               return candidate;
             });
 
-          const updates = yield* updateDependencySources(root, { vite: "8.3.2" }, resolver);
+          const updates = yield* updateDependencySources(root, { oxlint: "1.86.0" }, resolver);
 
-          expect(calls).toEqual([["vite", "latest"]]);
-          expect(updates.vite).toEqual({ held: true, selected: "8.3.2", selector: "latest", stableCandidate: candidate });
-          expect(formatDependencyUpdates(updates, { vite: "8.3.2" })).toEqual(
-            candidate === "8.3.2" ? [] : ["vite: stable candidate 9.0.0, selected 8.3.2 (held)"]
+          expect(calls).toEqual([["oxlint", "latest"]]);
+          expect(updates.oxlint).toEqual({ held: true, selected: "1.86.0", selector: "latest", stableCandidate: candidate });
+          expect(formatDependencyUpdates(updates, { oxlint: "1.86.0" })).toEqual(
+            candidate === "1.86.0" ? [] : ["oxlint: stable candidate 1.87.0, selected 1.86.0 (held)"]
           );
-          expect(yield* fs.readFileString(versionsPath)).toContain('vite: "8.3.2"');
+          expect(yield* fs.readFileString(versionsPath)).toContain('oxlint: "1.86.0"');
           const manifest = yield* S.decodeEffect(sTestManifest)(yield* fs.readFileString(manifestPath));
-          expect(manifest.devDependencies.vite).toBe("8.3.2");
+          expect(manifest.devDependencies.oxlint).toBe("1.86.0");
         }).pipe(E.scoped)
       )
     );
@@ -606,9 +598,9 @@ describe("dependency updater", () => {
         expect(selectedVersions(updates)).toEqual({
           "@confect/core": "10.0.0",
           "@nx/js": "23.3.0-beta.9",
-          effect: "4.0.1",
+          effect: "4.0.0",
           nx: "23.3.0-beta.9",
-          oxlint: "9.8.7",
+          oxlint: "1.86.0",
           react: "9.8.7",
         });
       }).pipe(E.scoped)
@@ -632,9 +624,9 @@ describe("dependency updater", () => {
           { nodeRange: ">=24.15 <25" }
         );
 
-        expect(updates.effect.selected).toBe("4.0.1");
+        expect(updates.effect.selected).toBe("4.0.0");
         expect(yield* fs.readFileString(path.join(root, "bun.lock"))).toBe("refreshed lockfile\n");
-        expect(yield* fs.readFileString(path.join(root, "src/generators/versions.ts"))).toContain('effect: "4.0.1"');
+        expect(yield* fs.readFileString(path.join(root, "src/generators/versions.ts"))).toContain('effect: "4.0.0"');
       }).pipe(E.scoped)
     )
   );
