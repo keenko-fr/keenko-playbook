@@ -49,7 +49,18 @@ jobs:
 
       - name: Verify release plan
         if: github.event_name == 'pull_request'
-        run: bun x nx release plan:check --base="${{ github.event.pull_request.base.sha }}" --head="${{ github.event.pull_request.head.sha }}"
+        shell: bash
+        env:
+          PLAN_BASE: ${{ github.event.pull_request.base.sha }}
+          PLAN_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git diff --name-only --no-renames "$(git merge-base "$PLAN_BASE" "$PLAN_HEAD")" "$PLAN_HEAD" -- \
+            . \
+            ':(top,exclude).github/workflows/ci.yml' \
+            ':(top,exclude)docs/packed-product-test.md' \
+            ':(top,exclude)tests/packed-product.ts' \
+            ':(top,exclude)CHANGELOG.md' \
+            | bun x nx release plan:check --stdin
 
       - name: Verify packed product
         run: bun run test:product

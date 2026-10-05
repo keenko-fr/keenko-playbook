@@ -10,15 +10,7 @@
   },
   "release": {
     "projects": ["keenko"],
-    "versionPlans": {
-      "ignorePatternsForPlanCheck": [
-        "/.github/workflows/ci.yml",
-        "/docs/packed-product-test.md",
-        "/tests/packed-product.ts",
-        "/nx.json",
-        "/CHANGELOG.md"
-      ]
-    },
+    "versionPlans": true,
     "version": {
       "adjustSemverBumpsForZeroMajorVersion": false,
       "preVersionCommand": "bunx nx run-many -t build"
