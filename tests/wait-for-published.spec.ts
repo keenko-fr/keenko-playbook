@@ -1,10 +1,9 @@
-/* oxlint-disable effect/noEffectRunInTests -- bun:test callbacks return E.runPromise to bridge the native Bun runner to the repository Effect workflow. */
-import { describe, expect, test } from "bun:test";
-
 import { NodeServices } from "@effect/platform-node";
+import { it } from "@effect/vitest";
 import { Effect as E, Fiber, FileSystem, Layer, Option, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { TestClock } from "effect/testing";
+import { describe, expect } from "vitest";
 
 import {
   PublishedVersionUnavailable,
@@ -23,13 +22,13 @@ import {
 
 const version = "1.2.3";
 const testPolicy = { interval: 0, maxAttempts: 3, timeout: "1 second", timeoutLabel: "1 second" } satisfies PublishedVersionWaitPolicy;
-const run = <A, X>(effect: E.Effect<A, X, NodeServices.NodeServices>) => E.runPromise(effect.pipe(E.provide(NodeServices.layer)));
+const provideNodeServices = <A, X>(effect: E.Effect<A, X, NodeServices.NodeServices>) => effect.pipe(E.provide(NodeServices.layer));
 const failLookup = (reason: string) => new RegistryLookupFailure({ reason });
 const sInstalledPackage = S.fromJsonString(S.Struct({ version: S.String }));
 
 describe("published version registry wait", () => {
-  test("probes an exact dependency in an isolated project and accepts the installed version", () =>
-    run(
+  it.live("probes an exact dependency in an isolated project and accepts the installed version", () =>
+    provideNodeServices(
       E.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
@@ -59,10 +58,11 @@ describe("published version registry wait", () => {
         expect(attempts).toBe(2);
         expect(seenCacheDirectories.size).toBe(2);
       })
-    ));
+    )
+  );
 
-  test("succeeds immediately when the exact requested version is available", () =>
-    run(
+  it.live("succeeds immediately when the exact requested version is available", () =>
+    provideNodeServices(
       E.gen(function* () {
         let attempts = 0;
         const lookup: RegistryLookup = (_name, requestedVersion) =>
@@ -74,10 +74,11 @@ describe("published version registry wait", () => {
         expect(yield* waitForPublishedVersion(version, lookup, testPolicy)).toBe(version);
         expect(attempts).toBe(1);
       })
-    ));
+    )
+  );
 
-  test("retries an unavailable exact version and succeeds when it becomes available", () =>
-    run(
+  it.live("retries an unavailable exact version and succeeds when it becomes available", () =>
+    provideNodeServices(
       E.gen(function* () {
         let attempts = 0;
         const lookup: RegistryLookup = (_name, requestedVersion) =>
@@ -89,10 +90,11 @@ describe("published version registry wait", () => {
         expect(yield* waitForPublishedVersion(version, lookup, testPolicy)).toBe(version);
         expect(attempts).toBe(3);
       })
-    ));
+    )
+  );
 
-  test("fails with a useful diagnostic after the bounded attempts are exhausted", () =>
-    run(
+  it.live("fails with a useful diagnostic after the bounded attempts are exhausted", () =>
+    provideNodeServices(
       E.gen(function* () {
         let attempts = 0;
         const lookup: RegistryLookup = () =>
@@ -108,9 +110,10 @@ describe("published version registry wait", () => {
         expect(failure.message).toContain("No version matching the requested selector");
         expect(attempts).toBe(3);
       })
-    ));
+    )
+  );
 
-  test("hard timeout bounds a non-completing registry lookup", () => {
+  it.live("hard timeout bounds a non-completing registry lookup", () => {
     const hardTimeoutPolicy = {
       interval: "1 hour",
       maxAttempts: 3,
@@ -118,34 +121,32 @@ describe("published version registry wait", () => {
       timeoutLabel: "10 millis",
     } satisfies PublishedVersionWaitPolicy;
 
-    return E.runPromise(
-      E.gen(function* () {
-        let attempts = 0;
-        const lookup: RegistryLookup = () =>
-          E.suspend(() => {
-            attempts += 1;
-            return E.never;
-          });
-        const fiber = yield* waitForPublishedVersion(version, lookup, hardTimeoutPolicy).pipe(E.flip, E.forkChild);
+    return E.gen(function* () {
+      let attempts = 0;
+      const lookup: RegistryLookup = () =>
+        E.suspend(() => {
+          attempts += 1;
+          return E.never;
+        });
+      const fiber = yield* waitForPublishedVersion(version, lookup, hardTimeoutPolicy).pipe(E.flip, E.forkChild);
 
-        yield* TestClock.adjust("10 millis");
-        const failure = yield* Fiber.join(fiber);
+      yield* TestClock.adjust("10 millis");
+      const failure = yield* Fiber.join(fiber);
 
-        expect(failure).toBeInstanceOf(PublishedVersionUnavailable);
-        expect(failure).toMatchObject({ attempts: 1, maxAttempts: 3, packageName: "keenko", version });
-        expect(failure.message).toContain("Hard timeout of 10 millis elapsed");
-        expect(failure.message).not.toContain("Last lookup failure: No version matching");
-        expect(attempts).toBe(1);
+      expect(failure).toBeInstanceOf(PublishedVersionUnavailable);
+      expect(failure).toMatchObject({ attempts: 1, maxAttempts: 3, packageName: "keenko", version });
+      expect(failure.message).toContain("Hard timeout of 10 millis elapsed");
+      expect(failure.message).not.toContain("Last lookup failure: No version matching");
+      expect(attempts).toBe(1);
 
-        yield* TestClock.adjust("2 hours");
-        yield* E.yieldNow;
-        expect(attempts).toBe(1);
-      }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
-    );
+      yield* TestClock.adjust("2 hours");
+      yield* E.yieldNow;
+      expect(attempts).toBe(1);
+    }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())));
   });
 
-  test("does not accept another available version", () =>
-    run(
+  it.live("does not accept another available version", () =>
+    provideNodeServices(
       E.gen(function* () {
         let attempts = 0;
         const lookup: RegistryLookup = () =>
@@ -158,10 +159,11 @@ describe("published version registry wait", () => {
         expect(failure.message).toContain("Bun installed keenko@1.2.4 instead of keenko@1.2.3");
         expect(attempts).toBe(3);
       })
-    ));
+    )
+  );
 
-  test("retries transient lookup failures instead of treating them as absence", () =>
-    run(
+  it.live("retries transient lookup failures instead of treating them as absence", () =>
+    provideNodeServices(
       E.gen(function* () {
         let attempts = 0;
         const lookup: RegistryLookup = (_name, requestedVersion) =>
@@ -173,7 +175,8 @@ describe("published version registry wait", () => {
         expect(yield* waitForPublishedVersion(version, lookup, testPolicy)).toBe(version);
         expect(attempts).toBe(2);
       })
-    ));
+    )
+  );
 });
 
 const published = "1.0.2-rc.1";
@@ -183,8 +186,8 @@ const rcTags = { mode: "rc", previousLatest, previousRc } satisfies PublicationT
 const readyRc = { latest: previousLatest, rc: published };
 
 describe("published dist-tag convergence", () => {
-  test("npm adapter reads public tags and retries nonzero exits with stderr and malformed JSON", () =>
-    run(
+  it.live("npm adapter reads public tags and retries nonzero exits with stderr and malformed JSON", () =>
+    provideNodeServices(
       E.gen(function* () {
         const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         let attempts = 0;
@@ -222,7 +225,8 @@ describe("published dist-tag convergence", () => {
         expect(yield* waitForPublishedDistTags(published, rcTags, lookup, testPolicy)).toBe(published);
         expect(attempts).toBe(3);
       })
-    ));
+    )
+  );
 
   for (const scenario of [
     { name: "tag already correct on first lookup", observations: [readyRc] },
@@ -230,8 +234,8 @@ describe("published dist-tag convergence", () => {
     { name: "temporarily missing tag then expected tag", observations: [{ latest: previousLatest }, readyRc] },
     { name: "transient registry failure then expected tag", observations: [failLookup("ETIMEDOUT contacting registry"), readyRc] },
   ])
-    test(scenario.name, () =>
-      run(
+    it.live(scenario.name, () =>
+      provideNodeServices(
         E.gen(function* () {
           let attempts = 0;
           const lookup: DistTagLookup = E.suspend(() =>
@@ -246,8 +250,8 @@ describe("published dist-tag convergence", () => {
       )
     );
 
-  test("exact installation succeeds while the old one-shot tag assertion would fail", () =>
-    run(
+  it.live("exact installation succeeds while the old one-shot tag assertion would fail", () =>
+    provideNodeServices(
       E.gen(function* () {
         let exactAttempts = 0;
         let tagAttempts = 0;
@@ -268,7 +272,8 @@ describe("published dist-tag convergence", () => {
         expect(exactAttempts).toBe(1);
         expect(tagAttempts).toBe(2);
       })
-    ));
+    )
+  );
 
   for (const { mode, version: target, expected, stale, changed, unchangedTag, movingTag } of [
     {
@@ -299,8 +304,8 @@ describe("published dist-tag convergence", () => {
     movingTag: string;
   }[]) {
     const configuration = { mode, previousLatest, previousRc };
-    test(`${mode} requires the moving tag and unchanged tag in the same observation`, () =>
-      run(
+    it.live(`${mode} requires the moving tag and unchanged tag in the same observation`, () =>
+      provideNodeServices(
         E.gen(function* () {
           let attempts = 0;
           const lookup: DistTagLookup = E.sync(() => {
@@ -311,13 +316,14 @@ describe("published dist-tag convergence", () => {
           expect(yield* waitForPublishedDistTags(target, configuration, lookup, testPolicy)).toBe(target);
           expect(attempts).toBe(3);
         })
-      ));
+      )
+    );
     for (const { name, observed, tag } of [
       { name: "permanently stale tag exhausts attempts", observed: stale, tag: movingTag },
       { name: "unexpectedly changed unchanged tag eventually fails", observed: changed, tag: unchangedTag },
     ])
-      test(`${mode}: ${name}`, () =>
-        run(
+      it.live(`${mode}: ${name}`, () =>
+        provideNodeServices(
           E.gen(function* () {
             let attempts = 0;
             const lookup: DistTagLookup = E.sync(() => {
@@ -331,11 +337,12 @@ describe("published dist-tag convergence", () => {
             expect(failure.message).toContain("within 1 second");
             expect(attempts).toBe(3);
           })
-        ));
+        )
+      );
   }
 
-  test("stable can preserve an absent rc tag, but rejects one appearing", () =>
-    run(
+  it.live("stable can preserve an absent rc tag, but rejects one appearing", () =>
+    provideNodeServices(
       E.gen(function* () {
         const tags = { mode: "stable", previousLatest, previousRc: "" } satisfies PublicationTags;
         expect(yield* waitForPublishedDistTags("1.0.2", tags, E.succeed({ latest: "1.0.2" }), testPolicy)).toBe("1.0.2");
@@ -345,39 +352,39 @@ describe("published dist-tag convergence", () => {
         expect(failure.message).toContain(`keenko@rc: expected <absent>, observed ${published}`);
         expect(failure.attempts).toBe(3);
       })
-    ));
+    )
+  );
 
-  test("hard timeout interrupts a non-completing lookup and preserves the last observation", () =>
-    E.runPromise(
-      E.gen(function* () {
-        let attempts = 0;
-        const lookup: DistTagLookup = E.suspend(() => {
-          attempts += 1;
-          return attempts === 1 ? E.succeed({ latest: previousLatest, rc: previousRc }) : E.never;
-        });
-        const policy = {
-          interval: "10 millis",
-          maxAttempts: 3,
-          timeout: "20 millis",
-          timeoutLabel: "20 millis",
-        } satisfies PublishedVersionWaitPolicy;
-        const fiber = yield* waitForPublishedDistTags(published, rcTags, lookup, policy).pipe(E.flip, E.forkChild);
-        yield* TestClock.adjust("9 millis");
-        expect(attempts).toBe(1);
-        yield* TestClock.adjust("1 millis");
-        expect(attempts).toBe(2);
-        yield* TestClock.adjust("10 millis");
-        const failure = yield* Fiber.join(fiber);
-        expect(failure.message).toContain("Hard timeout of 20 millis elapsed");
-        expect(failure.message).toContain(`keenko@rc: expected ${published}, observed ${previousRc}`);
-        expect(failure.message).toContain("2/3 attempts");
-        yield* TestClock.adjust("1 hour");
-        expect(attempts).toBe(2);
-      }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
-    ));
+  it.live("hard timeout interrupts a non-completing lookup and preserves the last observation", () =>
+    E.gen(function* () {
+      let attempts = 0;
+      const lookup: DistTagLookup = E.suspend(() => {
+        attempts += 1;
+        return attempts === 1 ? E.succeed({ latest: previousLatest, rc: previousRc }) : E.never;
+      });
+      const policy = {
+        interval: "10 millis",
+        maxAttempts: 3,
+        timeout: "20 millis",
+        timeoutLabel: "20 millis",
+      } satisfies PublishedVersionWaitPolicy;
+      const fiber = yield* waitForPublishedDistTags(published, rcTags, lookup, policy).pipe(E.flip, E.forkChild);
+      yield* TestClock.adjust("9 millis");
+      expect(attempts).toBe(1);
+      yield* TestClock.adjust("1 millis");
+      expect(attempts).toBe(2);
+      yield* TestClock.adjust("10 millis");
+      const failure = yield* Fiber.join(fiber);
+      expect(failure.message).toContain("Hard timeout of 20 millis elapsed");
+      expect(failure.message).toContain(`keenko@rc: expected ${published}, observed ${previousRc}`);
+      expect(failure.message).toContain("2/3 attempts");
+      yield* TestClock.adjust("1 hour");
+      expect(attempts).toBe(2);
+    }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
+  );
 
-  test("permanent registry failure reports expectations and last registry error", () =>
-    run(
+  it.live("permanent registry failure reports expectations and last registry error", () =>
+    provideNodeServices(
       E.gen(function* () {
         const failure = yield* waitForPublishedDistTags(published, rcTags, E.fail(failLookup("ECONNRESET")), testPolicy).pipe(E.flip);
         expect(failure.message).toContain(`keenko@rc = ${published}`);
@@ -385,10 +392,11 @@ describe("published dist-tag convergence", () => {
         expect(failure.message).toContain("ECONNRESET");
         expect(failure.attempts).toBe(3);
       })
-    ));
+    )
+  );
 
-  test("CLI keeps exact-only compatibility and validates mode-specific arguments", () =>
-    run(
+  it.live("CLI keeps exact-only compatibility and validates mode-specific arguments", () =>
+    provideNodeServices(
       E.gen(function* () {
         expect(yield* readPublicationArguments([published])).toEqual({ tags: Option.none(), version: published });
         for (const mode of ["rc", "stable"] as const)
@@ -405,10 +413,11 @@ describe("published dist-tag convergence", () => {
         ])
           expect(yield* readPublicationArguments(args).pipe(E.flip)).toBeInstanceOf(PublishedVersionUnavailable);
       })
-    ));
+    )
+  );
 
-  test("workflow shell preserves absent rc and publishes once per mode without retries", () =>
-    run(
+  it.live("workflow shell preserves absent rc and publishes once per mode without retries", () =>
+    provideNodeServices(
       E.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
@@ -506,5 +515,6 @@ describe("published dist-tag convergence", () => {
           expect(yield* fs.readFileString(failedPublishes)).toBe("publish\n");
         }
       }).pipe(E.scoped)
-    ));
+    )
+  );
 });

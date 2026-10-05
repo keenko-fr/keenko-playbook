@@ -140,7 +140,7 @@ const verifySlotCount = E.fn("product.verifySlotCount")(function* (target: Depen
     (sum, slots) => sum + Object.values(slots).reduce((n, entries) => n + Object.keys(entries).length, 0),
     0
   );
-  yield* assert(count === 15 + 32 * applicationCount + 13 + 14 + 1, `Unexpected managed slot count: ${count}`);
+  yield* assert(count === 16 + 32 * applicationCount + 13 + 14 + 1, `Unexpected managed slot count: ${count}`);
   yield* Console.log(`Managed dependency proof: ${applicationCount} application(s), ${count} slot instances.`);
 });
 
@@ -213,6 +213,9 @@ const customizeDependencySlots = E.fn("product.customizeDependencySlots")(functi
   }
 });
 
+const expectedDependencyVersion = (relative: string, name: string, version: string, nxVersion: string) =>
+  relative === "package.json" && name.startsWith("@nx/") ? nxVersion : version;
+
 const verifyDependencySlots = E.fn("product.verifyDependencySlots")(function* (
   workspace: string,
   target: DependencyBaseline,
@@ -231,7 +234,9 @@ const verifyDependencySlots = E.fn("product.verifyDependencySlots")(function* (
         );
       for (const [name, version] of Object.entries(before.get(relative)?.[section] ?? {})) {
         if (Object.hasOwn(slots.dependencies, name) || Object.hasOwn(slots.devDependencies, name) || name === "keenko") continue;
-        yield* assert(actual[section]?.[name] === version, `Consumer-owned slot changed: ${relative}#${section}.${name}`);
+        // Nx's package group owns scaffold packages outside Keenko's frozen role slots.
+        const expected = expectedDependencyVersion(relative, name, version, target["package.json"].devDependencies.nx);
+        yield* assert(actual[section]?.[name] === expected, `Dependency owner mismatch: ${relative}#${section}.${name}`);
       }
     }
   }
@@ -282,6 +287,7 @@ const createWorkspace = E.fn("product.createWorkspace")(function* (
     "--nxCloud=skip",
     "--interactive=false",
     "--trustThirdPartyPreset",
+    "--verbose",
   ]);
 });
 
@@ -365,7 +371,14 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
       NPM_CONFIG_USERCONFIG: path.join(temporary, "public-npmrc"),
     };
     yield* fs.writeFileString(publicEnv.NPM_CONFIG_USERCONFIG, "registry=https://registry.npmjs.org\n");
-    for (const selector of ["keenko@1.0.1", "keenko@1.0.2-rc.0", "keenko@1.0.2-rc.1", "@effect/platform-node-shared@4.0.0-rc.115"])
+    for (const selector of [
+      "keenko@1.0.1",
+      "keenko@1.0.2-rc.0",
+      "keenko@1.0.2-rc.1",
+      "keenko@1.0.2-rc.2",
+      "keenko@1.0.2-rc.3",
+      "@effect/platform-node-shared@4.0.0-rc.115",
+    ])
       yield* command(temporary, publicEnv, "npm", ["pack", selector, "--pack-destination", archives, "--ignore-scripts"]);
     for (const archive of ["keenko-1.0.1.tgz", "effect-platform-node-shared-4.0.0-rc.115.tgz"])
       yield* command(temporary, npmEnv, "npm", [
@@ -411,7 +424,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
       "--loglevel=error",
     ]);
     yield* completePhase("released 1.0.1 consumer creation", releasedStartedAt);
-    for (const version of ["1.0.2-rc.0", "1.0.2-rc.1"]) {
+    for (const version of ["1.0.2-rc.0", "1.0.2-rc.1", "1.0.2-rc.2", "1.0.2-rc.3"]) {
       const rcStartedAt = yield* startPhase(`published ${version} consumer creation`);
       yield* command(temporary, npmEnv, "npm", [
         "publish",
@@ -424,7 +437,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
         "rc",
         "--loglevel=error",
       ]);
-      const identity = version === "1.0.2-rc.0" ? "upgrade-published-rc" : "upgrade-published-rc1";
+      const identity = `upgrade-published-rc${version.split(".").at(-1)}`;
       yield* createWorkspace(
         temporary,
         { ...bootstrapEnv, BUN_INSTALL_CACHE_DIR: path.join(temporary, `published-${version}-bun-cache`) },
@@ -437,7 +450,10 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
       );
       yield* assert(rcInstalled.version === version, `The RC source consumer was not generated with published keenko@${version}`);
       const rcSlots = yield* S.decodeEffect(sDependencySections)(yield* fs.readFileString(path.join(rcWorkspace, "package.json")));
-      yield* assert(rcSlots.devDependencies?.["oxlint-plugin-effect"] === "0.12.1", `Published ${version} did not start on plugin 0.12.1`);
+      yield* assert(
+        rcSlots.devDependencies?.["oxlint-plugin-effect"] === (version === "1.0.2-rc.0" || version === "1.0.2-rc.1" ? "0.12.1" : "0.27.0"),
+        `Published ${version} did not retain its historical plugin`
+      );
       releasedWorkspaces.push(rcWorkspace);
       yield* completePhase(`published ${version} consumer creation`, rcStartedAt);
     }
@@ -512,7 +528,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   yield* fs.makeDirectory(bootstrapPrime);
   yield* fs.writeFileString(
     path.join(bootstrapPrime, "package.json"),
-    yield* S.encodeEffect(sManifest)({ dependencies: { "create-nx-workspace": "23.2.1" }, private: true })
+    yield* S.encodeEffect(sManifest)({ dependencies: { "create-nx-workspace": "23.3.0-beta.9" }, private: true })
   );
   yield* command(bootstrapPrime, bootstrapEnv, "bun", ["install", "--ignore-scripts"]);
 
@@ -604,6 +620,66 @@ const verifyResolution = E.fn("product.verifyResolution")(function* (workspace: 
   return `${resolution}\n${effect}`;
 });
 
+const effectTestBody = (name: string) => `import { it } from "@effect/vitest";
+import { Effect } from "effect";
+import { expect } from "vitest";
+
+it.effect("${name}", () =>
+  Effect.succeed("official integration").pipe(Effect.map(value => { expect(value).toBe("official integration"); return value; }))
+);
+
+`;
+
+const verifyTestingTuple = E.fn("product.verifyTestingTuple")(function* (
+  workspace: string,
+  env: Record<string, string>,
+  applications: readonly string[]
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const files = new Map<string, string>([
+    ["packages/backend/kee-54.test.ts", effectTestBody("KEE-54 backend Node")],
+    ["packages/backend/test/kee-54.test.ts", effectTestBody("KEE-54 backend Edge Runtime")],
+    ["packages/shared/src/kee-54.test.ts", effectTestBody("KEE-54 shared Node")],
+    ...applications.map((application): [string, string] => [
+      `apps/${application}/src/kee-54.test.ts`,
+      effectTestBody(`KEE-54 ${application} jsdom`),
+    ]),
+    [
+      "packages/ui/src/kee-54.test.ts",
+      'import { expect, test } from "vitest";\n\ntest("KEE-54 UI jsdom", () => { expect(document.createElement("div").tagName).toBe("DIV"); });\n',
+    ],
+  ]);
+  for (const [relative, contents] of files) {
+    yield* fs.makeDirectory(path.dirname(path.join(workspace, relative)), { recursive: true });
+    yield* fs.writeFileString(path.join(workspace, relative), contents);
+  }
+  yield* E.gen(function* () {
+    yield* command(workspace, env, "bun", ["x", "oxfmt", ...files.keys()]);
+    yield* command(workspace, env, "bun", ["x", "oxlint", ...files.keys()]);
+    const output = yield* command(workspace, env, "bun", ["run", "test", "--reporter=verbose", "--output-style=static"]);
+    for (const name of [
+      "backend Node",
+      "backend Edge Runtime",
+      "shared Node",
+      "UI jsdom",
+      ...applications.map((application) => `${application} jsdom`),
+    ])
+      yield* assert(output.includes(`KEE-54 ${name}`), `Root testing did not run ${name}:\n${output}`);
+    yield* assert(
+      output.match(/5\.0\.3/gu)?.length === applications.length + 3,
+      `Root Nx orchestration did not start all ${applications.length + 3} Vitest 5 targets:\n${output}`
+    );
+    yield* Console.log(
+      "KEE-54 testing proof: official Effect integration, active lint policy, Node, Edge Runtime, web/UI jsdom, shared, and Nx root orchestration passed."
+    );
+  }).pipe(
+    E.ensuring(
+      E.forEach(files.keys(), (relative) => fs.remove(path.join(workspace, relative), { force: true }), { discard: true }).pipe(E.orDie)
+    )
+  );
+});
+
 const verifyAuthkitTest = E.fn("product.verifyAuthkitTest")(function* (workspace: string, env: Record<string, string>) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -650,6 +726,24 @@ const verifyReinstalls = E.fn("product.verifyReinstalls")(function* (
   }
 });
 
+const verifySyncRerun = E.fn("product.verifySyncRerun")(function* (workspace: string, env: Record<string, string>) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const files = ["AGENTS.md", "CONTEXT.md", "nx.json", "package.json", "bun.lock", "bunfig.toml"];
+  for (const directory of [".keenko", ".agents", ".claude"])
+    for (const relative of yield* fs.readDirectory(path.join(workspace, directory), { recursive: true })) {
+      const file = path.join(directory, relative);
+      if ((yield* fs.stat(path.join(workspace, file))).type === "File") files.push(file);
+    }
+  const before = new Map<string, string>();
+  for (const file of files) before.set(file, yield* fs.readFileString(path.join(workspace, file)));
+  yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
+  for (const [file, contents] of before)
+    yield* assert((yield* fs.readFileString(path.join(workspace, file))) === contents, `Sync rerun changed ${file}`);
+  yield* command(workspace, env, "bun", ["x", "nx", "sync:check"]);
+  yield* Console.log(`Sync rerun preserved ${files.length} managed files and the Bun lockfile.`);
+});
+
 const verifyHistoricalEffect = E.fn("product.verifyHistoricalEffect")(function* (workspace: string, env: Record<string, string>) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -679,8 +773,9 @@ const prepareUpgradeFixture = E.fn("product.prepareUpgradeFixture")(function* (
   const sSections = S.decodeEffect(sDependencySections);
   const identity = path.basename(workspace);
   const publishedRc = identity.startsWith("upgrade-published-rc");
-  let sourceVersion = publishedRc ? "1.0.2-rc.0" : "1.0.1";
-  if (identity === "upgrade-published-rc1") sourceVersion = "1.0.2-rc.1";
+  const sourceVersion = (yield* S.decodeEffect(sVersionPackage)(
+    yield* fs.readFileString(path.join(workspace, "node_modules/keenko/package.json"))
+  )).version;
   let applications = ["web"];
   if (identity === "upgrade-renamed") applications = ["portal"];
   if (identity === "upgrade-multiple") applications = ["web", "console", "studio"];
@@ -699,9 +794,6 @@ const prepareUpgradeFixture = E.fn("product.prepareUpgradeFixture")(function* (
   const divergent = identity === "upgrade-divergent";
   if (divergent || identity === "upgrade-multiple") yield* customizeDependencySlots(workspace, manifestPaths);
   if (publishedRc) yield* customizeDependencySlots(workspace, ["apps/console/package.json"]);
-  const canonicalInitialApp = publishedRc
-    ? O.some(yield* fs.readFileString(path.join(workspace, "apps/web/package.json")))
-    : O.none<string>();
   const before = new Map<string, S.Schema.Type<typeof sDependencySections>>();
   for (const relative of manifestPaths) before.set(relative, yield* sSections(yield* fs.readFileString(path.join(workspace, relative))));
 
@@ -711,16 +803,19 @@ const prepareUpgradeFixture = E.fn("product.prepareUpgradeFixture")(function* (
       : ["1.0.2-application-workspaces", "1.0.2-backend-vitest-exclusions", "1.0.2-dependency-baseline", "1.0.2-bun-linker"].map(
           (name) => ({ name, package: "keenko", version: "1.0.2-rc.0" })
         )),
-    ...(sourceVersion === "1.0.2-rc.1"
+    ...(sourceVersion !== "1.0.1" && sourceVersion !== "1.0.2-rc.0"
       ? []
       : [{ name: "1.0.2-application-dependency-baseline", package: "keenko", version: "1.0.2-rc.1" }]),
-    { name: "1.0.2-effect-policy-baseline", package: "keenko", version: "1.0.2-rc.2" },
-    { name: "1.0.2-authkit-test", package: "keenko", version: "1.0.2-rc.3" },
+    ...(["1.0.1", "1.0.2-rc.0", "1.0.2-rc.1"].includes(sourceVersion)
+      ? [{ name: "1.0.2-effect-policy-baseline", package: "keenko", version: "1.0.2-rc.2" }]
+      : []),
+    ...(sourceVersion === "1.0.2-rc.3" ? [] : [{ name: "1.0.2-authkit-test", package: "keenko", version: "1.0.2-rc.3" }]),
+    { name: "1.0.2-effect-testing-baseline", package: "keenko", version: "1.0.2-rc.4" },
+    { name: "migrate-to-vitest-5", package: "@nx/vitest", version: "23.3.0-beta.8" },
   ];
   return {
     applications,
     before,
-    canonicalInitialApp,
     divergent,
     expectedMigrations,
     manifestPaths,
@@ -735,8 +830,7 @@ const verifyMigrationExecution = E.fn("product.verifyMigrationExecution")(functi
   workspace: string,
   migrationOutput: string,
   expectedMigrations: readonly { readonly name: string }[],
-  applications: readonly string[],
-  canonicalInitialApp: O.Option<string>
+  applications: readonly string[]
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -746,11 +840,6 @@ const verifyMigrationExecution = E.fn("product.verifyMigrationExecution")(functi
     yield* assert(index > previousIndex, `Native Nx ran ${migration.name} in an unexpected order`);
     previousIndex = index;
   }
-  if (O.isSome(canonicalInitialApp))
-    yield* assert(
-      (yield* fs.readFileString(path.join(workspace, "apps/web/package.json"))) === canonicalInitialApp.value,
-      "Dependency migration changed the canonical published RC initial application"
-    );
   for (const application of applications) {
     const manifest = yield* S.decodeEffect(S.fromJsonString(S.Struct({ nx: S.Struct({ tags: S.Array(S.String) }) })))(
       yield* fs.readFileString(path.join(workspace, "apps", application, "package.json"))
@@ -768,23 +857,17 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   for (const workspace of releasedWorkspaces) {
-    const {
-      applications,
-      before,
-      canonicalInitialApp,
-      divergent,
-      expectedMigrations,
-      manifestPaths,
-      phase,
-      sourceVersion,
-      startedAt,
-      target,
-    } = yield* prepareUpgradeFixture(workspace, roles, env);
+    const { applications, before, divergent, expectedMigrations, manifestPaths, phase, sourceVersion, startedAt, target } =
+      yield* prepareUpgradeFixture(workspace, roles, env);
 
+    const nativeProbe = path.join(workspace, "tools/kee-54-native-reporters.ts");
+    yield* fs.makeDirectory(path.dirname(nativeProbe), { recursive: true });
+    yield* fs.writeFileString(nativeProbe, 'export { DefaultReporter } from "vitest/reporters";\n');
     yield* command(workspace, env, "bun", ["x", "nx", "migrate", `keenko@${packageVersion}`]);
     const plan = yield* S.decodeEffect(sMigrations)(yield* fs.readFileString(path.join(workspace, "migrations.json")));
     yield* assert(
-      serializeJson(plan.migrations) === serializeJson(expectedMigrations),
+      serializeJson(plan.migrations.map(({ name, package: owner, version }) => ({ name, package: owner, version }))) ===
+        serializeJson(expectedMigrations),
       `Native Nx did not discover and order the expected migrations: ${serializeJson(plan)}`
     );
     yield* Console.log(`Native Nx ${sourceVersion} migration plan: ${serializeJson(plan)}`);
@@ -800,16 +883,17 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
       "dist/migrations/dependency-baseline-1-0-2.js",
       "dist/migrations/bun-linker-1-0-2.js",
       "dist/migrations/authkit-test-1-0-2.js",
+      "dist/migrations/effect-testing-baseline-1-0-2.js",
       "dist/compatibility/authkit-test.js",
       "dist/compatibility/files/workos-authkit-0.2.10.patch",
-      "dist/migrations/files/dependency-baseline-1-0-2.json",
+      "dist/migrations/files/effect-testing-baseline-1-0-2.json",
     ])
       yield* assert(
         yield* fs.exists(path.join(workspace, "node_modules/keenko", artifact)),
         `Missing packed migration artifact: ${artifact}`
       );
     const packedRoles = yield* S.decodeEffect(sDependencyBaseline)(
-      yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/dependency-baseline-1-0-2.json"))
+      yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/effect-testing-baseline-1-0-2.json"))
     );
     yield* assert(
       serializeJson(packedRoles) === serializeJson(roles),
@@ -819,7 +903,12 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     const lockBefore = yield* fs.readFileString(lockPath);
     if (divergent) yield* verifyHistoricalEffect(workspace, env);
     const migrationOutput = yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"]);
-    yield* verifyMigrationExecution(workspace, migrationOutput, expectedMigrations, applications, canonicalInitialApp);
+    yield* verifyMigrationExecution(workspace, migrationOutput, expectedMigrations, applications);
+    yield* assert(
+      (yield* fs.readFileString(nativeProbe)).includes('from "vitest/node"'),
+      "Native Nx Vitest 5 source migration did not execute"
+    );
+    yield* fs.remove(nativeProbe);
     yield* verifyDependencySlots(workspace, target, before);
     yield* command(workspace, env, "bun", ["install"]);
     yield* assert(
@@ -833,11 +922,20 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     yield* command(workspace, env, "bun", ["run", "codegen"]);
     const initialResolution = yield* verifyResolution(workspace, env);
     yield* verifyBackendTestOwnership(workspace, env);
+    yield* verifyTestingTuple(workspace, env, applications);
     yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
     yield* verifyReinstalls(workspace, env, initialResolution);
+    yield* verifySyncRerun(workspace, env);
     yield* verifyInstalledSlots(workspace, target, lockAfter);
     const canonical = new Map<string, string>([
       ["bunfig.toml", yield* fs.readFileString(path.join(workspace, "bunfig.toml"))],
+      ["oxfmt.config.ts", yield* fs.readFileString(path.join(workspace, "oxfmt.config.ts"))],
+      [".gitignore", yield* fs.readFileString(path.join(workspace, ".gitignore"))],
+      ["nx.json", yield* fs.readFileString(path.join(workspace, "nx.json"))],
+      [
+        `tools/ai-migrations/@nx/vitest/${packageVersion}/ai-instructions-for-vitest-5.md`,
+        yield* fs.readFileString(path.join(workspace, `tools/ai-migrations/@nx/vitest/${packageVersion}/ai-instructions-for-vitest-5.md`)),
+      ],
       ["packages/backend/vitest.config.ts", yield* fs.readFileString(path.join(workspace, "packages/backend/vitest.config.ts"))],
       [
         "patches/keenko-workos-authkit-0.2.10.patch",
@@ -902,7 +1000,7 @@ const product = E.gen(function* () {
 
   const identity = "product-acceptance";
   const createArguments = [
-    "create-nx-workspace@23.2.1",
+    "create-nx-workspace@23.3.0-beta.9",
     identity,
     source._tag === "local" ? "--preset=keenko" : `--preset=${source.preset}`,
     "--packageManager=bun",
@@ -922,7 +1020,7 @@ const product = E.gen(function* () {
   const workspace = path.join(temporary, identity);
   const initialResolution = yield* verifyResolution(workspace, env);
   const roles = yield* S.decodeEffect(sDependencyBaseline)(
-    yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/dependency-baseline-1-0-2.json"))
+    yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/effect-testing-baseline-1-0-2.json"))
   );
   yield* assert(
     Object.keys(roles).join("|") === "root|application|backend|ui|shared",
@@ -939,6 +1037,7 @@ const product = E.gen(function* () {
   yield* verifyDependencySlots(workspace, target);
   yield* verifyInstalledSlots(workspace, target, yield* fs.readFileString(path.join(workspace, "bun.lock")));
   yield* verifyBackendTestOwnership(workspace, env);
+  yield* verifyTestingTuple(workspace, env, ["web"]);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
   for (const file of [
     "CONTEXT.md",
@@ -1060,6 +1159,7 @@ const product = E.gen(function* () {
 
   const reinstallStartedAt = yield* startPhase("fresh frozen and idempotent reinstall verification");
   yield* verifyReinstalls(workspace, bootstrapEnv, initialResolution);
+  yield* verifySyncRerun(workspace, bootstrapEnv);
   const reinstalledPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPackagePath));
   yield* assert(reinstalledPackage.version === packageVersion, `The consumer did not reinstall Keenko ${packageVersion}`);
   yield* completePhase("fresh frozen and idempotent reinstall verification", reinstallStartedAt);

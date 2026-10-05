@@ -24,7 +24,7 @@ bunx create-nx-workspace@23.2.1 <project> --preset=keenko --packageManager=bun -
 Current release candidate:
 
 ```sh
-bunx create-nx-workspace@23.2.1 <project> --preset=keenko@rc --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
+bunx create-nx-workspace@23.3.0-beta.9 <project> --preset=keenko@rc --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
 ```
 
 keenko resolves the npm latest dist-tag. keenko@rc resolves the npm rc dist-tag.

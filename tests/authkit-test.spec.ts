@@ -9,6 +9,7 @@ import { flushChanges, FsTree } from "nx/src/generators/tree";
 
 import { authkitPatchKey, authkitPatchPath } from "../src/compatibility/authkit-test.js";
 import migration from "../src/migrations/authkit-test-1-0-2.js";
+import testingMigration from "../src/migrations/effect-testing-baseline-1-0-2.js";
 
 const repository = path.resolve(import.meta.dir, "..");
 const run = async (cwd: string, args: string[]) => {
@@ -40,6 +41,8 @@ test("KEE-53 reproduces rc.2 and fixes the real AuthKit test entrypoint without 
         JSON.stringify({ name: `@authkit-proof/${role}`, private: true, type: "module", ...roles[role] })
       );
     }
+    const formatter = await readFile(path.join(repository, "src/generators/preset/files/root/oxfmt.config.ts.template"), "utf-8");
+    await writeFile(path.join(root, "oxfmt.config.ts"), formatter.replace('    "tools/ai-migrations/**",\n', ""));
     const backend = path.join(root, "packages/backend");
     for (const [source, target] of [
       ["authkit-test.vitest.ts.template", "authkit.test.ts"],
@@ -73,6 +76,7 @@ test("KEE-53 reproduces rc.2 and fixes the real AuthKit test entrypoint without 
 
     const tree = new FsTree(root, false);
     migration(tree);
+    await testingMigration(tree);
     flushChanges(root, tree.listChanges());
     const correctedInstall = await run(root, ["bun", "install", "--ignore-scripts"]);
     expect(correctedInstall.code).toBe(0);
@@ -88,7 +92,7 @@ test("KEE-53 reproduces rc.2 and fixes the real AuthKit test entrypoint without 
         await readFile(path.join(repository, "tests/fixtures/product-resolution.mjs.template"), "utf-8"),
         root,
       ]);
-      expect(probe.code).toBe(0);
+      expect(probe.code, probe.output).toBe(0);
       expect(await readFile(sourcePath, "utf-8")).toBe(upstreamSource);
       const types = await run(backend, compiler);
       expect(types.output).not.toContain("error TS");

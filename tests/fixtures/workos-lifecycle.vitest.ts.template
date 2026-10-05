@@ -1,7 +1,8 @@
 /* oxlint-disable effect/noAs, effect/noAsyncFunction, effect/noGlobals, effect/noModuleMocks, typescript/no-unsafe-type-assertion -- This Playbook-owned Vitest seam controls the deployment environment, captures framework handlers, and replaces only first-party registration boundaries. */
 import type * as ConfectServerModule from "@confect/server";
 import { ConfigProvider, Effect as E, Layer as L, Option as O } from "effect";
-import { describe, expect, test, vi } from "vitest";
+import { it } from "@effect/vitest";
+import { describe, expect, vi } from "vitest";
 
 import type { QueryCtx as QueryCtxService } from "./_generated/services";
 
@@ -102,7 +103,7 @@ const resetLifecycle = () => {
 };
 
 describe("WorkOS component lifecycle", () => {
-  test("keeps backend loading and synchronized identity inactive without the webhook secret", () =>
+  it.effect("keeps backend loading and synchronized identity inactive without the webhook secret", () =>
     E.gen(function* () {
       resetLifecycle();
 
@@ -125,9 +126,9 @@ describe("WorkOS component lifecycle", () => {
       const { backfillUsers } = yield* E.promise(loadWorkOSClient);
       expect(backfillUsers).not.toBe(officialBackfill);
       clearWorkOSEnv();
-    }).pipe(E.runPromise));
+    }));
 
-  test("activates official routes and synchronized identity when the webhook secret is configured", () =>
+  it.effect("activates official routes and synchronized identity when the webhook secret is configured", () =>
     E.gen(function* () {
       resetLifecycle();
       configureWorkOS();
@@ -151,5 +152,5 @@ describe("WorkOS component lifecycle", () => {
       const { backfillUsers } = yield* E.promise(loadWorkOSClient);
       expect(backfillUsers).toBe(officialBackfill);
       clearWorkOSEnv();
-    }).pipe(E.runPromise));
+    }));
 });

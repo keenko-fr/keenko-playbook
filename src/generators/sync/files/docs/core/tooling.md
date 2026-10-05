@@ -105,7 +105,7 @@ Any future change to this relationship requires verification against the support
 
 ## Root configuration and monorepos
 
-A TypeScript repository owns root `oxfmt.config.ts` and `oxlint.config.ts` files.
+A TypeScript repository owns root `oxfmt.config.ts` and `oxlint.config.ts` files. Nx owns the upstream instructions under `tools/ai-migrations/**`; the formatter ignores that directory so native migrations retain their original guidance bytes.
 
 Root configuration is the canonical baseline for every workspace.
 
@@ -289,4 +289,6 @@ The Keenko Nx preset owns the initial:
 
 Keenko-managed guidance and skills are synchronized by `syncManagedState`.
 
-Canonical
+## Effect tests
+
+Vitest runs all authored tests. Tests that execute an Effect use the public `@effect/vitest` integration, such as `it.effect` or `it.live`. Tests with no Effect use ordinary Vitest. Both packages are root-owned tooling; provider and framework helpers keep their backend ownership and can be composed inside Effect-aware tests. See [Effect testing](../stacks/effect/README.md#native-testing-seams) for examples.

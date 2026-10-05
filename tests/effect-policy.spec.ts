@@ -13,9 +13,7 @@ import { packageVersions } from "../src/generators/versions.js";
 
 const repository = fileURLToPath(new URL("../", import.meta.url));
 const consumerTemplate = "src/generators/preset/files/root/oxlint.config.ts.template";
-const bunException =
-  "/* oxlint-disable effect/noEffectRunInTests -- bun:test callbacks return E.runPromise to bridge the native Bun runner to the repository Effect workflow. */";
-const bunSpecs = [
+const effectSpecs = [
   "src/generators/preset/preset.spec.ts",
   "src/generators/sync/sync.spec.ts",
   "src/infra/deps-update.spec.ts",
@@ -60,15 +58,16 @@ describe("installed Effect policy", () => {
     expect(packageVersions["oxlint-plugin-effect"]).toBe("0.27.0");
     const template = readFileSync(path.join(repository, consumerTemplate), "utf-8");
     expect(template).not.toContain("effect/noEffectRunInTests");
-    for (const spec of bunSpecs) {
+    for (const spec of effectSpecs) {
       const source = readFileSync(path.join(repository, spec), "utf-8");
-      expect(source.startsWith(bunException)).toBe(true);
-      expect(source).toContain('from "bun:test"');
-      expect(source).toContain("E.runPromise(");
+      expect(source).toContain('from "@effect/vitest"');
+      expect(source).toContain("it.live(");
+      expect(source).not.toContain("E.runPromise(");
+      expect(source).not.toContain("oxlint-disable effect/noEffectRunInTests");
     }
   });
 
-  test("keeps manual Effect runs diagnosed outside the explicit Bun boundary and reports try syntax once", () => {
+  test("accepts the official Effect facility, diagnoses ordinary manual runs and reports try syntax once", () => {
     const fixture = mkdtempSync(path.join(tmpdir(), "keenko-effect-policy-"));
     symlinkSync(path.join(repository, "node_modules"), path.join(fixture, "node_modules"), "dir");
     mkdirSync(path.join(fixture, "tests"));
@@ -78,7 +77,7 @@ describe("installed Effect policy", () => {
       '{"compilerOptions":{"module":"nodenext","target":"esnext","types":["bun"]},"include":["tests/**/*.ts"]}'
     );
     const source =
-      'import { test } from "bun:test";\nimport { Effect as E } from "effect";\n\ntest("boundary", () => E.runPromise(E.void));\n';
+      'import { test } from "vitest";\nimport { Effect as E } from "effect";\n\ntest("boundary", () => E.runPromise(E.void));\n';
     const probe = path.join(fixture, "tests/boundary.spec.ts");
     const lint = () => {
       const result = Bun.spawnSync([path.join(repository, "node_modules/.bin/oxlint"), "--format", "unix", "tests/boundary.spec.ts"], {
@@ -90,7 +89,10 @@ describe("installed Effect policy", () => {
     const unscoped = lint();
     expect(unscoped.code).not.toBe(0);
     expect(unscoped.output).toContain("noEffectRunInTests");
-    writeFileSync(probe, `${bunException}\n${source}`);
+    writeFileSync(
+      probe,
+      'import { it } from "@effect/vitest";\nimport { Effect as E } from "effect";\n\nit.effect("boundary", () => E.void);\n'
+    );
     const scoped = lint();
     expect(scoped.code, scoped.output).toBe(0);
     writeFileSync(

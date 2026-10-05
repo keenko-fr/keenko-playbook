@@ -1,8 +1,7 @@
-/* oxlint-disable effect/noEffectRunInTests -- bun:test callbacks return E.runPromise to bridge the native Bun runner to the repository Effect workflow. */
-import { describe, expect, test } from "bun:test";
-
 import { NodeServices } from "@effect/platform-node";
+import { it } from "@effect/vitest";
 import { Effect as E, FileSystem, Path, Schema as S } from "effect";
+import { describe, expect, test } from "vitest";
 
 import {
   compatibilityVersionOverrides,
@@ -14,7 +13,7 @@ import {
   type RegistryResolver,
 } from "./deps-update.js";
 
-const run = <A, X>(effect: E.Effect<A, X, NodeServices.NodeServices>) => E.runPromise(effect.pipe(E.provide(NodeServices.layer)));
+const provideNodeServices = <A, X>(effect: E.Effect<A, X, NodeServices.NodeServices>) => effect.pipe(E.provide(NodeServices.layer));
 
 const sTestManifest = S.fromJsonString(
   S.Struct({ dependencies: S.Record(S.String, S.String), devDependencies: S.Record(S.String, S.String) })
@@ -35,11 +34,11 @@ const fixture = E.fn("test.deps.fixture")(function* () {
   yield* fs.makeDirectory(path.join(root, "docs"), { recursive: true });
   yield* fs.writeFileString(
     path.join(versionsDirectory, "versions.ts"),
-    `export const packageVersions = {\n  "@effect/platform-node": "4.0.0-rc.1",\n  "@nx/devkit": "23.2.1",\n  "@nx/oxlint": "23.2.1",\n  effect: "4.0.0-rc.1",\n  nx: "23.2.1",\n} satisfies Record<string, string>;\n\nexport const runtimeVersions = {\n  bun: "1.4.2",\n  nodeRange: ">=24.15 <25",\n} satisfies Record<string, string>;\n`
+    `export const packageVersions = {\n  "@effect/platform-node": "4.0.0-rc.1",\n  "@nx/devkit": "23.3.0-beta.9",\n  "@nx/oxlint": "23.3.0-beta.9",\n  effect: "4.0.0-rc.1",\n  nx: "23.3.0-beta.9",\n} satisfies Record<string, string>;\n\nexport const runtimeVersions = {\n  bun: "1.4.2",\n  nodeRange: ">=24.15 <25",\n} satisfies Record<string, string>;\n`
   );
   yield* fs.writeFileString(
     path.join(root, "package.json"),
-    '{\n  "dependencies": {\n    "@effect/platform-node": "4.0.0-rc.1",\n    "@nx/devkit": "23.2.1",\n    "effect": "4.0.0-rc.1"\n  },\n  "devDependencies": {\n    "@nx/js": "23.2.1",\n    "@nx/oxlint": "23.2.1",\n    "nx": "23.2.1"\n  }\n}\n'
+    '{\n  "dependencies": {\n    "@effect/platform-node": "4.0.0-rc.1",\n    "@nx/devkit": "23.3.0-beta.9",\n    "effect": "4.0.0-rc.1"\n  },\n  "devDependencies": {\n    "@nx/js": "23.3.0-beta.9",\n    "@nx/oxlint": "23.3.0-beta.9",\n    "nx": "23.3.0-beta.9"\n  }\n}\n'
   );
   yield* fs.writeFileString(path.join(root, "docs/versions.md"), "runtime and package documentation stays untouched\n");
   yield* fs.writeFileString(path.join(root, "bun.lock"), "original lockfile\n");
@@ -48,8 +47,8 @@ const fixture = E.fn("test.deps.fixture")(function* () {
 });
 
 describe("dependency updater", () => {
-  test("resolves stable Effect and retained Confect prereleases to exact versions", () =>
-    run(
+  it.live("resolves stable Effect and retained Confect prereleases to exact versions", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
         const fs = yield* FileSystem.FileSystem;
@@ -66,10 +65,10 @@ describe("dependency updater", () => {
           {
             "@confect/core": "10.0.0-next.22",
             "@effect/platform-node": "4.0.0-rc.1",
-            "@nx/devkit": "23.2.1",
-            "@nx/oxlint": "23.2.1",
+            "@nx/devkit": "23.3.0-beta.9",
+            "@nx/oxlint": "23.3.0-beta.9",
             effect: "4.0.0-rc.1",
-            nx: "23.2.1",
+            nx: "23.3.0-beta.9",
           },
           resolver
         );
@@ -79,30 +78,30 @@ describe("dependency updater", () => {
         expect(calls).toEqual([
           ["@confect/core", "next"],
           ["@effect/platform-node", "latest"],
-          ["effect", "latest"],
         ]);
         expect(updates).toEqual({
           "@confect/core": "10.0.0-next.30",
           "@effect/platform-node": "4.0.0",
-          "@nx/devkit": "23.2.1",
-          "@nx/oxlint": "23.2.1",
-          effect: "4.0.0",
-          nx: "23.2.1",
+          "@nx/devkit": "23.3.0-beta.9",
+          "@nx/oxlint": "23.3.0-beta.9",
+          effect: "4.0.1",
+          nx: "23.3.0-beta.9",
         });
         expect(Object.values(updates).every(isExactPackageVersion)).toBe(true);
         expect(versions).toContain('"@effect/platform-node": "4.0.0"');
-        expect(versions).toContain('effect: "4.0.0"');
-        expect(versions).toContain('"@nx/devkit": "23.2.1"');
-        expect(versions).toContain('"@nx/oxlint": "23.2.1"');
-        expect(versions).toContain('nx: "23.2.1"');
+        expect(versions).toContain('effect: "4.0.1"');
+        expect(versions).toContain('"@nx/devkit": "23.3.0-beta.9"');
+        expect(versions).toContain('"@nx/oxlint": "23.3.0-beta.9"');
+        expect(versions).toContain('nx: "23.3.0-beta.9"');
         expect(manifest.dependencies["@effect/platform-node"]).toBe("4.0.0");
-        expect(manifest.dependencies.effect).toBe("4.0.0");
-        expect(manifest.dependencies["@nx/devkit"]).toBe("23.2.1");
-        expect(manifest.devDependencies["@nx/oxlint"]).toBe("23.2.1");
-        expect(manifest.devDependencies.nx).toBe("23.2.1");
-        expect(manifest.devDependencies["@nx/js"]).toBe("23.2.1");
+        expect(manifest.dependencies.effect).toBe("4.0.1");
+        expect(manifest.dependencies["@nx/devkit"]).toBe("23.3.0-beta.9");
+        expect(manifest.devDependencies["@nx/oxlint"]).toBe("23.3.0-beta.9");
+        expect(manifest.devDependencies.nx).toBe("23.3.0-beta.9");
+        expect(manifest.devDependencies["@nx/js"]).toBe("23.3.0-beta.9");
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
   test("never writes ranges or dist-tag names", () => {
     expect(isExactPackageVersion("1.2.3")).toBe(true);
@@ -116,19 +115,54 @@ describe("dependency updater", () => {
 
   test("keeps registry-incompatible members on explicit exact versions", () => {
     expect(compatibilityVersionOverrides).toEqual({
-      "@nx/devkit": "23.2.1",
-      "@nx/oxlint": "23.2.1",
+      "@effect/vitest": "4.0.1",
+      "@nx/devkit": "23.3.0-beta.9",
+      "@nx/oxlint": "23.3.0-beta.9",
+      "@nx/vitest": "23.3.0-beta.9",
+      effect: "4.0.1",
       jsdom: "30.0.1",
-      nx: "23.2.1",
+      nx: "23.3.0-beta.9",
       "oxlint-plugin-effect": "0.27.0",
       typescript: "6.0.2",
-      vitest: "4.0.18",
+      vite: "8.3.2",
+      vitest: "5.0.3",
     });
     expect(Object.values(compatibilityVersionOverrides).every(isExactPackageVersion)).toBe(true);
   });
 
-  test("registry failure is modeled and leaves all files unchanged", () =>
-    run(
+  it.live("holds Vite at 8.3.2 without resolving an unsupported registry latest", () =>
+    provideNodeServices(
+      E.gen(function* () {
+        const root = yield* fixture();
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const versionsPath = path.join(root, "src/generators/versions.ts");
+        const manifestPath = path.join(root, "package.json");
+        yield* fs.writeFileString(
+          versionsPath,
+          'export const packageVersions = {\n  vite: "8.3.2",\n} satisfies Record<string, string>;\n'
+        );
+        yield* fs.writeFileString(manifestPath, '{\n  "dependencies": {},\n  "devDependencies": {\n    "vite": "8.3.2"\n  }\n}\n');
+        const calls: (readonly [string, string])[] = [];
+        const resolver: RegistryResolver = (packageName, selector) =>
+          E.sync(() => {
+            calls.push([packageName, selector]);
+            return "9.0.0";
+          });
+
+        const updates = yield* updateDependencySources(root, { vite: "8.3.2" }, resolver);
+
+        expect(calls).toEqual([]);
+        expect(updates.vite).toBe("8.3.2");
+        expect(yield* fs.readFileString(versionsPath)).toContain('vite: "8.3.2"');
+        const manifest = yield* S.decodeEffect(sTestManifest)(yield* fs.readFileString(manifestPath));
+        expect(manifest.devDependencies.vite).toBe("8.3.2");
+      }).pipe(E.scoped)
+    )
+  );
+
+  it.live("registry failure is modeled and leaves all files unchanged", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
         const fs = yield* FileSystem.FileSystem;
@@ -137,16 +171,19 @@ describe("dependency updater", () => {
         const manifestPath = path.join(root, "package.json");
         const beforeVersions = yield* fs.readFileString(versionsPath);
         const beforeManifest = yield* fs.readFileString(manifestPath);
-        const failure = yield* updateDependencySources(root, { effect: "4.0.0-rc.1", nx: "1.0.0" }, failedResolver).pipe(E.flip);
+        const failure = yield* updateDependencySources(root, { "@effect/platform-node": "4.0.0-rc.1", nx: "1.0.0" }, failedResolver).pipe(
+          E.flip
+        );
 
         expect(failure).toMatchObject({ _tag: "DependencyUpdateFailure", issue: "registry_resolution_failed" });
         expect(yield* fs.readFileString(versionsPath)).toBe(beforeVersions);
         expect(yield* fs.readFileString(manifestPath)).toBe(beforeManifest);
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
-  test("does not modify documentation or runtime policy", () =>
-    run(
+  it.live("does not modify documentation or runtime policy", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
         const fs = yield* FileSystem.FileSystem;
@@ -161,10 +198,11 @@ describe("dependency updater", () => {
         expect((yield* fs.readFileString(versionsPath)).endsWith(runtimePolicy)).toBe(true);
         expect(yield* fs.readFileString(docsPath)).toBe(beforeDocs);
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
-  test("selects @types/node from the canonical runtime major instead of latest", () =>
-    run(
+  it.live("selects @types/node from the canonical runtime major instead of latest", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
         const calls: (readonly [string, string])[] = [];
@@ -174,17 +212,18 @@ describe("dependency updater", () => {
             return selector === "24" ? "24.99.1" : "22.20.3";
           });
 
-        const updates = yield* updateDependencySources(root, { "@types/node": "24.13.3", nx: "23.2.1" }, resolver, {
+        const updates = yield* updateDependencySources(root, { "@types/node": "24.13.3", nx: "23.3.0-beta.9" }, resolver, {
           nodeRange: ">=24.15 <25",
         });
 
         expect(calls).toEqual([["@types/node", "24"]]);
         expect(updates["@types/node"]).toBe("24.99.1");
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
-  test("follows a changed canonical Node runtime major", () =>
-    run(
+  it.live("follows a changed canonical Node runtime major", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
         const selectors: string[] = [];
@@ -194,22 +233,28 @@ describe("dependency updater", () => {
             return `${selector}.1.2`;
           });
 
-        const updates = yield* updateDependencySources(root, { "@types/node": "24.13.3", nx: "23.2.1" }, resolver, {
+        const updates = yield* updateDependencySources(root, { "@types/node": "24.13.3", nx: "23.3.0-beta.9" }, resolver, {
           nodeRange: ">=26.2 <27",
         });
 
         expect(selectors).toEqual(["26"]);
         expect(updates["@types/node"]).toBe("26.1.2");
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
-  test("rejects a constrained @types/node result from another major", () =>
-    run(
+  it.live("rejects a constrained @types/node result from another major", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
-        const failure = yield* updateDependencySources(root, { "@types/node": "24.13.3", nx: "23.2.1" }, () => E.succeed("22.20.3"), {
-          nodeRange: ">=24.15 <25",
-        }).pipe(E.flip);
+        const failure = yield* updateDependencySources(
+          root,
+          { "@types/node": "24.13.3", nx: "23.3.0-beta.9" },
+          () => E.succeed("22.20.3"),
+          {
+            nodeRange: ">=24.15 <25",
+          }
+        ).pipe(E.flip);
 
         expect(failure).toMatchObject({
           issue: "invalid_version",
@@ -218,13 +263,14 @@ describe("dependency updater", () => {
           value: "22.20.3",
         });
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
-  test("reports constrained @types/node registry failures with selector context", () =>
-    run(
+  it.live("reports constrained @types/node registry failures with selector context", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
-        const failure = yield* updateDependencySources(root, { "@types/node": "24.13.3", nx: "23.2.1" }, failedResolver, {
+        const failure = yield* updateDependencySources(root, { "@types/node": "24.13.3", nx: "23.3.0-beta.9" }, failedResolver, {
           nodeRange: ">=24.15 <25",
         }).pipe(E.flip);
 
@@ -234,10 +280,11 @@ describe("dependency updater", () => {
           selector: "24",
         });
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
-  test("keeps ordinary packages on latest while preserving prerelease channels and exact holds", () =>
-    run(
+  it.live("keeps ordinary packages on latest while preserving prerelease channels and exact holds", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
         const calls: (readonly [string, string])[] = [];
@@ -254,7 +301,7 @@ describe("dependency updater", () => {
           {
             "@confect/core": "10.0.0-next.22",
             effect: "4.0.0-rc.1",
-            nx: "23.2.1",
+            nx: "23.3.0-beta.9",
             oxlint: "1.81.0",
             react: "19.0.0",
           },
@@ -263,22 +310,22 @@ describe("dependency updater", () => {
 
         expect(calls).toEqual([
           ["@confect/core", "next"],
-          ["effect", "latest"],
           ["oxlint", "latest"],
           ["react", "latest"],
         ]);
         expect(updates).toEqual({
           "@confect/core": "10.0.0-next.30",
-          effect: "4.0.0",
-          nx: "23.2.1",
+          effect: "4.0.1",
+          nx: "23.3.0-beta.9",
           oxlint: "9.8.7",
           react: "9.8.7",
         });
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
-  test("keeps successful source and lockfile updates", () =>
-    run(
+  it.live("keeps successful source and lockfile updates", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
         const fs = yield* FileSystem.FileSystem;
@@ -290,18 +337,19 @@ describe("dependency updater", () => {
           root,
           successfulResolver,
           refresh,
-          { effect: "4.0.0-rc.1", nx: "23.2.1" },
+          { effect: "4.0.0-rc.1", nx: "23.3.0-beta.9" },
           { nodeRange: ">=24.15 <25" }
         );
 
-        expect(updates.effect).toBe("4.0.0");
+        expect(updates.effect).toBe("4.0.1");
         expect(yield* fs.readFileString(path.join(root, "bun.lock"))).toBe("refreshed lockfile\n");
-        expect(yield* fs.readFileString(path.join(root, "src/generators/versions.ts"))).toContain('effect: "4.0.0"');
+        expect(yield* fs.readFileString(path.join(root, "src/generators/versions.ts"))).toContain('effect: "4.0.1"');
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
-  test("failed install preserves diagnostics and restores only update-owned files", () =>
-    run(
+  it.live("failed install preserves diagnostics and restores only update-owned files", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
         const fs = yield* FileSystem.FileSystem;
@@ -319,7 +367,7 @@ describe("dependency updater", () => {
           root,
           successfulResolver,
           refresh,
-          { effect: "4.0.0-rc.1", nx: "23.2.1" },
+          { effect: "4.0.0-rc.1", nx: "23.3.0-beta.9" },
           { nodeRange: ">=24.15 <25" }
         ).pipe(E.flip);
 
@@ -334,10 +382,11 @@ describe("dependency updater", () => {
         expect(yield* E.forEach(ownedPaths, (ownedPath) => fs.readFileString(ownedPath))).toEqual(before);
         expect(yield* fs.readFileString(unrelatedPath)).toBe("unrelated dirty fixture\n");
       }).pipe(E.scoped)
-    ));
+    )
+  );
 
-  test("failed install removes a transaction-owned lockfile that did not previously exist", () =>
-    run(
+  it.live("failed install removes a transaction-owned lockfile that did not previously exist", () =>
+    provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
         const fs = yield* FileSystem.FileSystem;
@@ -351,11 +400,12 @@ describe("dependency updater", () => {
           root,
           successfulResolver,
           refresh,
-          { effect: "4.0.0-rc.1", nx: "23.2.1" },
+          { effect: "4.0.0-rc.1", nx: "23.3.0-beta.9" },
           { nodeRange: ">=24.15 <25" }
         ).pipe(E.flip);
 
         expect(yield* fs.exists(lockfilePath)).toBe(false);
       }).pipe(E.scoped)
-    ));
+    )
+  );
 });
