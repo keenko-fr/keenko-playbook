@@ -170,7 +170,7 @@ Every candidate manifest was read from the public npm registry, including engine
 
 ## Policy and migrations
 
-Removed all four Confect `next` channels; no prereleaseChannels entries remain. Retained exact holds for the Nx family, Effect/test integration, Vitest/Vite, jsdom and the TypeScript JavaScript API. Updated the JS API hold to 6.0.3 and added the WorkOS SDK 10.14.0 peer constraint. Removed the obsolete Effect lint-plugin hold. Regression tests pass a deliberately incompatible latest resolver over every hold, while stable Confect resolves through latest.
+Removed all four Confect `next` channels; no prereleaseChannels entries remain. Retained exact holds for the Nx family, Effect/test integration, Vitest/Vite, jsdom and the TypeScript JavaScript API. Updated the JS API hold to 6.0.3 and added the WorkOS SDK 10.14.0 peer constraint. Removed the obsolete Effect lint-plugin hold. Regression tests pass a deliberately incompatible latest resolver over every hold: each candidate is discovered and exposed while the held selection is preserved. Stable Confect resolves through latest.
 
 Added `1.0.2-compatibility-baseline` at rc.4, after KEE-54 and before native Nx migrations. It prevalidates manifest ownership, converges the new frozen role snapshot and preserves consumer-owned slots and Bun lockfile ownership. Earlier factories and snapshots remain unchanged. The original generated functions have no affected runner calls or argument declarations; codegen regenerates stable container/service bindings. No generic rewrite of authored application code is introduced.
 
@@ -203,3 +203,15 @@ Historical fixtures use actual published npm archives and the canonical lifecycl
 Managed slots were re-derived from fresh manifests and the final frozen snapshot: root 16 + backend 13 + UI 14 + shared 1 + application 32 per app. The formula remains `44 + 32 × application count`: **76 / 108 / 140** for one / two / three applications. These are managed dependency slots, excluding Keenko itself and Nx scaffold-owned slots. The packed products verify declared, installed and lockfile versions for every managed slot.
 
 Repository checks retain non-failing Effect tsgo diagnostics for unstable process APIs and typed decoder recommendations. No qualification failures remain. Current limitations are the required Nx beta, the rejected jsdom 30.1.x line, the existing AuthKit test-entrypoint patch, and Confect's experimental QueryStream and documented outer-refinement derivation behavior. Optional peer capabilities are not installed merely to satisfy optional features. Published-product verification of the exact public rc.4 is still required after merge and publication before ANO-27 can begin. This change does not merge, publish rc.4, modify Linear or touch Anoulà.
+
+## Updater discovery correction
+
+The initial updater discovery column above records the unchanged preflight command. At that point, holds bypassed registry lookup; the independent full-registry inspection supplied those candidates for qualification. The correction makes discovery explicit for every managed package, including held packages.
+
+`updateDependencySources` and `updateDependencies` return a record keyed by managed package name. Each entry contains `selector`, `candidate`, `selected` and `held`. Alias entries retain their exact `npm:` representation, while registry lookup uses the aliased package name. Node types retain the supported runtime-major selector. Only selected versions are written. A failed candidate lookup fails the sweep before writes and lockfile refresh, including when a hold exists.
+
+CLI output shows candidate and selected versions for every hold with drift, and for changed selections. Unchanged unheld pins remain quiet. Compatibility rationale stays in the existing hold comments and qualification report; the updater does not solve peers or change holds automatically.
+
+The selected tuple, frozen migration snapshots, package manifests and lockfile remain byte-for-byte unchanged by this correction. Managed counts and the two existing version plans remain unchanged. The previous complete fresh/historical packed-product proof therefore remains applicable; the correction changes maintainer discovery and reporting, not the selected generated package state.
+
+Correction verification passed: 18 focused updater tests; `bun run check` with 293 Bun and 132 Vitest tests; native version-plan check; `git diff --check`; and an unchanged `1.0.2-rc.3 → 1.0.2-rc.4` native release dry run. Coverage includes all current holds, held drift and equal candidates, ordinary adoption, alias preservation, runtime-major selectors, failed held discovery before mutation/installation, and existing install rollback.

@@ -98,4 +98,6 @@ When adopting an upstream-fixed AuthKit version, stop generating this patch and 
 
 Each Keenko release cycle qualifies the newest compatible versions of every managed package before candidate dogfood. Review engines, peers, release notes, and coupled package contracts, then run the complete product contract. `packageVersions` owns the current exact versions. An older pin needs a demonstrated current compatibility constraint.
 
+`deps:update` discovers registry candidates for all managed packages. Compatibility holds preserve the currently qualified selected version while still surfacing newer candidates for release review. Holds do not replace registry discovery or compatibility qualification.
+
 Freeze the qualified tuple for RC dogfood. Corrective RCs make only the compatibility corrections they require; do not refresh unrelated packages between candidates. Promote the accepted RC to stable without refreshing the tuple.

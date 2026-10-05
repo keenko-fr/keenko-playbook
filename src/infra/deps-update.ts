@@ -143,6 +143,13 @@ const nodeMajorFromRange = (nodeRange: string) => {
 };
 
 // UPDATE ---------------------------------------------------------------------------------------------------------------------------------
+export interface DependencyUpdate {
+  readonly selector: string;
+  readonly candidate: string;
+  readonly selected: string;
+  readonly held: boolean;
+}
+
 export const updateDependencySources = E.fn("keenko.deps.updateSources")(function* (
   workspace: string,
   currentVersions: Readonly<Record<string, string>>,
@@ -155,6 +162,7 @@ export const updateDependencySources = E.fn("keenko.deps.updateSources")(functio
   const manifestPath = path.join(workspace, "package.json");
 
   const updates: Record<string, string> = {};
+  const discovery: Record<string, DependencyUpdate> = {};
 
   for (const [packageName, current] of Object.entries(currentVersions)) {
     const alias = parseAlias(current);
@@ -166,16 +174,25 @@ export const updateDependencySources = E.fn("keenko.deps.updateSources")(functio
       packageName === "@types/node"
         ? yield* nodeMajorFromRange(currentRuntimeVersions.nodeRange ?? "")
         : O.getOrElse(findConfiguredValue(prereleaseChannels, packageName), () => "latest");
+    const candidate = yield* resolveVersion(registryPackage, selector);
     const override = findConfiguredValue(compatibilityVersionOverrides, packageName);
-    const version = O.isSome(override) ? override.value : yield* resolveVersion(registryPackage, selector);
+    const selected = O.getOrElse(override, () => candidate);
 
-    if (!semverPattern.test(version))
-      return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName: registryPackage, selector, value: version });
+    for (const version of [candidate, selected]) {
+      if (!semverPattern.test(version))
+        return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName: registryPackage, selector, value: version });
 
-    if (packageName === "@types/node" && !version.startsWith(`${selector}.`))
-      return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName, selector, value: version });
+      if (packageName === "@types/node" && !version.startsWith(`${selector}.`))
+        return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName, selector, value: version });
+    }
 
-    updates[packageName] = O.isNone(alias) ? version : `npm:${registryPackage}@${version}`;
+    updates[packageName] = O.isNone(alias) ? selected : `npm:${registryPackage}@${selected}`;
+    discovery[packageName] = {
+      candidate: O.isNone(alias) ? candidate : `npm:${registryPackage}@${candidate}`,
+      held: O.isSome(override),
+      selected: updates[packageName],
+      selector,
+    };
   }
 
   const versionsSource = yield* fs.readFileString(versionsPath);
@@ -187,8 +204,16 @@ export const updateDependencySources = E.fn("keenko.deps.updateSources")(functio
   yield* fs.writeFileString(versionsPath, nextVersionsSource);
   yield* fs.writeFileString(manifestPath, nextManifestSource);
 
-  return updates;
+  return discovery;
 });
+
+export const formatDependencyUpdates = (
+  discovery: Readonly<Record<string, DependencyUpdate>>,
+  currentVersions: Readonly<Record<string, string>> = packageVersions
+) =>
+  Object.entries(discovery)
+    .filter(([name, update]) => update.candidate !== update.selected || update.selected !== currentVersions[name])
+    .map(([name, update]) => `${name}: candidate ${update.candidate}, selected ${update.selected}${update.held ? " (held)" : ""}`);
 
 const refreshLockfile: LockfileRefresher = E.fn("keenko.deps.refreshLockfile")(function* (workspace) {
   const path = yield* Path.Path;
@@ -387,7 +412,12 @@ const replaceManifestVersion = E.fn("keenko.deps.replaceManifestVersion")(functi
 if (import.meta.main)
   NodeRuntime.runMain(
     updateDependencies(".").pipe(
-      E.tap((updates) => Console.log(`Updated ${Object.keys(updates).length} compatibility package pins and refreshed bun.lock.`)),
+      E.tap((updates) => E.forEach(formatDependencyUpdates(updates), (line) => Console.log(line))),
+      E.tap((updates) =>
+        Console.log(
+          `Discovered ${Object.keys(updates).length} registry candidates, wrote selected compatibility pins and refreshed bun.lock.`
+        )
+      ),
       E.provide(NodeServices.layer)
     )
   );

@@ -69,7 +69,7 @@ bun run deps:update
 - `test:product` is the required Verdaccio-backed fresh-creation and supported forward-upgrade acceptance test for the unpublished packed artifact.
 - `test:shadcn` is the explicit live-registry compatibility smoke and is not a normal PR or release gate.
 - `test:published` is the release-grade fresh-consumer acceptance test for one exact version already published to npm.
-- `deps:update` discovers registry candidates for maintainer compatibility review; successful installation alone does not qualify them.
+- `deps:update` discovers registry candidates for all managed packages. Compatibility holds preserve the currently qualified selected version while still surfacing newer candidates for release review. Successful installation alone does not qualify a candidate.
 
 ## Release
 
