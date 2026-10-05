@@ -459,6 +459,32 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
       releasedWorkspaces.push(rcWorkspace);
       yield* completePhase(`published ${version} consumer creation`, rcStartedAt);
     }
+    // Expose the selected runtime's exact shared dependency only after historical source creation.
+    const selectedShared = yield* S.decodeEffect(sVersionPackage)(
+      yield* command(repository, env, "node", [
+        "--input-type=module",
+        "-e",
+        'import { createRequire } from "node:module"; const require = createRequire(import.meta.url); const from = createRequire(require.resolve("@effect/platform-node/package.json")); console.log(JSON.stringify({ version: from("@effect/platform-node-shared/package.json").version }));',
+      ])
+    );
+    yield* command(temporary, publicEnv, "npm", [
+      "pack",
+      `@effect/platform-node-shared@${selectedShared.version}`,
+      "--pack-destination",
+      archives,
+      "--ignore-scripts",
+    ]);
+    yield* command(temporary, npmEnv, "npm", [
+      "publish",
+      path.join(archives, `effect-platform-node-shared-${selectedShared.version}.tgz`),
+      "--ignore-scripts",
+      "--provenance=false",
+      "--access",
+      "public",
+      "--tag",
+      "latest",
+      "--loglevel=error",
+    ]);
   }
 
   yield* command(repository, env, "bun", ["run", "build"]);
