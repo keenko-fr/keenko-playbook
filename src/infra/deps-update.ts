@@ -5,7 +5,8 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { packageVersions, runtimeVersions } from "../generators/versions.js";
 
 // POLICY ---------------------------------------------------------------------------------------------------------------------------------
-export const prereleaseChannels: Readonly<Record<string, string>> = {};
+// One channel for the deliberately prerelease-qualified Nx family (nx and owned @nx/* packages).
+export const prereleaseChannels = { nx: "next" } satisfies Readonly<Record<string, string>>;
 
 // Holds reflect current upstream contracts; requalify the whole tuple before changing them.
 export const compatibilityVersionOverrides = {
@@ -145,10 +146,66 @@ const nodeMajorFromRange = (nodeRange: string) => {
 // UPDATE ---------------------------------------------------------------------------------------------------------------------------------
 export interface DependencyUpdate {
   readonly selector: string;
-  readonly candidate: string;
+  readonly stableCandidate: string;
+  readonly prereleaseCandidate?: string;
+  readonly prereleaseChannel?: string;
   readonly selected: string;
   readonly held: boolean;
 }
+
+const discoverDependency = E.fn("keenko.deps.discoverDependency")(function* (
+  packageName: string,
+  current: string,
+  resolveVersion: RegistryResolver,
+  currentRuntimeVersions: Readonly<Record<string, string>>
+) {
+  const alias = parseAlias(current);
+  const registryPackage = O.getOrElse(
+    O.map(alias, ({ packageName: name }) => name),
+    () => packageName
+  );
+  const selector = packageName === "@types/node" ? yield* nodeMajorFromRange(currentRuntimeVersions.nodeRange ?? "") : "latest";
+  const stableCandidate = yield* resolveVersion(registryPackage, selector);
+  const prereleaseChannel = findConfiguredValue(prereleaseChannels, packageName.startsWith("@nx/") ? "nx" : packageName);
+  const prerelease = yield* O.match(prereleaseChannel, {
+    onNone: () => E.succeed(O.none<{ candidate: string; channel: string }>()),
+    onSome: (channel) => resolveVersion(registryPackage, channel).pipe(E.map((candidate) => O.some({ candidate, channel }))),
+  });
+  const holdPackage = O.getOrElse(findConfiguredValue(alignedRootPackages, packageName), () => packageName);
+  const override = findConfiguredValue(compatibilityVersionOverrides, holdPackage);
+  const selected = O.getOrElse(override, () => stableCandidate);
+
+  for (const { selector: candidateSelector, value: version } of [
+    { selector, value: stableCandidate },
+    ...O.toArray(prerelease).map(({ candidate, channel }) => ({ selector: channel, value: candidate })),
+    { selector, value: selected },
+  ]) {
+    if (!semverPattern.test(version))
+      return yield* new DependencyUpdateFailure({
+        issue: "invalid_version",
+        packageName: registryPackage,
+        selector: candidateSelector,
+        value: version,
+      });
+
+    if (packageName === "@types/node" && !version.startsWith(`${selector}.`))
+      return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName, selector, value: version });
+  }
+
+  return {
+    ...O.match(prerelease, {
+      onNone: () => ({}),
+      onSome: ({ candidate, channel }) => ({
+        prereleaseCandidate: O.isNone(alias) ? candidate : `npm:${registryPackage}@${candidate}`,
+        prereleaseChannel: channel,
+      }),
+    }),
+    held: O.isSome(override),
+    selected: O.isNone(alias) ? selected : `npm:${registryPackage}@${selected}`,
+    selector,
+    stableCandidate: O.isNone(alias) ? stableCandidate : `npm:${registryPackage}@${stableCandidate}`,
+  };
+});
 
 export const updateDependencySources = E.fn("keenko.deps.updateSources")(function* (
   workspace: string,
@@ -160,45 +217,26 @@ export const updateDependencySources = E.fn("keenko.deps.updateSources")(functio
   const path = yield* Path.Path;
   const versionsPath = path.join(workspace, "src/generators/versions.ts");
   const manifestPath = path.join(workspace, "package.json");
+  const manifestSource = yield* fs.readFileString(manifestPath);
+  const manifest = yield* parseManifest(manifestSource);
+  const managedVersions = { ...currentVersions };
+  for (const [name, source] of Object.entries(alignedRootPackages))
+    if (name in manifest.devDependencies && source in currentVersions) managedVersions[name] = manifest.devDependencies[name];
 
   const updates: Record<string, string> = {};
   const discovery: Record<string, DependencyUpdate> = {};
 
-  for (const [packageName, current] of Object.entries(currentVersions)) {
-    const alias = parseAlias(current);
-    const registryPackage = O.getOrElse(
-      O.map(alias, ({ packageName: name }) => name),
-      () => packageName
-    );
-    const selector =
-      packageName === "@types/node"
-        ? yield* nodeMajorFromRange(currentRuntimeVersions.nodeRange ?? "")
-        : O.getOrElse(findConfiguredValue(prereleaseChannels, packageName), () => "latest");
-    const candidate = yield* resolveVersion(registryPackage, selector);
-    const override = findConfiguredValue(compatibilityVersionOverrides, packageName);
-    const selected = O.getOrElse(override, () => candidate);
-
-    for (const version of [candidate, selected]) {
-      if (!semverPattern.test(version))
-        return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName: registryPackage, selector, value: version });
-
-      if (packageName === "@types/node" && !version.startsWith(`${selector}.`))
-        return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName, selector, value: version });
-    }
-
-    updates[packageName] = O.isNone(alias) ? selected : `npm:${registryPackage}@${selected}`;
-    discovery[packageName] = {
-      candidate: O.isNone(alias) ? candidate : `npm:${registryPackage}@${candidate}`,
-      held: O.isSome(override),
-      selected: updates[packageName],
-      selector,
-    };
+  for (const [packageName, current] of Object.entries(managedVersions)) {
+    const update = yield* discoverDependency(packageName, current, resolveVersion, currentRuntimeVersions);
+    discovery[packageName] = update;
+    updates[packageName] = update.selected;
   }
 
   const versionsSource = yield* fs.readFileString(versionsPath);
-  const nextVersionsSource = yield* replacePackageVersions(versionsSource, updates);
-  const manifestSource = yield* fs.readFileString(manifestPath);
-  const manifest = yield* parseManifest(manifestSource);
+  const nextVersionsSource = yield* replacePackageVersions(
+    versionsSource,
+    Object.fromEntries(Object.keys(currentVersions).map((name) => [name, updates[name]]))
+  );
   const nextManifestSource = yield* alignManifest(manifestSource, manifest, updates);
 
   yield* fs.writeFileString(versionsPath, nextVersionsSource);
@@ -212,8 +250,19 @@ export const formatDependencyUpdates = (
   currentVersions: Readonly<Record<string, string>> = packageVersions
 ) =>
   Object.entries(discovery)
-    .filter(([name, update]) => update.candidate !== update.selected || update.selected !== currentVersions[name])
-    .map(([name, update]) => `${name}: candidate ${update.candidate}, selected ${update.selected}${update.held ? " (held)" : ""}`);
+    .filter(
+      ([name, update]) =>
+        update.stableCandidate !== update.selected ||
+        O.exists(O.fromNullishOr(update.prereleaseCandidate), (candidate) => candidate !== update.selected) ||
+        update.selected !== currentVersions[name]
+    )
+    .map(
+      ([name, update]) =>
+        `${name}: stable candidate ${update.stableCandidate}${O.match(O.fromNullishOr(update.prereleaseCandidate), {
+          onNone: () => "",
+          onSome: (candidate) => `, ${O.getOrElse(O.fromNullishOr(update.prereleaseChannel), () => "prerelease")} candidate ${candidate}`,
+        })}, selected ${update.selected}${update.held ? " (held)" : ""}`
+    );
 
 const refreshLockfile: LockfileRefresher = E.fn("keenko.deps.refreshLockfile")(function* (workspace) {
   const path = yield* Path.Path;
@@ -415,7 +464,7 @@ if (import.meta.main)
       E.tap((updates) => E.forEach(formatDependencyUpdates(updates), (line) => Console.log(line))),
       E.tap((updates) =>
         Console.log(
-          `Discovered ${Object.keys(updates).length} registry candidates, wrote selected compatibility pins and refreshed bun.lock.`
+          `Discovered registry candidates for ${Object.keys(updates).length} managed packages, wrote selected compatibility pins and refreshed bun.lock.`
         )
       ),
       E.provide(NodeServices.layer)
