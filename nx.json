@@ -11,7 +11,13 @@
   "release": {
     "projects": ["keenko"],
     "versionPlans": {
-      "ignorePatternsForPlanCheck": ["/.github/workflows/ci.yml", "/docs/packed-product-test.md", "/tests/packed-product.ts", "/nx.json"]
+      "ignorePatternsForPlanCheck": [
+        "/.github/workflows/ci.yml",
+        "/docs/packed-product-test.md",
+        "/tests/packed-product.ts",
+        "/nx.json",
+        "/CHANGELOG.md"
+      ]
     },
     "version": {
       "adjustSemverBumpsForZeroMajorVersion": false,

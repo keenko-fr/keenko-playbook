@@ -497,8 +497,13 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   yield* assert(yield* fs.exists(tarball), `Packed Keenko artifact is missing: ${tarball}`);
 
   const runId = `run-${path.basename(temporary).replaceAll(/[^0-9A-Za-z-]/gu, "-")}`;
-  const releaseOutput = yield* command(repository, env, "bun", ["x", "nx", "release", "version", "--preid", "rc", "--dry-run"]);
-  const nextRc = /to get new version (?<version>\d+\.\d+\.\d+-rc\.\d+)/u.exec(releaseOutput)?.groups?.version;
+  const rcVersionPattern = /to get new version (?<version>\d+\.\d+\.\d+-rc\.\d+)/u;
+  let releaseOutput = yield* command(repository, env, "bun", ["x", "nx", "release", "version", "--preid", "rc", "--dry-run"]);
+  // After stable promotion consumes the plans, ask Nx for a disposable next RC.
+  // This dry run changes only the temporary archive label, never repository release state.
+  if (!rcVersionPattern.test(releaseOutput) && !localPackage.version.includes("-"))
+    releaseOutput = yield* command(repository, env, "bun", ["x", "nx", "release", "version", "prerelease", "--preid", "rc", "--dry-run"]);
+  const nextRc = rcVersionPattern.exec(releaseOutput)?.groups?.version;
   const candidateRc = nextRc ?? localPackage.version;
   yield* assert(
     exactSemver.test(candidateRc) && candidateRc.includes("-rc."),
