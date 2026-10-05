@@ -91,6 +91,7 @@ test("KEE-53 reproduces rc.2 and fixes the real AuthKit test entrypoint without 
         "--eval",
         await readFile(path.join(repository, "tests/fixtures/product-resolution.mjs.template"), "utf-8"),
         root,
+        "--historical-authkit-proof",
       ]);
       expect(probe.code, probe.output).toBe(0);
       expect(await readFile(sourcePath, "utf-8")).toBe(upstreamSource);

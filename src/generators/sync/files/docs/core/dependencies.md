@@ -93,3 +93,11 @@ Until upstream supplies a compatible release, Keenko generates one native Bun pa
 The focused `1.0.2-authkit-test` Nx migration adds the same two owned fields. It preserves unrelated patches and project state, rejects conflicting customization before writing, and is idempotent. The canonical second `bun install` applies the patch and regenerates `bun.lock`. Sync owns guidance, not patch installation. This is a correction for this exact package defect, not a general patching policy.
 
 When adopting an upstream-fixed AuthKit version, stop generating this patch and add a focused native migration removing only the recognized mapping and matching asset. Preserve unrelated patches and reject conflicting owned state. Retain the historical migration factory and asset in the npm artifact while direct upgrades from supported older releases still need them. Bun then reconciles the lockfile. Verify the same public-entrypoint typecheck and real component-query tests against upstream before removing the correction.
+
+## Release compatibility policy
+
+Each Keenko release cycle qualifies the newest compatible versions of every managed package before candidate dogfood. Review engines, peers, release notes, and coupled package contracts, then run the complete product contract. `packageVersions` owns the current exact versions. An older pin needs a demonstrated current compatibility constraint.
+
+`deps:update` discovers stable candidates for all managed packages. For packages deliberately qualified on a prerelease channel, it also discovers the configured prerelease candidate. Compatibility holds preserve the selected version until the tuple is requalified. Holds do not replace registry discovery or compatibility qualification.
+
+Freeze the qualified tuple for RC dogfood. Corrective RCs make only the compatibility corrections they require; do not refresh unrelated packages between candidates. Promote the accepted RC to stable without refreshing the tuple.

@@ -9,4 +9,5 @@ pathIgnorePatterns = [
   "tests/module-boundaries.spec.ts",
   "tests/wait-for-published.spec.ts",
   "src/migrations/effect-testing-baseline-1-0-2.spec.ts",
+  "src/migrations/compatibility-baseline-1-0-2.spec.ts",
 ]

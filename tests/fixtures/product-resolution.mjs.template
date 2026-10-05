@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 
@@ -20,6 +20,42 @@ const native = realpathSync(root.resolve("@typescript/native"));
 assert.equal(manifest.devDependencies["@typescript/native"], `npm:typescript@${root("@typescript/native/package.json").version}`);
 assert.notEqual(native, rootTypescript, "The native compiler must remain independent of the JavaScript API");
 const nxVersion = manifest.devDependencies.nx;
+// Final-tuple qualification is separate from historical AuthKit patch reproductions.
+if (!process.argv.includes("--historical-authkit-proof")) {
+  const semver = createRequire(root.resolve("nx/package.json"))("semver");
+  const manifests = [
+    "package.json",
+    "packages/backend/package.json",
+    "packages/ui/package.json",
+    "packages/shared/package.json",
+    ...readdirSync(join(workspace, "apps"))
+      .map((app) => `apps/${app}/package.json`)
+      .filter((file) => existsSync(join(workspace, file))),
+  ];
+  for (const file of manifests) {
+    const owner = createRequire(join(workspace, file));
+    const owned = owner("./package.json");
+    for (const name of Object.keys({ ...owned.dependencies, ...owned.devDependencies })) {
+      if (name.startsWith("@keenko-product/") || name.startsWith("@" + manifest.name + "/") || name === "keenko") continue;
+      let contract;
+      try {
+        contract = owner(name + "/package.json");
+      } catch (error) {
+        if (error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED") continue;
+        throw error;
+      }
+      const dependency = createRequire(owner.resolve(name + "/package.json"));
+      for (const [peer, range] of Object.entries(contract.peerDependencies ?? {})) {
+        if (contract.peerDependenciesMeta?.[peer]?.optional) continue;
+        const peerVersion = dependency(peer + "/package.json").version;
+        assert.ok(
+          semver.satisfies(peerVersion, range, { includePrerelease: true }),
+          `${file}: ${name} needs ${peer} ${range}, resolved ${peerVersion}`
+        );
+      }
+    }
+  }
+}
 for (const [name, version] of Object.entries({ ...manifest.dependencies, ...manifest.devDependencies })) {
   if (name === "nx" || name.startsWith("@nx/")) {
     assert.equal(version, nxVersion, `${name} manifest must align with Nx`);
@@ -30,7 +66,11 @@ if (manifest.devDependencies["@effect/vitest"]) {
   assert.equal(root("vitest/package.json").version, "5.0.3");
   assert.equal(root("@effect/vitest/package.json").version, "4.0.1");
   assert.equal(root("@effect/vitest/package.json").version, manifest.devDependencies["@effect/vitest"]);
-  assert.equal(createRequire(root.resolve("vitest/package.json"))("vite/package.json").version.split(".")[0], "8", "Vitest must resolve compatible Vite 8");
+  assert.equal(
+    createRequire(root.resolve("vitest/package.json"))("vite/package.json").version.split(".")[0],
+    "8",
+    "Vitest must resolve compatible Vite 8"
+  );
 }
 const backend = createRequire(join(workspace, "packages/backend/package.json"));
 const authkitManifest = backend("@convex-dev/workos-authkit/package.json");
@@ -50,11 +90,27 @@ const authkitTypes = realpathSync(join(authkitEntry, "../../dist/test.d.ts"));
 assert.doesNotMatch(readFileSync(authkitTypes, "utf8"), /(?:convex-test|vite\/client)/u);
 const convexTest = realpathSync(backend.resolve("convex-test"));
 const vite = realpathSync(createRequire(root.resolve("vitest/package.json")).resolve("vite/package.json"));
-const effects = Object.fromEntries(["packages/backend", "packages/shared"].map(directory => {
-  const req = createRequire(join(workspace, directory, "package.json"));
-  const owned = req("./package.json").dependencies.effect;
-  assert.equal(req("effect/package.json").version, owned, `${directory} Effect must agree with its manifest`);
-  assert.equal(req("effect").Effect.runSync(req("effect").Effect.succeed("ok")), "ok");
-  return [directory, realpathSync(req.resolve("effect"))];
-}));
-console.log(JSON.stringify({ rootTypescript, nxTypescript, typescriptVersion: nx("typescript/package.json").version, readConfigFile: typeof nx("typescript").readConfigFile, native, nativeVersion: root("@typescript/native/package.json").version, effects, authkitEntry, authkitTypes, convexTest, vite }));
+const effects = Object.fromEntries(
+  ["packages/backend", "packages/shared"].map((directory) => {
+    const req = createRequire(join(workspace, directory, "package.json"));
+    const owned = req("./package.json").dependencies.effect;
+    assert.equal(req("effect/package.json").version, owned, `${directory} Effect must agree with its manifest`);
+    assert.equal(req("effect").Effect.runSync(req("effect").Effect.succeed("ok")), "ok");
+    return [directory, realpathSync(req.resolve("effect"))];
+  })
+);
+console.log(
+  JSON.stringify({
+    rootTypescript,
+    nxTypescript,
+    typescriptVersion: nx("typescript/package.json").version,
+    readConfigFile: typeof nx("typescript").readConfigFile,
+    native,
+    nativeVersion: root("@typescript/native/package.json").version,
+    effects,
+    authkitEntry,
+    authkitTypes,
+    convexTest,
+    vite,
+  })
+);

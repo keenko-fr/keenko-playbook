@@ -1,0 +1,20 @@
+import { FunctionSpec, GroupSpec } from "@confect/core";
+import { Schema as S } from "effect";
+
+import compatibilityRows from "./_generated/tables/compatibilityRows";
+
+export default GroupSpec.make()
+  .addFunction(
+    FunctionSpec.publicQuery({
+      name: "find",
+      args: () => ({ key: S.String }),
+      returns: () => S.OptionFromNullOr(compatibilityRows.Doc),
+    })
+  )
+  .addFunction(
+    FunctionSpec.publicQuery({
+      name: "forward",
+      args: () => ({ key: S.String }),
+      returns: () => S.OptionFromNullOr(compatibilityRows.Doc),
+    })
+  );

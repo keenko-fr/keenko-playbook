@@ -758,7 +758,7 @@ describe("keenko preset", () => {
       );
       expect(oxlintConfig).toContain('files: ["packages/backend/**/*.ts"]');
       expect(oxlintConfig).not.toContain("effect/noEffectRunInTests");
-      expect(rootPackageJson.devDependencies?.["oxlint-plugin-effect"]).toBe("0.27.0");
+      expect(rootPackageJson.devDependencies?.["oxlint-plugin-effect"]).toBe(packageVersions["oxlint-plugin-effect"]);
       expect(oxlintConfig).not.toContain("packages/backend/confect/identity.impl.ts");
       expect(oxlintConfig).not.toContain("packages/backend/confect/authentication.ts");
       for (const rule of ["effect/noAsyncFunction", "effect/noNewError", "effect/noNullish", "effect/noThrowStatement"])

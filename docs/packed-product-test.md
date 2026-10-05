@@ -165,3 +165,11 @@ fi
 If publication succeeded but registry convergence exceeded the bound, do not rerun Nx versioning or Nx publication. Preserve the original pre-publication registry snapshot and rerun the four-argument waiter above with the original `PUBLISHED_VERSION`, `RELEASE_MODE`, `PREVIOUS_LATEST`, and `PREVIOUS_RC`, including an empty previous-RC value. Do not reconstruct either previous tag value from the registry after publication: those values describe pre-publication state. Only after both readiness stages succeed should recovery rerun the corresponding published acceptance commands above. The backward-compatible one-argument waiter proves only exact installation and is insufficient for release readiness or recovery.
 
 If published acceptance exposes a product defect, the workflow fails visibly. The npm publication and release tag are immutable release events: do not unpublish, delete the tag, rewrite the release, or force-push history. Diagnose the consumer failure and ship a subsequent corrective release through the same Nx version-plan process.
+
+## Final dependency compatibility qualification
+
+The final sweep before candidate dogfood rechecks registry candidates, engines, peers and material release notes for every managed package. Coupled families are qualified together. See [KEE-55 qualification](reports/kee-55.md) for the recorded sweep and exceptions.
+
+The packed contract now checks required peers from each installed dependency's own location under isolated resolution. A temporary authored Confect fixture passes through codegen, backend typechecking and real TestConfect execution in fresh and historical upgraded products. It verifies argument field maps, client-safe core tables, generated container annotations, named runners, direct test layers, registered document decoding, cardinality, stream composition and cursor pagination. The fixture is removed and codegen restores the canonical generated state before the consumer check and idempotence tests.
+
+The final compatibility migration has its own frozen role snapshot after the earlier testing migration. Earlier release snapshots remain immutable. Native Nx still owns its Vitest transformation, and the combined unpublished prerelease plans resolve one RC increment.

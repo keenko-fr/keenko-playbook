@@ -5,30 +5,26 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { packageVersions, runtimeVersions } from "../generators/versions.js";
 
 // POLICY ---------------------------------------------------------------------------------------------------------------------------------
-export const prereleaseChannels = {
-  "@confect/cli": "next",
-  "@confect/core": "next",
-  "@confect/server": "next",
-  "@confect/test": "next",
-};
+// One channel for the deliberately prerelease-qualified Nx family (nx and owned @nx/* packages).
+export const prereleaseChannels = { nx: "next" } satisfies Readonly<Record<string, string>>;
 
-// Qualified tuple holds. Re-evaluate these whenever the named constraint changes.
+// Holds reflect current upstream contracts; requalify the whole tuple before changing them.
 export const compatibilityVersionOverrides = {
-  // KEE-54 qualifies matching stable Effect and its official test integration.
+  // @effect/vitest requires Effect ^4.0.1 and Vitest >=5 <6. Keep their tested pair together.
   "@effect/vitest": "4.0.1",
-  // Keep the Nx integrations on one qualified version.
+  // Stable @nx/vitest supports only Vitest 3/4. beta.9 is the newest Nx line supporting Vitest 5.
   "@nx/devkit": "23.3.0-beta.9",
   "@nx/oxlint": "23.3.0-beta.9",
   "@nx/vitest": "23.3.0-beta.9",
+  // Both AuthKit integrations exclude Node SDK 11; use the newest shared SDK 10 release.
+  "@workos-inc/node": "10.14.0",
   effect: "4.0.1",
-  // Keep the qualified jsdom environment until it receives a separate runtime review.
+  // jsdom 30.1.x fails Vitest 5 environment setup with an invalid EventTarget receiver.
   jsdom: "30.0.1",
   nx: "23.3.0-beta.9",
-  // KEE-49 qualified this AST-policy baseline; later upgrades require an installed-preset convention review.
-  "oxlint-plugin-effect": "0.27.0",
-  // Nx consumes the TypeScript 6 JavaScript API; @typescript/native owns compilation.
-  typescript: "6.0.2",
-  // KEE-54 qualifies Vite 8 and Vitest 5 with native Nx migration support.
+  // Nx and Keenko migrations require the JavaScript compiler API absent from TypeScript 7.
+  typescript: "6.0.3",
+  // Vitest 5 and the selected Nx integration support Vite through major 8, and Effect's tests require Vitest 5.
   vite: "8.3.2",
   vitest: "5.0.3",
 };
@@ -148,6 +144,69 @@ const nodeMajorFromRange = (nodeRange: string) => {
 };
 
 // UPDATE ---------------------------------------------------------------------------------------------------------------------------------
+export interface DependencyUpdate {
+  readonly selector: string;
+  readonly stableCandidate: string;
+  readonly prereleaseCandidate?: string;
+  readonly prereleaseChannel?: string;
+  readonly selected: string;
+  readonly held: boolean;
+}
+
+const discoverDependency = E.fn("keenko.deps.discoverDependency")(function* (
+  packageName: string,
+  current: string,
+  resolveVersion: RegistryResolver,
+  currentRuntimeVersions: Readonly<Record<string, string>>
+) {
+  const alias = parseAlias(current);
+  const registryPackage = O.getOrElse(
+    O.map(alias, ({ packageName: name }) => name),
+    () => packageName
+  );
+  const selector = packageName === "@types/node" ? yield* nodeMajorFromRange(currentRuntimeVersions.nodeRange ?? "") : "latest";
+  const stableCandidate = yield* resolveVersion(registryPackage, selector);
+  const prereleaseChannel = findConfiguredValue(prereleaseChannels, packageName.startsWith("@nx/") ? "nx" : packageName);
+  const prerelease = yield* O.match(prereleaseChannel, {
+    onNone: () => E.succeed(O.none<{ candidate: string; channel: string }>()),
+    onSome: (channel) => resolveVersion(registryPackage, channel).pipe(E.map((candidate) => O.some({ candidate, channel }))),
+  });
+  const holdPackage = O.getOrElse(findConfiguredValue(alignedRootPackages, packageName), () => packageName);
+  const override = findConfiguredValue(compatibilityVersionOverrides, holdPackage);
+  const selected = O.getOrElse(override, () => stableCandidate);
+
+  for (const { selector: candidateSelector, value: version } of [
+    { selector, value: stableCandidate },
+    ...O.toArray(prerelease).map(({ candidate, channel }) => ({ selector: channel, value: candidate })),
+    { selector, value: selected },
+  ]) {
+    if (!semverPattern.test(version))
+      return yield* new DependencyUpdateFailure({
+        issue: "invalid_version",
+        packageName: registryPackage,
+        selector: candidateSelector,
+        value: version,
+      });
+
+    if (packageName === "@types/node" && !version.startsWith(`${selector}.`))
+      return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName, selector, value: version });
+  }
+
+  return {
+    ...O.match(prerelease, {
+      onNone: () => ({}),
+      onSome: ({ candidate, channel }) => ({
+        prereleaseCandidate: O.isNone(alias) ? candidate : `npm:${registryPackage}@${candidate}`,
+        prereleaseChannel: channel,
+      }),
+    }),
+    held: O.isSome(override),
+    selected: O.isNone(alias) ? selected : `npm:${registryPackage}@${selected}`,
+    selector,
+    stableCandidate: O.isNone(alias) ? stableCandidate : `npm:${registryPackage}@${stableCandidate}`,
+  };
+});
+
 export const updateDependencySources = E.fn("keenko.deps.updateSources")(function* (
   workspace: string,
   currentVersions: Readonly<Record<string, string>>,
@@ -158,42 +217,52 @@ export const updateDependencySources = E.fn("keenko.deps.updateSources")(functio
   const path = yield* Path.Path;
   const versionsPath = path.join(workspace, "src/generators/versions.ts");
   const manifestPath = path.join(workspace, "package.json");
+  const manifestSource = yield* fs.readFileString(manifestPath);
+  const manifest = yield* parseManifest(manifestSource);
+  const managedVersions = { ...currentVersions };
+  for (const [name, source] of Object.entries(alignedRootPackages))
+    if (name in manifest.devDependencies && source in currentVersions) managedVersions[name] = manifest.devDependencies[name];
 
   const updates: Record<string, string> = {};
+  const discovery: Record<string, DependencyUpdate> = {};
 
-  for (const [packageName, current] of Object.entries(currentVersions)) {
-    const alias = parseAlias(current);
-    const registryPackage = O.getOrElse(
-      O.map(alias, ({ packageName: name }) => name),
-      () => packageName
-    );
-    const selector =
-      packageName === "@types/node"
-        ? yield* nodeMajorFromRange(currentRuntimeVersions.nodeRange ?? "")
-        : O.getOrElse(findConfiguredValue(prereleaseChannels, packageName), () => "latest");
-    const override = findConfiguredValue(compatibilityVersionOverrides, packageName);
-    const version = O.isSome(override) ? override.value : yield* resolveVersion(registryPackage, selector);
-
-    if (!semverPattern.test(version))
-      return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName: registryPackage, selector, value: version });
-
-    if (packageName === "@types/node" && !version.startsWith(`${selector}.`))
-      return yield* new DependencyUpdateFailure({ issue: "invalid_version", packageName, selector, value: version });
-
-    updates[packageName] = O.isNone(alias) ? version : `npm:${registryPackage}@${version}`;
+  for (const [packageName, current] of Object.entries(managedVersions)) {
+    const update = yield* discoverDependency(packageName, current, resolveVersion, currentRuntimeVersions);
+    discovery[packageName] = update;
+    updates[packageName] = update.selected;
   }
 
   const versionsSource = yield* fs.readFileString(versionsPath);
-  const nextVersionsSource = yield* replacePackageVersions(versionsSource, updates);
-  const manifestSource = yield* fs.readFileString(manifestPath);
-  const manifest = yield* parseManifest(manifestSource);
+  const nextVersionsSource = yield* replacePackageVersions(
+    versionsSource,
+    Object.fromEntries(Object.keys(currentVersions).map((name) => [name, updates[name]]))
+  );
   const nextManifestSource = yield* alignManifest(manifestSource, manifest, updates);
 
   yield* fs.writeFileString(versionsPath, nextVersionsSource);
   yield* fs.writeFileString(manifestPath, nextManifestSource);
 
-  return updates;
+  return discovery;
 });
+
+export const formatDependencyUpdates = (
+  discovery: Readonly<Record<string, DependencyUpdate>>,
+  currentVersions: Readonly<Record<string, string>> = packageVersions
+) =>
+  Object.entries(discovery)
+    .filter(
+      ([name, update]) =>
+        update.stableCandidate !== update.selected ||
+        O.exists(O.fromNullishOr(update.prereleaseCandidate), (candidate) => candidate !== update.selected) ||
+        update.selected !== currentVersions[name]
+    )
+    .map(
+      ([name, update]) =>
+        `${name}: stable candidate ${update.stableCandidate}${O.match(O.fromNullishOr(update.prereleaseCandidate), {
+          onNone: () => "",
+          onSome: (candidate) => `, ${O.getOrElse(O.fromNullishOr(update.prereleaseChannel), () => "prerelease")} candidate ${candidate}`,
+        })}, selected ${update.selected}${update.held ? " (held)" : ""}`
+    );
 
 const refreshLockfile: LockfileRefresher = E.fn("keenko.deps.refreshLockfile")(function* (workspace) {
   const path = yield* Path.Path;
@@ -392,7 +461,12 @@ const replaceManifestVersion = E.fn("keenko.deps.replaceManifestVersion")(functi
 if (import.meta.main)
   NodeRuntime.runMain(
     updateDependencies(".").pipe(
-      E.tap((updates) => Console.log(`Updated ${Object.keys(updates).length} compatibility package pins and refreshed bun.lock.`)),
+      E.tap((updates) => E.forEach(formatDependencyUpdates(updates), (line) => Console.log(line))),
+      E.tap((updates) =>
+        Console.log(
+          `Discovered registry candidates for ${Object.keys(updates).length} managed packages, wrote selected compatibility pins and refreshed bun.lock.`
+        )
+      ),
       E.provide(NodeServices.layer)
     )
   );
