@@ -497,8 +497,13 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   yield* assert(yield* fs.exists(tarball), `Packed Keenko artifact is missing: ${tarball}`);
 
   const runId = `run-${path.basename(temporary).replaceAll(/[^0-9A-Za-z-]/gu, "-")}`;
-  const releaseOutput = yield* command(repository, env, "bun", ["x", "nx", "release", "version", "--preid", "rc", "--dry-run"]);
-  const nextRc = /to get new version (?<version>\d+\.\d+\.\d+-rc\.\d+)/u.exec(releaseOutput)?.groups?.version;
+  const rcVersionPattern = /to get new version (?<version>\d+\.\d+\.\d+-rc\.\d+)/u;
+  let releaseOutput = yield* command(repository, env, "bun", ["x", "nx", "release", "version", "--preid", "rc", "--dry-run"]);
+  // After stable promotion consumes the plans, ask Nx for a disposable next RC.
+  // This dry run changes only the temporary archive label, never repository release state.
+  if (!rcVersionPattern.test(releaseOutput) && !localPackage.version.includes("-"))
+    releaseOutput = yield* command(repository, env, "bun", ["x", "nx", "release", "version", "prerelease", "--preid", "rc", "--dry-run"]);
+  const nextRc = rcVersionPattern.exec(releaseOutput)?.groups?.version;
   const candidateRc = nextRc ?? localPackage.version;
   yield* assert(
     exactSemver.test(candidateRc) && candidateRc.includes("-rc."),
@@ -658,7 +663,6 @@ const verifyResolution = E.fn("product.verifyResolution")(function* (workspace: 
   const path = yield* Path.Path;
   const script = yield* fs.readFileString(yield* path.fromFileUrl(new URL("fixtures/product-resolution.mjs.template", import.meta.url)));
   const resolution = (yield* command(workspace, env, "node", ["--input-type=module", "--eval", script, workspace])).trim();
-  yield* verifyAuthkitTest(workspace, env);
   const compiler = yield* command(workspace, env, "node", ["node_modules/@typescript/native/bin/tsc", "--version"]);
   const manifest = yield* S.decodeEffect(sDependencySections)(yield* fs.readFileString(path.join(workspace, "package.json")));
   yield* assert(
@@ -776,6 +780,7 @@ const verifyReinstalls = E.fn("product.verifyReinstalls")(function* (
     yield* command(workspace, env, "bun", args);
     yield* assert((yield* fs.readFileString(lockPath)) === lock, `${args.join(" ")} changed the reconciled lockfile`);
     yield* assert((yield* verifyResolution(workspace, env)) === initialResolution, `${args.join(" ")} changed module resolution`);
+    yield* verifyAuthkitTest(workspace, env);
   }
 });
 
@@ -976,14 +981,31 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     yield* verifyInstalledSlots(workspace, target, lockAfter);
     yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
     yield* command(workspace, env, "bun", ["run", "codegen"]);
+    const compatibilityPhase = `upgrade compatibility verification: ${path.basename(workspace)}`;
+    const compatibilityStartedAt = yield* startPhase(compatibilityPhase);
     const initialResolution = yield* verifyResolution(workspace, env);
+    yield* verifyAuthkitTest(workspace, env);
     yield* verifyBackendTestOwnership(workspace, env);
     yield* verifyTestingTuple(workspace, env, applications);
-    yield* verifyConfectTuple(workspace, env);
+    // Confect's authored API fixture uses the verified target packages and generated containers.
+    // Fresh creation and the divergent hoisted upgrade own it; migration plans do not alter its inputs.
+    if (divergent) yield* verifyConfectTuple(workspace, env);
+    yield* completePhase(compatibilityPhase, compatibilityStartedAt);
     yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
-    yield* verifyReinstalls(workspace, env, initialResolution);
-    yield* verifySyncRerun(workspace, env);
-    yield* verifyInstalledSlots(workspace, target, lockAfter);
+    // Keep real stale-hoisted and customized multi-app installations as upgrade stability owners.
+    // Every source has already proved its installed slots, resolution and canonical lifecycle.
+    const ownsUpgradeStability = divergent || applications.length === 3;
+    if (ownsUpgradeStability) {
+      const stabilityPhase = `upgrade reinstall and sync idempotence: ${path.basename(workspace)}`;
+      const stabilityStartedAt = yield* startPhase(stabilityPhase);
+      yield* verifyReinstalls(workspace, env, initialResolution);
+      yield* verifySyncRerun(workspace, env);
+      yield* verifyInstalledSlots(workspace, target, lockAfter);
+      yield* completePhase(stabilityPhase, stabilityStartedAt);
+    }
+    // Migration reruns remain source-owned: each source selects a different native plan.
+    const rerunPhase = `migration rerun idempotence: ${path.basename(workspace)}`;
+    const rerunStartedAt = yield* startPhase(rerunPhase);
     const canonical = new Map<string, string>([
       ["bunfig.toml", yield* fs.readFileString(path.join(workspace, "bunfig.toml"))],
       ["oxfmt.config.ts", yield* fs.readFileString(path.join(workspace, "oxfmt.config.ts"))],
@@ -1008,6 +1030,8 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
       );
     yield* assert((yield* fs.readFileString(lockPath)) === lockAfter, "Canonical migration rerun changed bun.lock");
     yield* assert((yield* verifyResolution(workspace, env)) === initialResolution, "Migration rerun changed module resolution");
+    if (ownsUpgradeStability) yield* verifyAuthkitTest(workspace, env);
+    yield* completePhase(rerunPhase, rerunStartedAt);
     yield* completePhase(phase, startedAt);
   }
 });
@@ -1065,6 +1089,7 @@ const product = E.gen(function* () {
     "--interactive=false",
     "--trustThirdPartyPreset",
   ];
+  const freshStartedAt = yield* startPhase("fresh product verification");
   const creationStartedAt = yield* startPhase("fresh workspace creation");
   const createOutput = yield* command(temporary, bootstrapEnv, "env", [
     ...withoutBackendWorkOSEnv,
@@ -1075,7 +1100,9 @@ const product = E.gen(function* () {
   yield* completePhase("fresh workspace creation", creationStartedAt);
 
   const workspace = path.join(temporary, identity);
+  const freshCompatibilityStartedAt = yield* startPhase("fresh compatibility verification");
   const initialResolution = yield* verifyResolution(workspace, env);
+  yield* verifyAuthkitTest(workspace, env);
   const roles = yield* S.decodeEffect(sDependencyBaseline)(
     yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/migrations/files/compatibility-baseline-1-0-2.json"))
   );
@@ -1099,6 +1126,7 @@ const product = E.gen(function* () {
   yield* verifyBackendTestOwnership(workspace, env);
   yield* verifyTestingTuple(workspace, env, ["web"]);
   yield* verifyConfectTuple(workspace, env);
+  yield* completePhase("fresh compatibility verification", freshCompatibilityStartedAt);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
   for (const file of [
     "CONTEXT.md",
@@ -1170,6 +1198,7 @@ const product = E.gen(function* () {
       'import { OTPInput } from "input-otp"; if (!OTPInput) throw new Error("Missing input-otp dependency");',
     ]);
     yield* completePhase("live shadcn compatibility", shadcnStartedAt);
+    yield* completePhase("fresh product verification", freshStartedAt);
     return;
   }
 
@@ -1224,10 +1253,17 @@ const product = E.gen(function* () {
   const reinstalledPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPackagePath));
   yield* assert(reinstalledPackage.version === packageVersion, `The consumer did not reinstall Keenko ${packageVersion}`);
   yield* completePhase("fresh frozen and idempotent reinstall verification", reinstallStartedAt);
+  yield* completePhase("fresh product verification", freshStartedAt);
 
   if (source._tag === "published") return;
 
   yield* verifyForwardUpgrades(roles, releasedWorkspaces, packageVersion, bootstrapEnv);
 });
 
-NodeRuntime.runMain(product.pipe(E.scoped, E.provide(NodeServices.layer)));
+const timedProduct = E.gen(function* () {
+  const startedAt = yield* startPhase("total product verification");
+  yield* product;
+  yield* completePhase("total product verification", startedAt);
+});
+
+NodeRuntime.runMain(timedProduct.pipe(E.scoped, E.provide(NodeServices.layer)));
