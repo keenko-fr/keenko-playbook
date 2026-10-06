@@ -18,15 +18,218 @@ import {
   type RegistryLookup,
   resolvePublicRegistryVersion,
   waitForPublishedVersion,
+  publishedVersionWaitPolicy,
+  waitForPublication,
 } from "./wait-for-published.js";
 
 const version = "1.2.3";
-const testPolicy = { interval: 0, maxAttempts: 3, timeout: "1 second", timeoutLabel: "1 second" } satisfies PublishedVersionWaitPolicy;
+const testPolicy = {
+  attemptTimeout: "1 second",
+  interval: 0,
+  maxAttempts: 3,
+  timeout: "1 second",
+  timeoutLabel: "1 second",
+} satisfies PublishedVersionWaitPolicy;
 const provideNodeServices = <A, X>(effect: E.Effect<A, X, NodeServices.NodeServices>) => effect.pipe(E.provide(NodeServices.layer));
 const failLookup = (reason: string) => new RegistryLookupFailure({ reason });
 const sInstalledPackage = S.fromJsonString(S.Struct({ version: S.String }));
 
+describe("publication observation policy", () => {
+  it.live("production retries beyond the old attempt bound and a five-minute metadata delay", () =>
+    E.gen(function* () {
+      let attempts = 0;
+      const lookup: RegistryLookup = () =>
+        E.suspend(() => {
+          attempts += 1;
+          return attempts <= 31 ? E.fail(failLookup("No version matching the requested selector")) : E.succeed(version);
+        });
+      const fiber = yield* waitForPublishedVersion(version, lookup).pipe(E.forkChild);
+      yield* TestClock.adjust("4 minutes");
+      expect(attempts).toBe(25);
+      yield* TestClock.adjust("1 minute");
+      expect(attempts).toBe(31);
+      yield* TestClock.adjust("10 seconds");
+      expect(yield* Fiber.join(fiber)).toBe(version);
+      expect(attempts).toBe(32);
+    }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
+  );
+
+  it.live("production missing publication uses the deadline instead of exhausting fast attempts early", () =>
+    E.gen(function* () {
+      let attempts = 0;
+      const lookup: RegistryLookup = () =>
+        E.suspend(() => {
+          attempts += 1;
+          return E.fail(failLookup("No version matching the requested selector"));
+        });
+      const fiber = yield* waitForPublishedVersion(version, lookup).pipe(E.flip, E.forkChild);
+      yield* TestClock.adjust("590 seconds");
+      expect(attempts).toBe(60);
+      yield* TestClock.adjust("10 seconds");
+      const failure = yield* Fiber.join(fiber);
+      expect(failure.message).toContain("Hard timeout of 10 minutes elapsed");
+      expect(failure.message).toContain("No version matching the requested selector");
+      expect(failure.attempts).toBeLessThanOrEqual(publishedVersionWaitPolicy.maxAttempts);
+      yield* TestClock.adjust("1 hour");
+      expect(attempts).toBe(failure.attempts);
+    }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
+  );
+
+  it.live("spaces retries after probe completion, including time consumed by the probe", () =>
+    E.gen(function* () {
+      let attempts = 0;
+      const lookup: RegistryLookup = () =>
+        E.suspend(() => {
+          attempts += 1;
+          return attempts === 1 ? E.sleep("2 seconds").pipe(E.andThen(E.fail(failLookup("not ready")))) : E.succeed(version);
+        });
+      const fiber = yield* waitForPublishedVersion(version, lookup, {
+        ...testPolicy,
+        attemptTimeout: "1 minute",
+        interval: "10 seconds",
+        timeout: "1 minute",
+      }).pipe(E.forkChild);
+      yield* TestClock.adjust("11 seconds");
+      expect(attempts).toBe(1);
+      yield* TestClock.adjust("1 second");
+      expect(yield* Fiber.join(fiber)).toBe(version);
+      expect(attempts).toBe(2);
+    }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
+  );
+
+  it.live("a stalled probe is interrupted and can succeed on a fresh attempt", () =>
+    E.gen(function* () {
+      let attempts = 0;
+      let interrupted = false;
+      const lookup: RegistryLookup = () =>
+        E.suspend(() => {
+          attempts += 1;
+          return attempts === 1
+            ? E.never.pipe(
+                E.onInterrupt(() =>
+                  E.sync(() => {
+                    interrupted = true;
+                  })
+                )
+              )
+            : E.succeed(version);
+        });
+      const fiber = yield* waitForPublishedVersion(version, lookup, {
+        ...testPolicy,
+        attemptTimeout: "10 millis",
+        timeout: "1 minute",
+      }).pipe(E.forkChild);
+      yield* TestClock.adjust("10 millis");
+      expect(yield* Fiber.join(fiber)).toBe(version);
+      expect(interrupted).toBe(true);
+      expect(attempts).toBe(2);
+    }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
+  );
+
+  it.live("final diagnostics retain a transient error followed by repeated missing-version failures", () =>
+    provideNodeServices(
+      E.gen(function* () {
+        let attempts = 0;
+        const lookup: RegistryLookup = () =>
+          E.suspend(() =>
+            E.fail(failLookup(++attempts === 1 ? "ETIMEDOUT contacting registry" : "No version matching the requested selector"))
+          );
+        const failure = yield* waitForPublishedVersion(version, lookup, testPolicy).pipe(E.flip);
+        expect(failure.message).toContain("Attempt limit reached");
+        expect(failure.message).toContain("ETIMEDOUT contacting registry");
+        expect(failure.message).toContain("No version matching the requested selector");
+        expect(attempts).toBe(3);
+      })
+    )
+  );
+
+  it.live("repeated stalled probes fail within the stage deadline with attempt timeout diagnostics", () =>
+    E.gen(function* () {
+      let attempts = 0;
+      const lookup: RegistryLookup = () =>
+        E.suspend(() => {
+          attempts += 1;
+          return E.never;
+        });
+      const policy = { ...testPolicy, attemptTimeout: "10 millis", interval: "5 millis", timeout: "29 millis", timeoutLabel: "29 millis" };
+      const fiber = yield* waitForPublishedVersion(version, lookup, policy).pipe(E.flip, E.forkChild);
+      yield* TestClock.adjust("29 millis");
+      const failure = yield* Fiber.join(fiber);
+      expect(failure.message).toContain("Hard timeout of 29 millis elapsed");
+      expect(failure.message).toContain("Readiness probe exceeded its 10ms attempt timeout");
+      expect(attempts).toBe(2);
+      yield* TestClock.adjust("1 hour");
+      expect(attempts).toBe(2);
+    }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
+  );
+});
+
 describe("published version registry wait", () => {
+  it.live("real Bun adapter retries a metadata-visible tarball failure with independent projects and caches", () =>
+    provideNodeServices(
+      E.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const directories: string[] = [];
+        const lookup: RegistryLookup = (name, requestedVersion) =>
+          resolvePublicRegistryVersion(name, requestedVersion).pipe(
+            E.provideService(
+              ChildProcessSpawner.ChildProcessSpawner,
+              ChildProcessSpawner.make((command) =>
+                E.gen(function* () {
+                  if (command._tag !== "StandardCommand") return yield* E.die("Unexpected piped install");
+                  const directory = yield* Option.match(Option.fromNullishOr(command.options.cwd), {
+                    onNone: () => E.die("Missing probe workspace"),
+                    onSome: E.succeed,
+                  });
+                  expect(directories).not.toContain(directory);
+                  directories.push(directory);
+                  expect(command.command).toBe("/bin/sh");
+                  expect(command.args.slice(5)).toEqual([
+                    "install",
+                    "--ignore-scripts",
+                    "--no-progress",
+                    "--registry",
+                    "https://registry.npmjs.org",
+                    "--cache-dir",
+                    path.join(directory, "bun-cache"),
+                  ]);
+                  expect(command.options.env).toMatchObject({
+                    BUN_CONFIG_REGISTRY: "https://registry.npmjs.org",
+                    BUN_INSTALL_CACHE_DIR: path.join(directory, "bun-cache"),
+                  });
+                  if (directories.length === 1)
+                    return yield* spawner.spawn(
+                      ChildProcess.make(
+                        "/bin/sh",
+                        [
+                          "-c",
+                          'printf "%s" "Resolved keenko@1.2.3 metadata; GET keenko-1.2.3.tgz: 404" > "$1"; exit 1',
+                          "fixture",
+                          path.join(directory, "bun-install-output.log"),
+                        ],
+                        { forceKillAfter: "5 seconds" }
+                      )
+                    );
+                  const installed = path.join(directory, "node_modules", name);
+                  yield* fs.makeDirectory(installed, { recursive: true });
+                  yield* fs.writeFileString(
+                    path.join(installed, "package.json"),
+                    yield* S.encodeEffect(sInstalledPackage)({ version: requestedVersion }).pipe(E.orDie)
+                  );
+                  return yield* spawner.spawn(ChildProcess.make("/bin/sh", ["-c", "exit 0"], { forceKillAfter: "5 seconds" }));
+                })
+              )
+            )
+          );
+        expect(yield* waitForPublishedVersion(version, lookup, testPolicy)).toBe(version);
+        expect(directories).toHaveLength(2);
+        for (const directory of directories) expect(yield* fs.exists(directory)).toBe(false);
+      })
+    )
+  );
+
   it.live("probes an exact dependency in an isolated project and accepts the installed version", () =>
     provideNodeServices(
       E.gen(function* () {
@@ -115,6 +318,7 @@ describe("published version registry wait", () => {
 
   it.live("hard timeout bounds a non-completing registry lookup", () => {
     const hardTimeoutPolicy = {
+      attemptTimeout: "1 hour",
       interval: "1 hour",
       maxAttempts: 3,
       timeout: "10 millis",
@@ -184,6 +388,74 @@ const previousLatest = "1.0.1";
 const previousRc = "1.0.2-rc.0";
 const rcTags = { mode: "rc", previousLatest, previousRc } satisfies PublicationTags;
 const readyRc = { latest: previousLatest, rc: published };
+
+describe("canonical publication boundary", () => {
+  for (const mode of ["rc", "stable"] as const) {
+    const target = mode === "rc" ? published : "1.0.2";
+    const expected = { latest: mode === "stable" ? target : previousLatest, rc: mode === "rc" ? target : previousRc };
+    for (const converges of [true, false])
+      it.live(`${mode}: install ready with stale tags ${converges ? "waits for convergence" : "fails full readiness"}`, () =>
+        E.gen(function* () {
+          let installs = 0;
+          let tagAttempts = 0;
+          let ready = false;
+          const install: RegistryLookup = () =>
+            E.sync(() => {
+              installs += 1;
+              return target;
+            });
+          const tags: DistTagLookup = E.sync(() => {
+            expect(installs).toBe(1);
+            tagAttempts += 1;
+            return converges && tagAttempts > 1 ? expected : { latest: previousLatest, rc: previousRc };
+          });
+          const fiber = yield* waitForPublication(target, Option.some({ mode, previousLatest, previousRc }), install, tags, {
+            ...testPolicy,
+            interval: "10 millis",
+          }).pipe(
+            E.tap(() =>
+              E.sync(() => {
+                ready = true;
+              })
+            ),
+            E.result,
+            E.forkChild
+          );
+          yield* TestClock.adjust("9 millis");
+          expect(ready).toBe(false);
+          expect(tagAttempts).toBe(1);
+          yield* TestClock.adjust("11 millis");
+          const result = yield* Fiber.join(fiber);
+          expect(ready).toBe(converges);
+          if (result._tag === "Success") expect(result.success).toBe(target);
+          else expect(result.failure.message).toContain(`keenko@${mode === "rc" ? "rc" : "latest"}: expected ${target}`);
+          expect(installs).toBe(1);
+          expect(tagAttempts).toBe(converges ? 2 : 3);
+        }).pipe(E.provide(Layer.merge(NodeServices.layer, TestClock.layer())))
+      );
+  }
+
+  it.live("an unavailable install never proceeds to tags even when their metadata is ready", () =>
+    provideNodeServices(
+      E.gen(function* () {
+        let tagAttempts = 0;
+        const tags: DistTagLookup = E.sync(() => {
+          tagAttempts += 1;
+          return readyRc;
+        });
+        const failure = yield* waitForPublication(
+          published,
+          Option.some(rcTags),
+          () => E.fail(failLookup("tarball GET returned 503")),
+          tags,
+          testPolicy
+        ).pipe(E.flip);
+        expect(failure.message).toContain("tarball GET returned 503");
+        expect(tagAttempts).toBe(0);
+      })
+    )
+  );
+});
 
 describe("published dist-tag convergence", () => {
   it.live("npm adapter reads public tags and retries nonzero exits with stderr and malformed JSON", () =>
@@ -363,6 +635,7 @@ describe("published dist-tag convergence", () => {
         return attempts === 1 ? E.succeed({ latest: previousLatest, rc: previousRc }) : E.never;
       });
       const policy = {
+        attemptTimeout: "1 hour",
         interval: "10 millis",
         maxAttempts: 3,
         timeout: "20 millis",

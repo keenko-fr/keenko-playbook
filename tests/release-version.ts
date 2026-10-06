@@ -79,6 +79,51 @@ const makeReleaseFixture = E.fn("keenko.releaseVersion.fixture")(function* (
 const assertContains = (output: string, expected: string, context: string) =>
   output.includes(expected) ? E.void : E.fail(new ReleaseVersionFailure({ message: `${context}:\n${output}` }));
 
+const verifyCiPlanInputs = E.fn("keenko.release.ciPlanInputs")(function* (ci: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const fixture = yield* fs.makeTempDirectoryScoped({ prefix: "keenko-plan-inputs-" });
+  const git = (args: readonly string[]) => spawner.string(ChildProcess.make("git", args, { cwd: fixture, forceKillAfter: "5 seconds" }));
+  yield* git(["init", "--quiet"]);
+  yield* git(["config", "user.name", "Keenko Plan Fixture"]);
+  yield* git(["config", "user.email", "plan-fixture@keenko.invalid"]);
+  yield* fs.writeFileString(path.join(fixture, "README.md"), "fixture\n");
+  yield* git(["add", "."]);
+  yield* git(["commit", "--quiet", "-m", "Initialize fixture"]);
+  const base = (yield* git(["rev-parse", "HEAD"])).trim();
+  for (const file of [
+    "tests/wait-for-published.ts",
+    "tests/wait-for-published.spec.ts",
+    "src/index.ts",
+    "package.json",
+    "nx.json",
+    ".github/workflows/release.yml",
+  ]) {
+    const destination = path.join(fixture, file);
+    yield* fs.makeDirectory(path.dirname(destination), { recursive: true });
+    yield* fs.writeFileString(destination, "changed\n");
+  }
+  yield* git(["add", "."]);
+  yield* git(["commit", "--quiet", "-m", "Change release harness and packaged inputs"]);
+  const head = (yield* git(["rev-parse", "HEAD"])).trim();
+  const step = ci.split("      - name: Verify release plan\n")[1]?.split("      - name:")[0] ?? "";
+  const script = (step.split("        run: |\n")[1] ?? "")
+    .replaceAll(/^ {10}/gmu, "")
+    .replace("bun x nx release plan:check --stdin", "cat");
+  const files = yield* spawner.string(
+    ChildProcess.make("/bin/bash", ["-e", "-o", "pipefail", "-c", script], {
+      cwd: fixture,
+      env: { PLAN_BASE: base, PLAN_HEAD: head },
+      forceKillAfter: "5 seconds",
+    })
+  );
+  if (files.trim() !== [".github/workflows/release.yml", "nx.json", "package.json", "src/index.ts"].join("\n"))
+    return yield* new ReleaseVersionFailure({
+      message: `CI must omit only the unpackaged readiness files and retain package/release inputs:\n${files}`,
+    });
+});
+
 const runFixtureCommand = E.fn("keenko.release.fixtureCommand")(function* (executable: string, cwd: string, args: readonly string[]) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   return yield* spawner.string(ChildProcess.make(executable, args, { cwd, forceKillAfter: "5 seconds" }), { includeStderr: true });
@@ -429,6 +474,7 @@ const program = E.gen(function* () {
     return yield* new ReleaseVersionFailure({ message: "Stable publish dry-run changed the already-versioned package manifest" });
 
   const ci = yield* fs.readFileString(path.join(repository, ".github/workflows/ci.yml"));
+  yield* verifyCiPlanInputs(ci);
   const pullRequestBase = `\${{ github.event.pull_request.base.sha }}`;
   const pullRequestHead = `\${{ github.event.pull_request.head.sha }}`;
   yield* assertContains(ci, "fetch-depth: 0", "PR CI does not fetch the comparison commits");

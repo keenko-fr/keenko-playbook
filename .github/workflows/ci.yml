@@ -60,6 +60,8 @@ jobs:
             ':(top,exclude)docs/packed-product-test.md' \
             ':(top,exclude)tests/packed-product.ts' \
             ':(top,exclude)tests/release-version.ts' \
+            ':(top,exclude)tests/wait-for-published.ts' \
+            ':(top,exclude)tests/wait-for-published.spec.ts' \
             ':(top,exclude)CHANGELOG.md' \
             | bun x nx release plan:check --stdin
 
