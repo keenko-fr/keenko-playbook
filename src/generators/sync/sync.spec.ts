@@ -1,7 +1,8 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
-import { Effect as E, FileSystem, Layer as L, Path } from "effect";
+import { Effect as E, FileSystem, Layer as L, Option as O, Path, Schema as S } from "effect";
+import { parse } from "smol-toml";
 import { describe, expect } from "vitest";
 
 import { presetProgram } from "../preset/preset.js";
@@ -39,6 +40,108 @@ const readSkillNames = () =>
 // TESTS -----------------------------------------------------------------------------------------------------------------------------------
 
 describe("keenko sync", () => {
+  it.live("provisions credential-free hosted Context7 for both fresh generated harnesses", () =>
+    E.gen(function* () {
+      const tree = createTreeWithEmptyWorkspace();
+      yield* presetProgram(tree, { name: "test" });
+      expect(tree.read(".codex/config.toml", "utf-8")).toBe('[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\n');
+      expect(yield* S.decodeEffect(S.fromJsonString(S.Unknown))(O.getOrThrow(O.fromNullishOr(tree.read(".mcp.json", "utf-8"))))).toEqual({
+        mcpServers: { context7: { type: "http", url: "https://mcp.context7.com/mcp" } },
+      });
+      expect(tree.exists(".claude/settings.json")).toBe(false);
+      const guidance = tree.read(".keenko/docs/core/agent-behavior.md", "utf-8");
+      expect(guidance).toContain(
+        "Use Context7 automatically when current third-party library/API documentation materially affects correctness"
+      );
+      expect(guidance).toContain("5. model memory.");
+      expect(guidance).toContain("If Context7 is unavailable");
+      expect(guidance).not.toContain("When the active harness provides Context7");
+    }).pipe(E.provide(platformLayer))
+  );
+
+  for (const source of [
+    '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\n',
+    '# User comment\n[mcp_servers."context7"]\nurl = \'https://mcp.context7.com/mcp\'\nauth = "oauth"\ndisabled_tools = []\nenabled = true\nrequired = false\nhttp_headers = {}\nenv_http_headers = {}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n',
+    'mcp_servers.context7.url = "https://mcp.context7.com/mcp"\n',
+    'mcp_servers = { context7 = { url = "https://mcp.context7.com/mcp" }, other = { command = "local" } }\n',
+  ])
+    it.live(`preserves equivalent Codex TOML byte-for-byte: ${source.split("\n")[0]}`, () =>
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        tree.write(".codex/config.toml", source);
+        yield* runSync(tree);
+        expect(tree.read(".codex/config.toml", "utf-8")).toBe(source);
+      })
+    );
+
+  it.live("preserves equivalent Claude JSON byte-for-byte including unrelated configuration", () =>
+    E.gen(function* () {
+      const tree = createTreeWithEmptyWorkspace();
+      const source =
+        '{ "other": true, "mcpServers": { "custom": { "command": "local" }, "context7": { "url": "https://mcp.context7.com/mcp", "headers": {}, "type": "streamable-http" } } }\n';
+      tree.write(".mcp.json", source);
+      yield* runSync(tree);
+      expect(tree.read(".mcp.json", "utf-8")).toBe(source);
+    })
+  );
+
+  for (const source of [
+    '# Keep this comment\nmodel = "custom"\n[mcp_servers.other]\ncommand = "local"\n',
+    'model = "custom"\nmcp_servers = { other = { command = "local" } }\n',
+    'model = "custom"\nmcp_servers.other.command = "local"\n',
+  ])
+    it.live(`adds missing entries while preserving unrelated configuration: ${source.split("\n")[0]}`, () =>
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        tree.write(".codex/config.toml", source);
+        tree.write(".mcp.json", '{ "metadata": "keep", "mcpServers": { "custom": { "command": "local" } } }');
+        const settings = '{ "permissions": { "deny": ["mcp__context7__query-docs"] } }';
+        tree.write(".claude/settings.json", settings);
+        yield* runSync(tree);
+        const codex = O.getOrThrow(O.fromNullishOr(tree.read(".codex/config.toml", "utf-8")));
+        expect(parse(codex)).toEqual({
+          ...parse(source),
+          mcp_servers: { context7: { url: "https://mcp.context7.com/mcp" }, other: { command: "local" } },
+        });
+        if (source.startsWith("#")) expect(codex).toContain(source);
+        expect(yield* S.decodeEffect(S.fromJsonString(S.Unknown))(O.getOrThrow(O.fromNullishOr(tree.read(".mcp.json", "utf-8"))))).toEqual({
+          mcpServers: { context7: { type: "http", url: "https://mcp.context7.com/mcp" }, custom: { command: "local" } },
+          metadata: "keep",
+        });
+        expect(tree.read(".claude/settings.json", "utf-8")).toBe(settings);
+      })
+    );
+
+  for (const [path, source] of [
+    [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://custom.example/mcp"\n'],
+    [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nenabled = false\n'],
+    [
+      ".codex/config.toml",
+      '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nenv_http_headers = { Authorization = "TOKEN" }\n',
+    ],
+    [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\ndisabled_tools = ["query-docs"]\n'],
+    [".codex/config.toml", '[mcp_servers.context7]\ncommand = "custom"\n'],
+    [".codex/config.toml", 'mcp_servers = "invalid"\n'],
+    [".codex/config.toml", "malformed = ["],
+    [".mcp.json", '{"mcpServers":{"context7":{"type":"http","url":"https://custom.example/mcp"}}}'],
+    [".mcp.json", '{"mcpServers":{"context7":{"type":"http","url":"https://mcp.context7.com/mcp","headers":{"Authorization":"private"}}}}'],
+    [".mcp.json", '{"mcpServers":{"context7":{"type":"stdio","command":"custom"}}}'],
+    [".mcp.json", '{"mcpServers":{"context7":null}}'],
+    [".mcp.json", '{"mcpServers":null}'],
+    [".mcp.json", "{"],
+  ] as const)
+    it.live(`rejects conflicting or malformed MCP configuration without any sync writes: ${path} ${source}`, () =>
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        tree.write(path, source);
+        const before = tree.listChanges();
+        const failure = yield* runSync(tree).pipe(E.flip);
+        expect(failure).toMatchObject({ _tag: "GuidanceFailure", issue: "context7_conflict", path });
+        expect(failure.message).toContain("reconcile it manually");
+        expect(tree.listChanges()).toEqual(before);
+      })
+    );
+
   it.live("preserves edits to the README seeded during creation", () =>
     E.gen(function* () {
       const tree = createTreeWithEmptyWorkspace();
@@ -342,7 +445,9 @@ describe("keenko sync", () => {
       for (const path of ["AGENTS.md", "CLAUDE.md"]) {
         const routing = tree.read(path, "utf-8");
         expect(routing).toContain("bun node_modules/@tanstack/intent/dist/cli.mjs list");
-        expect(routing).toContain("Context7 only as optional documentation retrieval");
+        expect(routing).toContain("Use Context7 automatically");
+        expect(routing).toContain("Context7 retrieval; model memory.");
+        expect(routing).toContain("If Context7 is unavailable");
       }
     })
   );

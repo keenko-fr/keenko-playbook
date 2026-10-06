@@ -2,6 +2,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { parseJson, serializeJson } from "@nx/devkit";
 import { Clock, Console, Effect as E, FileSystem, Option as O, Path, Schema as S } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { parse as parseToml } from "smol-toml";
 
 import { packageVersions } from "../src/generators/versions.js";
 
@@ -375,6 +376,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     yield* fs.writeFileString(publicEnv.NPM_CONFIG_USERCONFIG, "registry=https://registry.npmjs.org\n");
     for (const selector of [
       "keenko@1.0.1",
+      "keenko@1.0.2",
       "keenko@1.0.2-rc.0",
       "keenko@1.0.2-rc.1",
       "keenko@1.0.2-rc.2",
@@ -485,6 +487,28 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
       "latest",
       "--loglevel=error",
     ]);
+  }
+
+  if (forwardUpgrade) {
+    const archives = path.join(temporary, "released-archives");
+    yield* command(temporary, npmEnv, "npm", [
+      "publish",
+      path.join(archives, "keenko-1.0.2.tgz"),
+      "--ignore-scripts",
+      "--provenance=false",
+      "--access",
+      "public",
+      "--tag",
+      "latest",
+      "--loglevel=error",
+    ]);
+    yield* createWorkspace(
+      temporary,
+      { ...bootstrapEnv, BUN_INSTALL_CACHE_DIR: path.join(temporary, "published-1.0.2-bun-cache") },
+      "upgrade-stable",
+      "keenko@1.0.2"
+    );
+    releasedWorkspaces.push(path.join(temporary, "upgrade-stable"));
   }
 
   yield* command(repository, env, "bun", ["run", "build"]);
@@ -784,10 +808,135 @@ const verifyReinstalls = E.fn("product.verifyReinstalls")(function* (
   }
 });
 
+const verifyContext7 = E.fn("product.verifyContext7")(function* (workspace: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const codex = yield* fs.readFileString(path.join(workspace, ".codex/config.toml"));
+  yield* S.decodeUnknownEffect(
+    S.Struct({ mcp_servers: S.Struct({ context7: S.Struct({ url: S.Literal("https://mcp.context7.com/mcp") }) }) })
+  )(parseToml(codex));
+  yield* S.decodeEffect(
+    S.fromJsonString(
+      S.Struct({
+        mcpServers: S.Struct({ context7: S.Struct({ type: S.Literal("http"), url: S.Literal("https://mcp.context7.com/mcp") }) }),
+      })
+    )
+  )(yield* fs.readFileString(path.join(workspace, ".mcp.json")));
+  for (const file of ["AGENTS.md", "CLAUDE.md", ".keenko/docs/core/agent-behavior.md"]) {
+    const guidance = yield* fs.readFileString(path.join(workspace, file));
+    yield* assert(guidance.includes("Use Context7 automatically"), `${file} lacks automatic Context7 routing`);
+    yield* assert(guidance.includes("If Context7 is unavailable"), `${file} lacks Context7 fallback`);
+    const authority = [
+      "human/project/repository authority",
+      "installed source/types",
+      "installed package-owned or current first-party guidance",
+      "Context7 retrieval",
+      "model memory",
+    ];
+    // Read the retrieval hierarchy itself, after any earlier TanStack-specific instructions.
+    const start = guidance.indexOf("human/project/repository authority");
+    let previous = start - 1;
+    for (const owner of authority) {
+      const position = guidance.indexOf(owner, previous + 1);
+      yield* assert(position > previous, `${file} has incorrect retrieval authority order at ${owner}`);
+      previous = position;
+    }
+  }
+  yield* Console.log("Context7 project configuration and authority verified for Codex and Claude Code.");
+});
+
+const verifyContext7Ownership = E.fn("product.verifyContext7Ownership")(function* (workspace: string, env: Record<string, string>) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const files = [".codex/config.toml", ".mcp.json", "AGENTS.md", "CLAUDE.md", ".keenko/docs/core/agent-behavior.md"];
+  const original = new Map<string, string>();
+  for (const file of files) original.set(file, yield* fs.readFileString(path.join(workspace, file)));
+  const codex = "# Project comment\n[mcp_servers.\"context7\"]\nurl = 'https://mcp.context7.com/mcp'\nenabled = true\nrequired = false\n";
+  const claude = '{ "mcpServers": { "context7": { "url": "https://mcp.context7.com/mcp", "type": "streamable-http", "headers": {} } } }\n';
+  yield* fs.writeFileString(path.join(workspace, ".codex/config.toml"), codex);
+  yield* fs.writeFileString(path.join(workspace, ".mcp.json"), claude);
+  yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
+  yield* assert(
+    (yield* fs.readFileString(path.join(workspace, ".codex/config.toml"))) === codex,
+    "Equivalent Codex configuration was rewritten"
+  );
+  yield* assert((yield* fs.readFileString(path.join(workspace, ".mcp.json"))) === claude, "Equivalent Claude configuration was rewritten");
+
+  const customCodex = '# Project comment\nmodel = "custom"\n[mcp_servers.other]\ncommand = "local"\n';
+  yield* fs.writeFileString(path.join(workspace, ".codex/config.toml"), customCodex);
+  yield* fs.writeFileString(path.join(workspace, ".mcp.json"), '{"metadata":"keep","mcpServers":{"other":{"command":"local"}}}');
+  yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
+  yield* assert((yield* fs.readFileString(path.join(workspace, ".codex/config.toml"))).startsWith(customCodex), "Codex user text was lost");
+  const updatedClaude = yield* S.decodeEffect(
+    S.fromJsonString(S.Struct({ mcpServers: S.Struct({ other: S.Struct({ command: S.Literal("local") }) }), metadata: S.Literal("keep") }))
+  )(yield* fs.readFileString(path.join(workspace, ".mcp.json")));
+  yield* assert(updatedClaude.metadata === "keep", "Claude user configuration was lost");
+  yield* verifyContext7(workspace);
+
+  for (const [file, source] of [
+    [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://custom.example/mcp"\n'],
+    [".mcp.json", '{"mcpServers":{"context7":{"type":"http","url":"https://custom.example/mcp"}}}'],
+  ]) {
+    const previous = yield* fs.readFileString(path.join(workspace, file));
+    yield* fs.writeFileString(path.join(workspace, file), source);
+    const before = new Map<string, string>();
+    for (const owned of files) before.set(owned, yield* fs.readFileString(path.join(workspace, owned)));
+    const output = yield* command(workspace, env, "bun", ["x", "nx", "sync"], "failure");
+    yield* assert(output.includes("reconcile it manually"), `Missing actionable ${file} conflict`);
+    for (const [owned, content] of before)
+      yield* assert((yield* fs.readFileString(path.join(workspace, owned))) === content, `Conflicting sync changed ${owned}`);
+    yield* fs.writeFileString(path.join(workspace, file), previous);
+  }
+  for (const [file, content] of original) yield* fs.writeFileString(path.join(workspace, file), content);
+  yield* command(workspace, env, "bun", ["x", "nx", "sync:check"]);
+  yield* Console.log("Packed Context7 ownership verified: equivalent entries, unrelated configuration and atomic conflicts.");
+});
+
+const verifyStableSyncUpgrade = E.fn("product.verifyStableSyncUpgrade")(function* (
+  workspace: string,
+  env: Record<string, string>,
+  packageVersion: string
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const installedPath = path.join(workspace, "node_modules/keenko/package.json");
+  yield* assert(
+    (yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPath))).version === "1.0.2",
+    "Stable upgrade source is not the published 1.0.2 package"
+  );
+  yield* assert(!(yield* fs.exists(path.join(workspace, ".mcp.json"))), "Stable fixture already provisions Context7");
+  yield* command(workspace, env, "bun", ["x", "nx", "migrate", `keenko@${packageVersion}`]);
+  yield* command(workspace, env, "bun", ["install"]);
+  yield* assert(
+    (yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPath))).version === packageVersion,
+    "Stable upgrade did not install the packed candidate"
+  );
+  // This change is sync-owned. Native Nx creates no migration plan when no factory applies.
+  yield* assert(!(yield* fs.exists(path.join(workspace, "migrations.json"))), "Sync-only upgrade unexpectedly selected a native migration");
+  yield* command(workspace, env, "bun", ["install"]);
+  yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
+  yield* verifyContext7(workspace);
+  yield* verifyContext7Ownership(workspace, env);
+  yield* command(workspace, env, "bun", ["run", "codegen"]);
+  yield* command(workspace, env, "env", ["-u", "CI", ...withoutBackendWorkOSEnv, "bun", "run", "check"]);
+  yield* verifySyncRerun(workspace, env);
+  yield* Console.log("Published 1.0.2 upgraded through native Nx installation and Keenko sync without a new migration factory.");
+});
+
 const verifySyncRerun = E.fn("product.verifySyncRerun")(function* (workspace: string, env: Record<string, string>) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const files = ["AGENTS.md", "CONTEXT.md", "nx.json", "package.json", "bun.lock", "bunfig.toml"];
+  const files = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".codex/config.toml",
+    ".mcp.json",
+    "CONTEXT.md",
+    "nx.json",
+    "package.json",
+    "bun.lock",
+    "bunfig.toml",
+  ];
   for (const directory of [".keenko", ".agents", ".claude"])
     for (const relative of yield* fs.readDirectory(path.join(workspace, directory), { recursive: true })) {
       const file = path.join(directory, relative);
@@ -916,6 +1065,10 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   for (const workspace of releasedWorkspaces) {
+    if (path.basename(workspace) === "upgrade-stable") {
+      yield* verifyStableSyncUpgrade(workspace, env, packageVersion);
+      continue;
+    }
     const { applications, before, divergent, expectedMigrations, manifestPaths, phase, sourceVersion, startedAt, target } =
       yield* prepareUpgradeFixture(workspace, roles, env);
 
@@ -980,6 +1133,7 @@ const verifyForwardUpgrades = E.fn("product.verifyForwardUpgrades")(function* (
     yield* assert(lockAfter !== lockBefore, "Bun did not reconcile changed dependency state");
     yield* verifyInstalledSlots(workspace, target, lockAfter);
     yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
+    yield* verifyContext7(workspace);
     yield* command(workspace, env, "bun", ["run", "codegen"]);
     const compatibilityPhase = `upgrade compatibility verification: ${path.basename(workspace)}`;
     const compatibilityStartedAt = yield* startPhase(compatibilityPhase);
@@ -1128,6 +1282,8 @@ const product = E.gen(function* () {
   yield* verifyConfectTuple(workspace, env);
   yield* completePhase("fresh compatibility verification", freshCompatibilityStartedAt);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
+  yield* verifyContext7(workspace);
+  if (source._tag === "local" && !shadcnCompatibility) yield* verifyContext7Ownership(workspace, env);
   for (const file of [
     "CONTEXT.md",
     ".keenko/docs/core/tooling.md",

@@ -10,6 +10,7 @@
         "@tanstack/create": "0.70.1",
         "effect": "4.0.1",
         "minimatch": "10.2.6",
+        "smol-toml": "1.7.1",
         "tslib": "2.8.1",
         "typescript": "6.0.3",
         "validate-npm-package-name": "8.0.0",

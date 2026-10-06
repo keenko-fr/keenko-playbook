@@ -81,6 +81,12 @@ The rc.4 baseline fixtures have byte-identical backend `tsconfig.json` files and
 
 All work remains sequential. CI and release use the same canonical `test:product`; there is no reduced CI mode. CI's 25-minute timeout allows variance above the rc.4 main job's measured 14m50s, which left only 10 seconds below the former 15-minute bound. Phase logs include setup, complete fresh verification, every historical upgrade, compatibility probes, representative reinstall/sync verification, each migration rerun, and total product verification. Timings describe execution and do not impose a performance threshold.
 
+## Context7 provisioning and stable upgrade
+
+Fresh packed creation verifies project `.codex/config.toml` and `.mcp.json` point to the hosted Context7 service with no credentials or subprocess. Both generated harness instructions and canonical agent behavior must contain automatic selective retrieval, clean fallback, and the settled authority order. The installed sync generator is exercised against equivalent entries, absent entries alongside unrelated user configuration, and custom endpoint conflicts for both harnesses. Conflicts must report manual reconciliation and preserve all inspected managed state. Sync rerun checks include both configuration files and both harness routing files.
+
+The matrix also creates an authentic published `keenko@1.0.2` consumer. Native Nx installs the packed target without selecting a new migration factory, both installs run, and Keenko sync provisions Context7. The stable consumer repeats the ownership checks, codegen, canonical `check`, and byte-stable sync rerun. Every historical upgrade also verifies Context7 after its existing migration/install/sync lifecycle. This change is owned by the existing sync generator; historical migration factories and snapshots are unchanged.
+
 ## Exact published package
 
 After both readiness stages in [Release workflow and recovery](#release-workflow-and-recovery) succeed, run the release-grade acceptance with the exact published version and the selector for its release mode:

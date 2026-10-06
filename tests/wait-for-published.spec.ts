@@ -748,7 +748,8 @@ describe("published dist-tag convergence", () => {
         for (const mode of ["rc", "stable"] as const) {
           const validation = yield* spawner.spawn(
             ChildProcess.make("/bin/bash", ["-e", "-c", yield* step("Validate release mode")], {
-              cwd: repository,
+              // The mocked RC must not read the maintainer checkout's stable-to-RC plans.
+              cwd: directory,
               env: { ...environment, RELEASE_MODE: mode },
               forceKillAfter: "5 seconds",
             })
