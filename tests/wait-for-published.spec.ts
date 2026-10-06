@@ -151,7 +151,13 @@ describe("publication observation policy", () => {
           attempts += 1;
           return E.never;
         });
-      const policy = { ...testPolicy, attemptTimeout: "10 millis", interval: "5 millis", timeout: "29 millis", timeoutLabel: "29 millis" };
+      const policy = {
+        ...testPolicy,
+        attemptTimeout: "10 millis",
+        interval: "5 millis",
+        timeout: "29 millis",
+        timeoutLabel: "29 millis",
+      } satisfies PublishedVersionWaitPolicy;
       const fiber = yield* waitForPublishedVersion(version, lookup, policy).pipe(E.flip, E.forkChild);
       yield* TestClock.adjust("29 millis");
       const failure = yield* Fiber.join(fiber);
