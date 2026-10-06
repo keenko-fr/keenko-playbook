@@ -1,5 +1,5 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Console, Effect as E, FileSystem, Path, Option, Ref, Schedule, Schema as S, Stream, type Duration } from "effect";
+import { Console, Duration, Effect as E, FileSystem, Path, Option, Ref, Schedule, Schema as S, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const packageName = "keenko";
@@ -8,6 +8,7 @@ const exactSemver =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
 
 export interface PublishedVersionWaitPolicy {
+  readonly attemptTimeout: Duration.Input;
   readonly interval: Duration.Input;
   readonly maxAttempts: number;
   readonly timeout: Duration.Input;
@@ -15,10 +16,12 @@ export interface PublishedVersionWaitPolicy {
 }
 
 export const publishedVersionWaitPolicy = {
+  attemptTimeout: "5 minutes",
   interval: "10 seconds",
-  maxAttempts: 25,
-  timeout: "5 minutes",
-  timeoutLabel: "5 minutes",
+  // 60 retry delays cover the deadline even when every failed probe returns immediately.
+  maxAttempts: 61,
+  timeout: "10 minutes",
+  timeoutLabel: "10 minutes",
 } satisfies PublishedVersionWaitPolicy;
 
 export class RegistryLookupFailure extends S.TaggedError<RegistryLookupFailure>()("RegistryLookupFailure", {
@@ -35,7 +38,7 @@ export class PublishedVersionUnavailable extends S.TaggedError<PublishedVersionU
   version: S.String,
 }) {
   override get message() {
-    return `${this.expectation} did not become ready from ${publicRegistry} within ${this.timeout} (${this.attempts}/${this.maxAttempts} attempts). Last readiness failure: ${this.lastFailure}`;
+    return `${this.expectation} did not become ready from ${publicRegistry} within ${this.timeout} (${this.attempts}/${this.maxAttempts} attempts). Readiness diagnostics: ${this.lastFailure}`;
   }
 }
 
@@ -133,13 +136,25 @@ const waitForPublicationProbe = E.fn("keenko.release.waitForPublicationProbe")(f
   policy: PublishedVersionWaitPolicy
 ) {
   const attempts = yield* Ref.make(0);
-  const lastFailure = yield* Ref.make("No completed registry observation");
+  const failures = yield* Ref.make<readonly string[]>([]);
   const observation = E.gen(function* () {
     yield* Ref.update(attempts, (count) => count + 1);
-    return yield* probe;
+    return yield* probe.pipe(
+      E.timeoutOrElse({
+        duration: policy.attemptTimeout,
+        orElse: () =>
+          E.fail(
+            new RegistryLookupFailure({
+              reason: `Readiness probe exceeded its ${Duration.format(Duration.fromInputUnsafe(policy.attemptTimeout))} attempt timeout`,
+            })
+          ),
+      })
+    );
   }).pipe(
     E.tapError((failure) =>
-      Ref.set(lastFailure, failure.reason).pipe(E.andThen(Console.log(`Attempt failed for ${expectation}: ${failure.reason}`)))
+      Ref.update(failures, (recent) => [...recent.filter((reason) => reason !== failure.reason), failure.reason].slice(-3)).pipe(
+        E.andThen(Console.log(`Attempt failed for ${expectation}: ${failure.reason}`))
+      )
     ),
     E.retry(Schedule.max([Schedule.spaced(policy.interval), Schedule.recurs(policy.maxAttempts - 1)])),
     E.timeout(policy.timeout)
@@ -149,13 +164,14 @@ const waitForPublicationProbe = E.fn("keenko.release.waitForPublicationProbe")(f
     E.catch((error) =>
       E.gen(function* () {
         const attemptCount = yield* Ref.get(attempts);
+        const recentFailures = (yield* Ref.get(failures)).join("\nReadiness failure: ") || "No completed registry observation";
         return yield* new PublishedVersionUnavailable({
           attempts: attemptCount,
           expectation,
           lastFailure:
             error._tag === "RegistryLookupFailure"
-              ? error.reason
-              : `Hard timeout of ${policy.timeoutLabel} elapsed. ${yield* Ref.get(lastFailure)}`,
+              ? `Attempt limit reached. Recent readiness failures: ${recentFailures}`
+              : `Hard timeout of ${policy.timeoutLabel} elapsed. Recent readiness failures: ${recentFailures}`,
           maxAttempts: policy.maxAttempts,
           packageName,
           timeout: policy.timeoutLabel,
@@ -263,22 +279,29 @@ export const readPublicationArguments = E.fn("keenko.release.readPublicationArgu
   return { tags: Option.some({ mode, previousLatest, previousRc }), version };
 });
 
+export const waitForPublication = (
+  version: string,
+  tags: Option.Option<PublicationTags>,
+  lookup: RegistryLookup = resolvePublicRegistryVersion,
+  tagLookup: DistTagLookup = resolvePublicDistTags,
+  policy: PublishedVersionWaitPolicy = publishedVersionWaitPolicy
+) =>
+  waitForPublishedVersion(version, lookup, policy).pipe(
+    E.tap(() => Console.log(`Bun can install ${packageName}@${version} from ${publicRegistry}.`)),
+    E.andThen(
+      Option.match(tags, {
+        onNone: () => E.succeed(version),
+        onSome: (configuration) => waitForPublishedDistTags(version, configuration, tagLookup, policy),
+      })
+    ),
+    E.tap(() => Console.log(`Publication observations converged for ${packageName}@${version}.`))
+  );
+
 if (import.meta.main)
   NodeRuntime.runMain(
     // oxlint-disable-next-line effect/noGlobals -- process arguments are the release-wait command boundary.
     readPublicationArguments(process.argv.slice(2)).pipe(
-      E.flatMap(({ version, tags }) =>
-        waitForPublishedVersion(version).pipe(
-          E.tap(() => Console.log(`Bun can install ${packageName}@${version} from ${publicRegistry}.`)),
-          E.andThen(
-            Option.match(tags, {
-              onNone: () => E.succeed(version),
-              onSome: (configuration) => waitForPublishedDistTags(version, configuration),
-            })
-          ),
-          E.tap(() => Console.log(`Publication observations converged for ${packageName}@${version}.`))
-        )
-      ),
+      E.flatMap(({ version, tags }) => waitForPublication(version, tags)),
       E.provide(NodeServices.layer)
     )
   );
