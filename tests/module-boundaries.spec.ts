@@ -8,7 +8,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { type NxJsonConfiguration, updateJson } from "@nx/devkit";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
-import { Effect as E, Layer as L } from "effect";
+import { Effect as E, Layer as L, Schema as S } from "effect";
 import { describe, expect } from "vitest";
 
 import type { PackageJson } from "../src/generators/helpers.js";
@@ -64,7 +64,7 @@ describe("generated Nx/Oxlint module boundaries", () => {
     ).pipe(E.provide(platformLayer))
   );
 
-  it.live("discovers two applications sharing one backend and rejects sibling application source imports", () =>
+  it.live("discovers renamed and sibling applications sharing one backend and rejects sibling application source imports", () =>
     E.acquireUseRelease(
       E.sync(() => mkdtempSync(path.join(tmpdir(), "keenko-multi-app-boundaries-"))),
       (workspace) =>
@@ -76,14 +76,18 @@ describe("generated Nx/Oxlint module boundaries", () => {
             return manifest;
           });
           tree.write("apps/web/src/boundary-target.ts", "export const boundaryTarget = true;\n");
+          // KEE-60: current topology owns this proof, rather than a 1.0.1 upgrade.
+          for (const change of tree.listChanges())
+            if (change.path.startsWith("apps/web/")) tree.rename(change.path, change.path.replace("apps/web/", "apps/portal/"));
+          updateJson<PackageJson>(tree, "apps/portal/package.json", (manifest) => ({ ...manifest, name: "@multi-app-test/portal" }));
           tree.write(
             "apps/admin/package.json",
             JSON.stringify({
-              dependencies: { "@multi-app-test/backend": "workspace:*", "@multi-app-test/web": "workspace:*" },
+              dependencies: { "@multi-app-test/backend": "workspace:*", "@multi-app-test/portal": "workspace:*" },
               name: "@multi-app-test/admin",
               nx: { tags: ["type:app"], targets: { dev: { continuous: true } } },
               private: true,
-              scripts: { dev: "vite dev", test: "vitest run" },
+              scripts: { dev: "vite dev" },
               type: "module",
             })
           );
@@ -110,7 +114,8 @@ describe("generated Nx/Oxlint module boundaries", () => {
             env: nxEnvironment,
           });
           expect(graph.status, graph.stderr.toString()).toBe(0);
-          expect(graph.stdout.toString()).toContain("@multi-app-test/web");
+          expect(existsSync(path.join(workspace, "apps/web"))).toBe(false);
+          expect(graph.stdout.toString()).toContain("@multi-app-test/portal");
           expect(graph.stdout.toString()).toContain("@multi-app-test/admin");
           expect(existsSync(path.join(workspace, "apps/admin/.vite-config-evaluated"))).toBe(false);
 
@@ -127,11 +132,29 @@ describe("generated Nx/Oxlint module boundaries", () => {
           );
           expect(graphInspection.status, graphInspection.stderr.toString()).toBe(0);
           expect(graphInspection.stdout.toString()).toContain('"@multi-app-test/admin":true');
-          expect(graphInspection.stdout.toString()).toContain('"@multi-app-test/web":true');
+          expect(graphInspection.stdout.toString()).toContain('"@multi-app-test/portal":true');
+
+          for (const application of ["portal", "admin"]) {
+            const project = spawnSync(
+              path.join(repository, "node_modules/.bin/nx"),
+              ["show", "project", `@multi-app-test/${application}`, "--json"],
+              {
+                cwd: workspace,
+                env: nxEnvironment,
+              }
+            );
+            expect(project.status, project.stderr.toString()).toBe(0);
+            const configuration = yield* S.decodeEffect(
+              S.fromJsonString(S.Struct({ root: S.String, targets: S.Record(S.String, S.Unknown) }))
+            )(project.stdout.toString());
+            expect(configuration.root).toBe(`apps/${application}`);
+            expect(configuration.targets.test).toMatchObject({ executor: "nx:run-commands", options: { command: "vitest run" } });
+            expect(configuration.targets.dev).toMatchObject({ continuous: true });
+          }
 
           const probe = path.join(workspace, "apps/admin/src/boundary-probe.ts");
           mkdirSync(path.dirname(probe), { recursive: true });
-          writeFileSync(probe, 'import "@multi-app-test/web/boundary-target";\n');
+          writeFileSync(probe, 'import "@multi-app-test/portal/boundary-target";\n');
           const result = spawnSync(path.join(repository, "node_modules/.bin/oxlint"), ["apps/admin/src/boundary-probe.ts"], {
             cwd: workspace,
             env: nxEnvironment,

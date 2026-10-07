@@ -1,16 +1,28 @@
 # Keenko migrations
 
-Native Nx migrations own post-1.0 upgrades of persisted Keenko consumer state. This contract follows KEE-14's native lifecycle and ownership boundary.
+Native Nx migrations own supported upgrades of persisted Keenko consumer state. This contract follows KEE-14's native lifecycle and ownership boundary.
+
+## Support window
+
+Default direct forward support is immediately preceding stable → current stable. New projects start from the current release. Prereleases are not permanent supported origins. Older stable releases are outside the default direct-support window, and Keenko makes no default guarantee that an out-of-window project can recover through sequential historical releases. A release may explicitly widen its supported source window for a concrete requirement.
+
+Migrations exist only when persisted project state requires transformation. Retain migration entries, implementations and assets only while a supported path or current behavior needs them. Published packages and Git tags preserve historical releases; the current package does not retain executable migrations solely for archaeology.
+
+## Native lifecycle
 
 ```sh
 bun x nx migrate keenko@<target>
 bun install
-bun x nx migrate --run-migrations
+if [ -f migrations.json ]; then
+  bun x nx migrate --run-migrations
+fi
 bun install
 bun x nx sync
 bun run codegen
 bun run check
 ```
+
+Run applicable native migrations when Nx produces a migration plan. If none apply, Nx may create no `migrations.json`; continue with the second install and sync. Do not create a no-op migration or synthetic plan.
 
 The second `bun install` is unconditional. Migrations can change dependency manifests after the first install. Bun alone reconciles installed packages and regenerates `bun.lock`; migrations never text-edit or merge the lockfile.
 

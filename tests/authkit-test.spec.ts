@@ -7,9 +7,7 @@ import path from "node:path";
 import { parseJson, readJson, writeJson } from "@nx/devkit";
 import { flushChanges, FsTree } from "nx/src/generators/tree";
 
-import { authkitPatchKey, authkitPatchPath } from "../src/compatibility/authkit-test.js";
-import migration from "../src/migrations/authkit-test-1-0-2.js";
-import testingMigration from "../src/migrations/effect-testing-baseline-1-0-2.js";
+import { authkitPatchKey, authkitPatchPath, installAuthkitTestPatch } from "../src/compatibility/authkit-test.js";
 
 const repository = path.resolve(import.meta.dir, "..");
 const run = async (cwd: string, args: string[]) => {
@@ -18,11 +16,11 @@ const run = async (cwd: string, args: string[]) => {
   return { code, output: `${stdout}\n${stderr}` };
 };
 
-test("KEE-53 reproduces rc.2 and fixes the real AuthKit test entrypoint without phantom dependencies", async () => {
+test("current AuthKit patch fixes the public test entrypoint without phantom dependencies", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "keenko-authkit-test-"));
   try {
     const roles = parseJson<Record<string, Record<string, Record<string, string>>>>(
-      await readFile(path.join(repository, "src/migrations/files/dependency-baseline-1-0-2.json"), "utf-8")
+      await readFile(path.join(repository, "tests/fixtures/current-dependencies.json"), "utf-8")
     );
     await writeFile(
       path.join(root, "package.json"),
@@ -41,8 +39,6 @@ test("KEE-53 reproduces rc.2 and fixes the real AuthKit test entrypoint without 
         JSON.stringify({ name: `@authkit-proof/${role}`, private: true, type: "module", ...roles[role] })
       );
     }
-    const formatter = await readFile(path.join(repository, "src/generators/preset/files/root/oxfmt.config.ts.template"), "utf-8");
-    await writeFile(path.join(root, "oxfmt.config.ts"), formatter.replace('    "tools/ai-migrations/**",\n', ""));
     const backend = path.join(root, "packages/backend");
     for (const [source, target] of [
       ["authkit-test.vitest.ts.template", "authkit.test.ts"],
@@ -75,8 +71,7 @@ test("KEE-53 reproduces rc.2 and fixes the real AuthKit test entrypoint without 
     const upstreamSource = await readFile(sourcePath, "utf-8");
 
     const tree = new FsTree(root, false);
-    migration(tree);
-    await testingMigration(tree);
+    installAuthkitTestPatch(tree);
     flushChanges(root, tree.listChanges());
     const correctedInstall = await run(root, ["bun", "install", "--ignore-scripts"]);
     expect(correctedInstall.code).toBe(0);
@@ -91,7 +86,6 @@ test("KEE-53 reproduces rc.2 and fixes the real AuthKit test entrypoint without 
         "--eval",
         await readFile(path.join(repository, "tests/fixtures/product-resolution.mjs.template"), "utf-8"),
         root,
-        "--historical-authkit-proof",
       ]);
       expect(probe.code, probe.output).toBe(0);
       expect(await readFile(sourcePath, "utf-8")).toBe(upstreamSource);
