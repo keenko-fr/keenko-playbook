@@ -875,6 +875,10 @@ const verifyContext7Ownership = E.fn("product.verifyContext7Ownership")(function
 
   for (const [file, source] of [
     [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://custom.example/mcp"\n'],
+    [
+      ".codex/config.toml",
+      '# Preserve comments and spacing\nmodel  =  "custom" # Project model\nmcp_servers = { other = { command = "local" } } # User MCPs\n',
+    ],
     [".mcp.json", '{"mcpServers":{"context7":{"type":"http","url":"https://custom.example/mcp"}}}'],
   ]) {
     const previous = yield* fs.readFileString(path.join(workspace, file));
@@ -883,6 +887,8 @@ const verifyContext7Ownership = E.fn("product.verifyContext7Ownership")(function
     for (const owned of files) before.set(owned, yield* fs.readFileString(path.join(workspace, owned)));
     const output = yield* command(workspace, env, "bun", ["x", "nx", "sync"], "failure");
     yield* assert(output.includes("reconcile it manually"), `Missing actionable ${file} conflict`);
+    if (source.includes("mcp_servers ="))
+      yield* assert(output.includes("Add the hosted context7 entry manually"), "Missing sealed TOML reconciliation instructions");
     for (const [owned, content] of before)
       yield* assert((yield* fs.readFileString(path.join(workspace, owned))) === content, `Conflicting sync changed ${owned}`);
     yield* fs.writeFileString(path.join(workspace, file), previous);

@@ -1,6 +1,6 @@
 import type { Tree } from "@nx/devkit";
 import { Effect as E, Option as O, Schema as S } from "effect";
-import { parse, stringify } from "smol-toml";
+import { parse } from "smol-toml";
 
 import { GuidanceFailure } from "../errors.js";
 
@@ -26,10 +26,10 @@ const sClaudeEntry = S.Struct({
   url: S.Literal(endpoint),
 });
 
-const conflict = (path: string) =>
+const conflict = (path: string, reason = "is customized or invalid") =>
   new GuidanceFailure({
     issue: "context7_conflict",
-    message: `Context7 configuration in ${path} is customized or invalid. Preserve the customization and reconcile it manually before rerunning bun x nx sync. Keenko owns only the context7 MCP entry.`,
+    message: `Context7 configuration in ${path} ${reason}. Preserve the customization and reconcile it manually before rerunning bun x nx sync. Keenko owns only the context7 MCP entry.`,
     path,
   });
 
@@ -58,17 +58,15 @@ export const prepareContext7 = E.fn("keenko.sync.context7")(function* (tree: Tre
   let codexContent = codexSource;
   if (!Object.hasOwn(codexServers, "context7")) {
     const appended = `${codexSource}${codexSource.length === 0 || codexSource.endsWith("\n") ? "" : "\n"}${codexSource.length === 0 ? "" : "\n"}[mcp_servers.context7]\nurl = "${endpoint}"\n`;
-    // Append without rewriting user text where TOML permits extending the table.
-    // Inline tables are sealed; serialize that valid custom layout with all values preserved.
-    codexContent = yield* E.try({ catch: () => conflict(codexPath), try: () => parse(appended) }).pipe(
-      E.as(appended),
-      E.catch(() =>
-        E.try({
-          catch: () => conflict(codexPath),
-          try: () => stringify({ ...codex, mcp_servers: { ...codexServers, context7: { url: endpoint } } }),
-        })
-      )
-    );
+    // Validate the surgical append; never reserialize project-owned TOML.
+    codexContent = yield* E.try({
+      catch: () =>
+        conflict(
+          codexPath,
+          "cannot be extended safely by appending. Add the hosted context7 entry manually while preserving unrelated TOML"
+        ),
+      try: () => parse(appended),
+    }).pipe(E.as(appended));
   }
 
   const claudeContent = Object.hasOwn(claudeServers, "context7")

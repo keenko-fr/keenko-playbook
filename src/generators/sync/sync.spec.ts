@@ -55,6 +55,8 @@ describe("keenko sync", () => {
       );
       expect(guidance).toContain("5. model memory.");
       expect(guidance).toContain("If Context7 is unavailable");
+      expect(guidance).toContain("sync fails before any managed writes");
+      expect(guidance).not.toContain("TOML serialization");
       expect(guidance).not.toContain("When the active harness provides Context7");
     }).pipe(E.provide(platformLayer))
   );
@@ -63,7 +65,7 @@ describe("keenko sync", () => {
     '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\n',
     '# User comment\n[mcp_servers."context7"]\nurl = \'https://mcp.context7.com/mcp\'\nauth = "oauth"\ndisabled_tools = []\nenabled = true\nrequired = false\nhttp_headers = {}\nenv_http_headers = {}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n',
     'mcp_servers.context7.url = "https://mcp.context7.com/mcp"\n',
-    'mcp_servers = { context7 = { url = "https://mcp.context7.com/mcp" }, other = { command = "local" } }\n',
+    '# Preserve inline formatting\nmodel  =  "custom" # Project model\nmcp_servers = { context7 = { url = "https://mcp.context7.com/mcp" }, other = { command = "local" } } # User MCPs\n',
   ])
     it.live(`preserves equivalent Codex TOML byte-for-byte: ${source.split("\n")[0]}`, () =>
       E.gen(function* () {
@@ -87,7 +89,7 @@ describe("keenko sync", () => {
 
   for (const source of [
     '# Keep this comment\nmodel = "custom"\n[mcp_servers.other]\ncommand = "local"\n',
-    'model = "custom"\nmcp_servers = { other = { command = "local" } }\n',
+    '# Inline child remains extensible\nmodel  =  "custom"\n[mcp_servers]\nother = { command = "local" } # User MCP\n',
     'model = "custom"\nmcp_servers.other.command = "local"\n',
   ])
     it.live(`adds missing entries while preserving unrelated configuration: ${source.split("\n")[0]}`, () =>
@@ -103,12 +105,35 @@ describe("keenko sync", () => {
           ...parse(source),
           mcp_servers: { context7: { url: "https://mcp.context7.com/mcp" }, other: { command: "local" } },
         });
-        if (source.startsWith("#")) expect(codex).toContain(source);
+        expect(codex.startsWith(source)).toBe(true);
         expect(yield* S.decodeEffect(S.fromJsonString(S.Unknown))(O.getOrThrow(O.fromNullishOr(tree.read(".mcp.json", "utf-8"))))).toEqual({
           mcpServers: { context7: { type: "http", url: "https://mcp.context7.com/mcp" }, custom: { command: "local" } },
           metadata: "keep",
         });
         expect(tree.read(".claude/settings.json", "utf-8")).toBe(settings);
+      })
+    );
+
+  for (const source of [
+    '# Preserve comments\nmodel  =  "custom" # Project model\nmcp_servers = { other = { command = "local" } } # User MCPs\n',
+    '# Preserve CRLF and spacing\r\nmodel\t=\t"custom"\r\nmcp_servers  =  {} # Sealed table\r\n',
+  ])
+    it.live(`rejects sealed inline Codex TOML byte-for-byte without any managed writes: ${source.split("\n")[0]}`, () =>
+      E.gen(function* () {
+        const tree = createTreeWithEmptyWorkspace();
+        expect(parse(source).mcp_servers).toBeTypeOf("object");
+        tree.write(".codex/config.toml", source);
+        tree.write("AGENTS.md", "Project-owned routing\n");
+        tree.write(".keenko/docs/core/agent-behavior.md", "Previous managed guidance\n");
+        const before = tree.listChanges();
+        const failure = yield* runSync(tree).pipe(E.flip);
+        expect(failure).toMatchObject({ _tag: "GuidanceFailure", issue: "context7_conflict", path: ".codex/config.toml" });
+        expect(failure.message).toContain("cannot be extended safely by appending");
+        expect(failure.message).toContain("Add the hosted context7 entry manually");
+        expect(failure.message).toContain("bun x nx sync");
+        expect(tree.read(".codex/config.toml", "utf-8")).toBe(source);
+        expect(tree.listChanges()).toEqual(before);
+        expect(tree.exists(".mcp.json")).toBe(false);
       })
     );
 
