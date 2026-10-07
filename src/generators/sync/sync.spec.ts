@@ -1,7 +1,7 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
-import { Effect as E, FileSystem, Layer as L, Option as O, Path, Schema as S } from "effect";
+import { Effect as E, FileSystem, Layer as L, Option as O, Path, Schema as S, Struct } from "effect";
 import { parse } from "smol-toml";
 import { describe, expect } from "vitest";
 
@@ -306,6 +306,7 @@ describe("keenko sync", () => {
       expect(schemaTypes).toContain("export const sFoo = sFooDoc;");
       expect(schemaTypes).toContain("Option<Foo>` illustrates explicit construction failure, not a required error API");
       expect(schemaTypes).toContain(".check(S.makeFilter(relationsAgree))");
+      expect(schemaTypes).toContain(".mapFields(Struct.assign({ bar: sBar }), { unsafePreserveChecks: true })");
       expect(schemaTypes).toContain("it does not run full schema decoding again");
       expect(schemaTypes).toContain("A storage-only table may expose");
       expect(schemaTypes).not.toContain("export const sFoo = sFooFields;");
@@ -321,6 +322,27 @@ describe("keenko sync", () => {
       expect(tree.exists("packages/backend/domain")).toBe(false);
     })
   );
+
+  it("preserves source document checks alongside hydrated Entity relationship checks", () => {
+    const sFooDoc = S.Struct({
+      _creationTime: S.Number,
+      _id: S.String,
+      barId: S.String,
+      endsAt: S.Number,
+      startsAt: S.Number,
+    }).check(S.makeFilter((doc) => doc.startsAt < doc.endsAt));
+    type FooDoc = typeof sFooDoc.Type;
+    const sBar = S.Struct({ _id: S.String });
+    type Bar = typeof sBar.Type;
+    const relationsAgree = (value: FooDoc & { readonly bar: Bar }) => value.barId === value.bar._id;
+    const sFoo = sFooDoc.mapFields(Struct.assign({ bar: sBar }), { unsafePreserveChecks: true }).check(S.makeFilter(relationsAgree));
+    const decode = S.decodeSync(sFoo);
+    const valid = { _creationTime: 0, _id: "foo", bar: { _id: "bar" }, barId: "bar", endsAt: 2, startsAt: 1 };
+
+    expect(decode(valid)).toEqual(valid);
+    expect(() => decode({ ...valid, startsAt: valid.endsAt })).toThrow();
+    expect(() => decode({ ...valid, bar: { _id: "other" } })).toThrow();
+  });
 
   it.live("refreshes identity guidance without migrating project-owned identity state", () =>
     E.gen(function* () {

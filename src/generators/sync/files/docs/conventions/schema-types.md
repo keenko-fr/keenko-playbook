@@ -246,7 +246,7 @@ If `Bar` is constitutive for the example above, the schema module owning `Foo` c
 ```ts
 const relationsAgree = (value: FooDoc & { readonly bar: Bar }) => value.barId === value.bar._id;
 
-export const sFoo = sFooDoc.mapFields(Struct.assign({ bar: sBar })).check(S.makeFilter(relationsAgree));
+export const sFoo = sFooDoc.mapFields(Struct.assign({ bar: sBar }), { unsafePreserveChecks: true }).check(S.makeFilter(relationsAgree));
 export type Foo = typeof sFoo.Type;
 
 export const fooFrom = (doc: FooDoc, relations: { readonly bar: Bar }): Option<Foo> => {
