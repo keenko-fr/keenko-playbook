@@ -16,6 +16,7 @@ const sCodexEntry = S.Struct({
   env_http_headers: S.optional(sEmptyObject),
   http_headers: S.optional(sEmptyObject),
   required: S.optional(S.Literal(false)),
+  startup_timeout_ms: S.optional(S.Literal(10_000)),
   startup_timeout_sec: S.optional(S.Literal(10)),
   tool_timeout_sec: S.optional(S.Literal(60)),
   url: S.Literal(endpoint),
