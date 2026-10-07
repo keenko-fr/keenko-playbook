@@ -33,22 +33,24 @@ From the created project, bun run check is the canonical merge-ready verificatio
 
 ## Project compatibility
 
-Keenko `1.0.0` is the first supported project compatibility baseline. All `0.x` releases are development and dogfood releases with no supported forward project-migration path. Before `1.0.0`, recreate generated projects from the current accepted release candidate when the canonical project shape changes.
+Default direct forward support is immediately preceding stable → current stable. The next `1.0.3` release line supports the real published `1.0.2` source. New projects start current. Prereleases are not permanent supported origins; older stable releases are outside the default direct-support window. There is no default guarantee of recovery through sequential historical releases. A release may explicitly widen the source window.
 
-For releases after `1.0.0`, use the native Nx migration and synchronization lifecycle when a release includes a real persisted project-state migration:
+Nx remains migration authority and Bun remains lockfile owner. Migration code and assets are retained only while a supported path or current behavior requires them. Add migrations only when persisted project state needs transformation, then follow the native migration and synchronization lifecycle:
 
 ```sh
 cd <project>
 bun x nx migrate keenko@<target>
 bun install
-bun x nx migrate --run-migrations
+if [ -f migrations.json ]; then
+  bun x nx migrate --run-migrations
+fi
 bun install
 bun x nx sync
 bun run codegen
 bun run check
 ```
 
-The second `bun install` is unconditional because migrations can change dependency manifests. Bun reconciles installed packages and regenerates `bun.lock`; migrations never text-edit or merge the lockfile.
+Run applicable native migrations when Nx produces a plan. An upgrade with no applicable migration may create no `migrations.json`; do not manufacture a no-op plan. The second `bun install` is unconditional because migrations can change dependency manifests. Bun reconciles installed packages and regenerates `bun.lock`; migrations never text-edit or merge the lockfile.
 
 ## Runtime support
 

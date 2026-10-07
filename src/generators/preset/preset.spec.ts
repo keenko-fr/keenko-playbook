@@ -88,6 +88,37 @@ const readTemplate = (source: URL) =>
 
 // TESTS -----------------------------------------------------------------------------------------------------------------------------------
 describe("keenko preset", () => {
+  it.live("owns the current dependency slots across the five generated roles", () =>
+    E.gen(function* () {
+      const tree = yield* generatePreset();
+      const roles = yield* S.decodeEffect(S.fromJsonString(S.Record(S.String, S.Record(S.String, S.Record(S.String, S.String)))))(
+        yield* readTemplate(new URL("../../../tests/fixtures/current-dependencies.json", import.meta.url))
+      );
+      let count = 0;
+      for (const [role, manifestPath] of Object.entries({
+        application: "apps/web/package.json",
+        backend: "packages/backend/package.json",
+        root: "package.json",
+        shared: "packages/shared/package.json",
+        ui: "packages/ui/package.json",
+      })) {
+        const manifest = readJson<PackageJson>(tree, manifestPath);
+        for (const section of ["dependencies", "devDependencies"] as const) {
+          const managed = Object.fromEntries(
+            Object.entries(manifest[section] ?? {}).filter(([name]) => Object.hasOwn(packageVersions, name))
+          );
+          expect(managed).toEqual(roles[role][section]);
+          count += Object.keys(managed).length;
+        }
+        if (role !== "root") {
+          expect(manifest.dependencies?.["@effect/vitest"]).toBeUndefined();
+          expect(manifest.devDependencies?.["@effect/vitest"]).toBeUndefined();
+          expect(manifest.devDependencies?.vitest).toBeUndefined();
+        }
+      }
+      expect(count).toBe(76);
+    })
+  );
   it.live("generates the version-specific native Bun AuthKit test patch", () =>
     E.gen(function* () {
       const tree = yield* generatePreset();

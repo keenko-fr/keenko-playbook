@@ -14,11 +14,10 @@ import { packageVersions } from "../src/generators/versions.js";
 const repository = fileURLToPath(new URL("../", import.meta.url));
 const consumerTemplate = "src/generators/preset/files/root/oxlint.config.ts.template";
 const effectSpecs = [
+  "src/migrations/managed-dependencies-1-0-3.spec.ts",
   "src/generators/preset/preset.spec.ts",
   "src/generators/sync/sync.spec.ts",
   "src/infra/deps-update.spec.ts",
-  "src/migrations/backend-vitest-exclusions-1-0-2.spec.ts",
-  "src/migrations/compatibility-baseline-1-0-2.spec.ts",
   "tests/module-boundaries.spec.ts",
   "tests/wait-for-published.spec.ts",
 ];

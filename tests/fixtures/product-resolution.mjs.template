@@ -19,47 +19,45 @@ assert.equal(typeof nx("typescript").readConfigFile, "function", "Nx requires th
 const native = realpathSync(root.resolve("@typescript/native"));
 assert.equal(manifest.devDependencies["@typescript/native"], `npm:typescript@${root("@typescript/native/package.json").version}`);
 assert.notEqual(native, rootTypescript, "The native compiler must remain independent of the JavaScript API");
-const nxVersion = manifest.devDependencies.nx;
-// Final-tuple qualification is separate from historical AuthKit patch reproductions.
-if (!process.argv.includes("--historical-authkit-proof")) {
-  const semver = createRequire(root.resolve("nx/package.json"))("semver");
-  const manifests = [
-    "package.json",
-    "packages/backend/package.json",
-    "packages/ui/package.json",
-    "packages/shared/package.json",
-    ...readdirSync(join(workspace, "apps"))
-      .map((app) => `apps/${app}/package.json`)
-      .filter((file) => existsSync(join(workspace, file))),
-  ];
-  for (const file of manifests) {
-    const owner = createRequire(join(workspace, file));
-    const owned = owner("./package.json");
-    for (const name of Object.keys({ ...owned.dependencies, ...owned.devDependencies })) {
-      if (name.startsWith("@keenko-product/") || name.startsWith("@" + manifest.name + "/") || name === "keenko") continue;
-      let contract;
-      try {
-        contract = owner(name + "/package.json");
-      } catch (error) {
-        if (error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED") continue;
-        throw error;
-      }
-      const dependency = createRequire(owner.resolve(name + "/package.json"));
-      for (const [peer, range] of Object.entries(contract.peerDependencies ?? {})) {
-        if (contract.peerDependenciesMeta?.[peer]?.optional) continue;
-        const peerVersion = dependency(peer + "/package.json").version;
-        assert.ok(
-          semver.satisfies(peerVersion, range, { includePrerelease: true }),
-          `${file}: ${name} needs ${peer} ${range}, resolved ${peerVersion}`
-        );
-      }
+const semver = createRequire(root.resolve("nx/package.json"))("semver");
+const manifests = [
+  "package.json",
+  "packages/backend/package.json",
+  "packages/ui/package.json",
+  "packages/shared/package.json",
+  ...readdirSync(join(workspace, "apps"))
+    .map((app) => `apps/${app}/package.json`)
+    .filter((file) => existsSync(join(workspace, file))),
+];
+for (const file of manifests) {
+  const owner = createRequire(join(workspace, file));
+  const owned = owner("./package.json");
+  for (const name of Object.keys({ ...owned.dependencies, ...owned.devDependencies })) {
+    if (name.startsWith("@keenko-product/") || name.startsWith("@" + manifest.name + "/") || name === "keenko") continue;
+    let contract;
+    try {
+      contract = owner(name + "/package.json");
+    } catch (error) {
+      if (error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED") continue;
+      throw error;
+    }
+    const dependency = createRequire(owner.resolve(name + "/package.json"));
+    for (const [peer, range] of Object.entries(contract.peerDependencies ?? {})) {
+      if (contract.peerDependenciesMeta?.[peer]?.optional) continue;
+      const peerVersion = dependency(peer + "/package.json").version;
+      assert.ok(
+        semver.satisfies(peerVersion, range, { includePrerelease: true }),
+        `${file}: ${name} needs ${peer} ${range}, resolved ${peerVersion}`
+      );
     }
   }
 }
+const nxPackages = {};
 for (const [name, version] of Object.entries({ ...manifest.dependencies, ...manifest.devDependencies })) {
   if (name === "nx" || name.startsWith("@nx/")) {
-    assert.equal(version, nxVersion, `${name} manifest must align with Nx`);
-    assert.equal(root(name + "/package.json").version, nxVersion, `${name} installed version must align with Nx`);
+    const installed = root(name + "/package.json").version;
+    assert.ok(semver.satisfies(installed, version, { includePrerelease: true }), `${name} installed version must satisfy its manifest`);
+    nxPackages[name] = { path: realpathSync(root.resolve(name + "/package.json")), version: installed };
   }
 }
 if (manifest.devDependencies["@effect/vitest"]) {
@@ -80,8 +78,8 @@ const authkitEntry = realpathSync(backend.resolve("@convex-dev/workos-authkit/te
 const authkitRequire = createRequire(authkitEntry);
 // The adapter must not acquire backend-owned helpers through a phantom fallback.
 assert.throws(() => authkitRequire.resolve("convex-test"), { code: "MODULE_NOT_FOUND" });
-// Nx's native Vitest 5 migration declares Vite at the root. Node can see that
-// declared ancestor dependency; fresh consumers without it retain strict isolation.
+// A consumer may declare Vite at the root. Require its exact ancestor identity
+// when present; otherwise AuthKit must retain strict isolation.
 if (manifest.dependencies?.vite || manifest.devDependencies?.vite)
   assert.equal(realpathSync(authkitRequire.resolve("vite/package.json")), realpathSync(root.resolve("vite/package.json")));
 else assert.throws(() => authkitRequire.resolve("vite/package.json"), { code: "MODULE_NOT_FOUND" });
@@ -107,6 +105,7 @@ console.log(
     readConfigFile: typeof nx("typescript").readConfigFile,
     native,
     nativeVersion: root("@typescript/native/package.json").version,
+    nxPackages,
     effects,
     authkitEntry,
     authkitTypes,
