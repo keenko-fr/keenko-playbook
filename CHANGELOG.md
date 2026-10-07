@@ -1,3 +1,29 @@
+## 1.0.3 (2026-10-07)
+
+### Changes
+
+- clarify backend Entity, persistence, hydration, and transport ownership ([#56](https://github.com/keenko-fr/keenko-playbook/pull/56))
+
+### Changes
+
+- define N-1 migration support and retire unsupported history ([#55](https://github.com/keenko-fr/keenko-playbook/pull/55))
+
+### Changes
+
+- Provision Context7 MCP for supported Keenko agent harnesses ([#54](https://github.com/keenko-fr/keenko-playbook/pull/54))
+
+### Changes
+
+- harden publication readiness observation ([#53](https://github.com/keenko-fr/keenko-playbook/pull/53))
+
+### Changes
+
+- right-size packed-product CI and invariant ownership ([#52](https://github.com/keenko-fr/keenko-playbook/pull/52))
+
+### ❤️ Thank You
+
+- Gregory Bouteiller
+
 ## 1.0.2 (2026-10-05)
 
 ### 🩹 Fixes
