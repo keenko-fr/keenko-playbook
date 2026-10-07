@@ -28,6 +28,8 @@ The second `bun install` is unconditional. Migrations can change dependency mani
 
 ## Recognition and ownership
 
+Keenko-managed dependency slots remain Keenko-owned after generation and during supported upgrades. They converge to the target compatibility tuple even when the consumer changes the version, moves the slot between dependency sections or deletes it. This rule does not authorize arbitrary source or configuration reconciliation.
+
 - Recognized source baseline: migrate deterministically.
 - Recognized target baseline: no-op.
 - Managed dependency slots present in the target compatibility baseline: converge presence, dependency section, and exact version, including consumer-modified, moved, or deleted slots. Consumer changes do not transfer slot ownership.

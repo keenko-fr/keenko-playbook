@@ -6,7 +6,7 @@ import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-li
 
 describe("supported stable N-1 migration planning", () => {
   for (const target of ["1.0.3-rc.0", "1.0.3"])
-    test(`native Nx updates 1.0.2 to ${target} without a persisted-state migration`, async () => {
+    test(`native Nx updates 1.0.2 to ${target} with managed-slot convergence`, async () => {
       const config = readJsonFile<ResolvedMigrationConfiguration>("migrations.json");
       const migrator = new Migrator({
         fetch: async (name, version) => {
@@ -25,9 +25,10 @@ describe("supported stable N-1 migration planning", () => {
         to: {},
       });
       const plan = await migrator.migrate("keenko", target);
-      // No blanket dependency repair runs in a sync-only release. A future
-      // persisted-state transformation must supply its own native migration proof.
+      // Native package updates leave nested manifests to the selected Keenko factory.
       expect(plan.packageUpdates).toEqual({ keenko: { addToPackageJson: false, version: target } });
-      expect(plan.migrations).toEqual([]);
+      expect(plan.migrations.map(({ name, package: owner, version }) => ({ name, owner, version }))).toEqual([
+        { name: "1.0.3-managed-dependencies", owner: "keenko", version: "1.0.3-rc.0" },
+      ]);
     });
 });

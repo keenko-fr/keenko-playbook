@@ -4,7 +4,7 @@ import { Effect as E, Path, Struct } from "effect";
 import { packageVersions } from "../../versions.js";
 
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
-const dependencies = Struct.pick(packageVersions, [
+export const dependencies = Struct.pick(packageVersions, [
   "@confect/core",
   "@confect/server",
   "@convex-dev/workos-authkit",
@@ -13,7 +13,7 @@ const dependencies = Struct.pick(packageVersions, [
   "convex",
   "effect",
 ]);
-const devDependencies = Struct.pick(packageVersions, [
+export const devDependencies = Struct.pick(packageVersions, [
   "@confect/cli",
   "@confect/test",
   "@edge-runtime/vm",
