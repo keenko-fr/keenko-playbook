@@ -18,6 +18,7 @@ export class WorkspaceFailure extends S.TaggedError<WorkspaceFailure>()("Workspa
 
 // GUIDANCE --------------------------------------------------------------------------------------------------------------------------------
 export class GuidanceFailure extends S.TaggedError<GuidanceFailure>()("GuidanceFailure", {
-  issue: S.Literals(["invalid_routing_markers"]),
+  issue: S.Literals(["invalid_routing_markers", "context7_conflict"]),
+  message: S.optional(S.String),
   path: S.String,
 }) {}

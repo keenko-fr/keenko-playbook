@@ -53,7 +53,27 @@ For fast-moving libraries such as Effect, Confect, Convex, TanStack, Paraglide, 
 
 For substantial TanStack work, run `bun node_modules/@tanstack/intent/dist/cli.mjs list` from the workspace root and load a matching installed package skill with `bun node_modules/@tanstack/intent/dist/cli.mjs load <package>#<skill>` when one is available. The explicit installed CLI path avoids ambiguous package binaries and requires no network resolution. TanStack package skills version with their installed packages. If the relevant installed package does not ship a matching skill, continue with its installed source/types and current first-party documentation.
 
-When the active harness provides Context7, it may retrieve current library documentation after installed source/types and first-party package guidance have been checked. Context7 is optional retrieval support, not project authority or a prerequisite.
+For library/API claims, preserve this authority order:
+
+1. current human/project/repository authority, using the instruction hierarchy above;
+2. installed source/types;
+3. installed package-owned or current first-party guidance;
+4. Context7 retrieval;
+5. model memory.
+
+Keenko provisions hosted Context7 MCP at project scope for Codex and Claude Code. Use Context7 automatically when current third-party library/API documentation materially affects correctness, without waiting for the user to say "use Context7". Do not use it mechanically for ordinary project logic or when higher-authority local evidence already answers the question. Match retrieval to the installed library version and resolve disagreements against higher-authority evidence.
+
+If Context7 is unavailable, blocked by harness trust/approval, or rate-limited, continue with installed source/types and current first-party guidance. Report any remaining uncertainty that affects correctness. Context7 is retrieval support, never architectural authority or a prerequisite.
+
+## Context7 configuration ownership
+
+Codex uses project `.codex/config.toml` with `[mcp_servers.context7]`; Claude Code uses root `.mcp.json` with `mcpServers.context7` and HTTP transport. Both connect to `https://mcp.context7.com/mcp`, which supports anonymous access with rate limits. No Context7 application dependency, subprocess, or credentials are generated.
+
+Fresh creation and `bun x nx sync`, including the supported upgrade lifecycle, add an absent entry when safe and preserve a recognized equivalent existing entry unchanged. Keenko owns only `context7`. Unrelated settings and MCP entries stay project-owned. For extensible Codex TOML, sync appends the entry without rewriting existing text, preserving comments, formatting, unrelated settings, and unrelated MCP entries exactly. If the layout prevents a safe append, including a sealed inline `mcp_servers` table, sync fails before any managed writes and preserves the file byte-for-byte. Add the hosted `context7` entry manually while preserving unrelated TOML, then rerun `bun x nx sync`. Keenko never reserializes the whole Codex configuration to insert Context7. Claude JSON additions preserve all unrelated values. Equivalent configuration is left byte-for-byte unchanged.
+
+Malformed configuration or a materially customized conflicting `context7` entry fails before sync writes managed state. Reconcile the reported file manually and rerun `bun x nx sync`; do not erase user customization to make synchronization pass. Recognition is deliberately narrow: the hosted endpoint and harness transport, with optional explicit default values, empty headers, or Claude's equivalent `streamable-http` transport alias. Custom endpoints, authentication, timeouts, tool restrictions, or disabled entries require human reconciliation.
+
+Codex loads project configuration only after the user trusts the project. Claude Code retains its project MCP approval behavior. Keenko does not write trust, approval, permissions, or credential settings. Respect those boundaries and never approve them on the user's behalf.
 
 ## Knowledge
 

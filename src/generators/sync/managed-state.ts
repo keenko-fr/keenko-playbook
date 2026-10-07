@@ -3,6 +3,7 @@ import { Effect as E, FileSystem, Option as O, Path } from "effect";
 
 import { GuidanceFailure } from "../errors.js";
 import { deleteTreeDirectory } from "../helpers.js";
+import { prepareContext7 } from "./context7.js";
 
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
 const docsTarget = ".keenko/docs";
@@ -19,6 +20,7 @@ const aiFragments = [
 
 // MAIN ------------------------------------------------------------------------------------------------------------------------------------
 export const syncManagedState = E.fn("keenko.sync.managedState")(function* (tree: Tree) {
+  const mcpFiles = yield* prepareContext7(tree);
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
@@ -50,7 +52,7 @@ export const syncManagedState = E.fn("keenko.sync.managedState")(function* (tree
       for (const skill of currentSkills) generateFiles(tree, path.join(skillsRoot, skill), `${targetRoot}/${skill}`, {});
     }
 
-    for (const { content, target } of aiFiles) if (tree.read(target, "utf-8") !== content) tree.write(target, content);
+    for (const { content, target } of [...aiFiles, ...mcpFiles]) if (tree.read(target, "utf-8") !== content) tree.write(target, content);
   });
 });
 
