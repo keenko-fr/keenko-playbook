@@ -21,6 +21,9 @@ const sCodexEntry = S.Struct({
   tool_timeout_sec: S.optional(S.Literal(60)),
   url: S.Literal(endpoint),
 });
+const sCodexMillisecondTimeout = S.Struct({
+  mcp_servers: S.Struct({ context7: S.Struct({ startup_timeout_ms: S.Literal(10_000n) }) }),
+});
 const sClaudeEntry = S.Struct({
   headers: S.optional(sEmptyObject),
   type: S.Literals(["http", "streamable-http"]),
@@ -47,10 +50,19 @@ export const prepareContext7 = E.fn("keenko.sync.context7")(function* (tree: Tre
     E.mapError(() => conflict(claudePath))
   );
 
-  if (Object.hasOwn(codexServers, "context7"))
-    yield* S.decodeUnknownEffect(sCodexEntry, { onExcessProperty: "error" })(codexServers.context7).pipe(
+  if (Object.hasOwn(codexServers, "context7")) {
+    const entry = yield* S.decodeUnknownEffect(sCodexEntry, { onExcessProperty: "error" })(codexServers.context7).pipe(
       E.mapError(() => conflict(codexPath))
     );
+    if (O.isSome(O.fromNullishOr(entry.startup_timeout_ms))) {
+      // Codex's uint64 alias requires a TOML integer. Preserve numeric types only for this field's check.
+      const typedCodex = yield* E.try({
+        catch: () => conflict(codexPath),
+        try: () => parse(codexSource, { integersAsBigInt: true }),
+      });
+      yield* S.decodeUnknownEffect(sCodexMillisecondTimeout)(typedCodex).pipe(E.mapError(() => conflict(codexPath)));
+    }
+  }
   if (Object.hasOwn(claudeServers, "context7"))
     yield* S.decodeUnknownEffect(sClaudeEntry, { onExcessProperty: "error" })(claudeServers.context7).pipe(
       E.mapError(() => conflict(claudePath))

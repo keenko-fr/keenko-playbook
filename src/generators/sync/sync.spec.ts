@@ -65,6 +65,9 @@ describe("keenko sync", () => {
     '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\n',
     '# User comment\n[mcp_servers."context7"]\nurl = \'https://mcp.context7.com/mcp\'\nauth = "oauth"\ndisabled_tools = []\nenabled = true\nrequired = false\nhttp_headers = {}\nenv_http_headers = {}\nstartup_timeout_sec = 10\ntool_timeout_sec = 60\n',
     '# Millisecond default\nmodel = "custom"\n[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_ms  =  10000 # Preserve spacing\n[mcp_servers.other]\ncommand = "local"\n',
+    '# Float seconds default\n[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_sec = 10.0\n',
+    '# startup_timeout_ms = 10000.0\nnotes = "startup_timeout_ms = 1e4"\nmcp_servers."context7"."url" = "https://mcp.context7.com/mcp"\nmcp_servers."context7"."startup_timeout_ms" = 10_000\nmcp_servers.other.startup_timeout_ms = 1e4\n',
+    'mcp_servers = { context7 = { url = "https://mcp.context7.com/mcp", startup_timeout_ms = 10000 }, other = { startup_timeout_ms = 10000.0 } }\n',
     'mcp_servers.context7.url = "https://mcp.context7.com/mcp"\n',
     '# Preserve inline formatting\nmodel  =  "custom" # Project model\nmcp_servers = { context7 = { url = "https://mcp.context7.com/mcp" }, other = { command = "local" } } # User MCPs\n',
   ])
@@ -143,6 +146,17 @@ describe("keenko sync", () => {
     [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nenabled = false\n'],
     [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_ms = 9999\n'],
     [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_ms = 10001\n'],
+    [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_ms = 10000.0\n'],
+    [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_ms = 1e4\n'],
+    [
+      ".codex/config.toml",
+      'mcp_servers."context7".url = "https://mcp.context7.com/mcp"\nmcp_servers."context7"."startup_timeout_ms" = 10000.0\n',
+    ],
+    [".codex/config.toml", 'mcp_servers = { context7 = { url = "https://mcp.context7.com/mcp", startup_timeout_ms = 1e4 } }\n'],
+    [
+      ".codex/config.toml",
+      '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_ms = 10000\n"startup_timeout_ms" = 10000.0\n',
+    ],
     [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_sec = 9\n'],
     [".codex/config.toml", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_sec = 11\n'],
     [
@@ -163,6 +177,9 @@ describe("keenko sync", () => {
     it.live(`rejects conflicting or malformed MCP configuration without any sync writes: ${path} ${source}`, () =>
       E.gen(function* () {
         const tree = createTreeWithEmptyWorkspace();
+        tree.write("AGENTS.md", "Project-owned routing\n");
+        tree.write(".keenko/docs/core/agent-behavior.md", "Previous managed guidance\n");
+        tree.write(".mcp.json", '{"metadata":"keep"}\n');
         tree.write(path, source);
         const before = tree.listChanges();
         const failure = yield* runSync(tree).pipe(E.flip);
