@@ -20,13 +20,16 @@ confect
 → backend function contracts and Confect implementations
 
 schemas
-→ organized cross-layer application representations and provider-namespaced wire representations
+→ organized cross-layer representations, canonical backend Entities and their constructors, and provider-namespaced wire representations
 
 features
-→ application/use-case orchestration and policy
+→ application/use-case orchestration, policy, and constitutive relation hydration exposing canonical Entities
 
 data
-→ focused persistence reads/writes
+→ focused persistence reads/writes, returning decoded FooDoc documents
+
+domain (when needed)
+→ pure deterministic business behavior over canonical Entities
 
 infra
 → external/substitutable technical capabilities, provider adapters, and reusable technical infrastructure
@@ -47,11 +50,13 @@ Use contextual names. Do not repeat the owning module or domain noun when the mo
 
 ## Confect
 
-`confect/` owns backend function contracts and their Confect implementations. Keep endpoint/framework concerns at this boundary and delegate application policy to features or the narrower owning layer.
+`confect/` owns backend function contracts and their Confect implementations. Keep endpoint/framework concerns at this boundary and delegate application policy to features or the narrower owning layer. Confect/API/facade boundaries own caller-facing transport/application projections and schemas appropriate to their runtime. Canonical backend `Foo` may retain Effect-native values and embedded Entities; it need not be identical to the transport result. Use endpoint-semantic projection names rather than a mandatory generic transport naming convention. `Dto` remains foreign-system-owned.
 
 ## Schemas
 
 `schemas/` owns organized representation schemas, not every Effect Schema in the backend.
+
+For a persisted resource with a meaningful backend business Entity, `schemas/foo.ts` owns canonical `Foo` and `fooFrom(...)` when construction/enrichment is needed. `Foo` retains `FooDoc` persistence identity and persisted relation IDs. An identity Entity aliases its complete `FooDoc` without a constructor. A storage-only table does not need a canonical Entity.
 
 Shared application representations used across backend layers live directly under the resource owner, for example:
 
@@ -78,13 +83,27 @@ See `schema-types.md` for persisted-resource grammar, provider schema ownership,
 
 Features remain flat by default, for example `features/shows.ts`. Do not create a directory per feature merely for organization.
 
-A representation transition can justify the feature boundary. For example, data may return `WatchlistDoc[]` while the feature maps each document through schema-owned `watchlistFrom` and returns `Watchlist[]`.
+Features orchestrate persistence reads returning `FooDoc`, obtain required constitutive relation Entities, and call schema-owned `fooFrom(...)` to expose canonical `Foo`. Hydration is additive; persistence remains normalized. Embed only a stable, constitutive relation required by the Entity's own representation or invariants, never every foreign key. The resulting Entity has mandatory hydrated relations rather than optional lazy-loading states. Reverse relations and child collections normally belong to queries/use-case projections.
+
+A feature may compose another resource feature to obtain a canonical hydrated Entity when this follows the directed acyclic graph of mandatory full-Entity embedding dependencies. This composition is permitted, not required. Concrete collection features may batch or deduplicate reads where useful. Do not introduce Repository, EntityRepository, EntityLoader, generic hydration services/layers, DataLoader conventions, or generic cache abstractions.
+
+Canonical mandatory Entity embedding should remain directed and acyclic. If embedding both directions would create a cycle, revisit ownership rather than introducing lazy, partial, or recursive Entity representations. Business/domain relationships in general need not be acyclic.
+
+Constructors trust typed internal documents and relation Entities and check the relationship coherence needed to produce a valid Entity. The owning feature maps explicit construction failure to its local outcome; `Option<Foo>` is one possible constructor result, not a universal error contract. See `schema-types.md` for shared schema/constructor predicates and trust-boundary rules.
 
 Do not preserve a feature wrapper merely for symmetry. If a future function becomes a literal pass-through with no policy, invariant, coordination, representation conversion, or interface simplification, remove the wrapper and let the narrower owner serve the caller directly.
+
+## Domain
+
+`domain/` is a legitimate owner for pure deterministic business behavior over canonical Entities when that layer is needed. Features orchestrate effects and supply those Entities; domain behavior enforces its owned semantic/business invariants. Correctly typed internal values do not need repeated schema decoding to enforce those invariants.
+
+Create `domain/` only when real code needs it. It is not mandatory scaffolding and does not change the default generated topology.
 
 ## Data
 
 `data/` owns narrow persistence concerns such as indexed reads, inserts, patches, removals, and pagination. It does not own full business workflows.
+
+Persistence reads return complete decoded `FooDoc` documents, including persistence/system identity. Persistence codecs validate those representations. Data does not orchestrate constitutive relation hydration or recursively persist embedded backend Entities.
 
 Apply the general backend retrieval semantics above to persistence reads. Use direct verbs such as `insert`, `patch`, and `remove` for writes.
 
@@ -149,6 +168,6 @@ packages/shared/
 
 `shared` may depend on Effect Schema. “Shared” means cross-runtime/cross-workspace ownership, not dependency-free code.
 
-A canonical application schema may move to `packages/shared/schemas` when multiple workspaces genuinely consume the same representation. Until then, cross-layer backend application schemas stay in `packages/backend/schemas`, provider wire schemas stay in their provider namespace there, and feature-local schemas stay with the feature.
+A schema may move to `packages/shared/schemas` when multiple workspaces genuinely consume the exact same representation. A frontend consuming a transport projection does not justify moving backend `Foo` there. Backend-only Entities stay in `packages/backend/schemas`; boundary-specific transport schemas stay at the narrowest Confect/API/facade owner. Provider wire schemas stay in their backend provider namespace, and feature-local schemas stay with the feature. Do not reshape a backend Entity solely to satisfy caller serialization.
 
 Do not move backend provider, storage, or framework adapters to `shared/infra` merely because they are technical. `shared/infra` requires genuine cross-runtime reuse. Expose shared code through deliberate package exports/subpaths rather than arbitrary private imports.

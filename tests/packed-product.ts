@@ -633,6 +633,21 @@ const verifyReinstalls = E.fn("product.verifyReinstalls")(function* (
   }
 });
 
+const verifyBackendRepresentationGuidance = E.fn("product.verifyBackendRepresentationGuidance")(function* (workspace: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const canonicalRoot = yield* path.fromFileUrl(new URL("../src/generators/sync/files/", import.meta.url));
+  for (const name of ["schema-types", "backend-architecture"]) {
+    const relative = `docs/conventions/${name}.md`;
+    const canonical = yield* fs.readFileString(path.join(canonicalRoot, relative));
+    const packed = yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/generators/sync/files", relative));
+    const generated = yield* fs.readFileString(path.join(workspace, ".keenko", relative));
+    yield* assert(packed === canonical, `Packed ${name} guidance differs from canonical source`);
+    yield* assert(generated === canonical, `Sync did not emit canonical ${name} guidance`);
+  }
+  yield* Console.log("KEE-59 canonical, packed, and generated backend representation guidance match byte-for-byte.");
+});
+
 const verifyContext7 = E.fn("product.verifyContext7")(function* (workspace: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -809,6 +824,7 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
   yield* verifyDependencySlots(workspace, target, before);
   yield* verifyInstalledSlots(workspace, target, yield* fs.readFileString(lockPath));
   yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
+  yield* verifyBackendRepresentationGuidance(workspace);
   yield* verifyContext7(workspace);
   yield* verifyContext7Ownership(workspace, env);
   yield* command(workspace, env, "bun", ["run", "codegen"]);
@@ -968,6 +984,7 @@ const product = E.gen(function* () {
   yield* completePhase("fresh compatibility verification", freshCompatibilityStartedAt);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
   yield* verifyContext7(workspace);
+  if (source._tag === "local") yield* verifyBackendRepresentationGuidance(workspace);
   if (source._tag === "local" && !shadcnCompatibility) yield* verifyContext7Ownership(workspace, env);
   for (const file of [
     "CONTEXT.md",
