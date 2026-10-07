@@ -91,6 +91,21 @@ describe("keenko sync", () => {
     })
   );
 
+  for (const context7 of ["", '[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\nstartup_timeout_ms = 10000\n'])
+    it.live(
+      `preserves unrelated Codex integers beyond JavaScript's safe range with Context7 ${context7.length === 0 ? "absent" : "present"}`,
+      () =>
+        E.gen(function* () {
+          const tree = createTreeWithEmptyWorkspace();
+          const source = `${context7}# Project-owned MCP\n[mcp_servers.other]\nurl = "https://example.com/mcp"\nstartup_timeout_ms  =  9007199254740992 # Preserve spacing\n`;
+          tree.write(".codex/config.toml", source);
+          yield* runSync(tree);
+          expect(tree.read(".codex/config.toml", "utf-8")).toBe(
+            context7.length === 0 ? `${source}\n[mcp_servers.context7]\nurl = "https://mcp.context7.com/mcp"\n` : source
+          );
+        })
+    );
+
   for (const source of [
     '# Keep this comment\nmodel = "custom"\n[mcp_servers.other]\ncommand = "local"\n',
     '# Inline child remains extensible\nmodel  =  "custom"\n[mcp_servers]\nother = { command = "local" } # User MCP\n',

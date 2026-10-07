@@ -41,7 +41,7 @@ const conflict = (path: string, reason = "is customized or invalid") =>
 export const prepareContext7 = E.fn("keenko.sync.context7")(function* (tree: Tree) {
   const codexSource = O.getOrElse(O.fromNullishOr(tree.read(codexPath, "utf-8")), () => "");
   const claudeSource = O.getOrElse(O.fromNullishOr(tree.read(claudePath, "utf-8")), () => "{}");
-  const codex = yield* E.try({ catch: () => conflict(codexPath), try: () => parse(codexSource) });
+  const codex = yield* E.try({ catch: () => conflict(codexPath), try: () => parse(codexSource, { integersAsBigInt: "asNeeded" }) });
   const claude = yield* S.decodeEffect(S.fromJsonString(sObject))(claudeSource).pipe(E.mapError(() => conflict(claudePath)));
   const codexServers = yield* S.decodeUnknownEffect(sObject)(Object.hasOwn(codex, "mcp_servers") ? codex.mcp_servers : {}).pipe(
     E.mapError(() => conflict(codexPath))
@@ -78,7 +78,7 @@ export const prepareContext7 = E.fn("keenko.sync.context7")(function* (tree: Tre
           codexPath,
           "cannot be extended safely by appending. Add the hosted context7 entry manually while preserving unrelated TOML"
         ),
-      try: () => parse(appended),
+      try: () => parse(appended, { integersAsBigInt: "asNeeded" }),
     }).pipe(E.as(appended));
   }
 
