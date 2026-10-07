@@ -1,7 +1,7 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { it } from "@effect/vitest";
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
-import { Effect as E, FileSystem, Layer as L, Option as O, Path, Schema as S } from "effect";
+import { Effect as E, FileSystem, Layer as L, Option as O, Path, Schema as S, Struct } from "effect";
 import { parse } from "smol-toml";
 import { describe, expect } from "vitest";
 
@@ -283,6 +283,66 @@ describe("keenko sync", () => {
         );
     })
   );
+
+  it.live("refreshes backend Entity guidance from canonical docs without changing application ownership", () =>
+    E.gen(function* () {
+      const tree = createTreeWithEmptyWorkspace();
+      const projectFiles = {
+        "docs/project/overrides.md": "# Project representation policy\n",
+        "packages/backend/features/foo.ts": "export const projectHydration = 'owned';\n",
+        "packages/backend/schemas/foo.ts": "export const projectEntity = 'owned';\n",
+      };
+      for (const [path, content] of Object.entries(projectFiles)) tree.write(path, content);
+      for (const name of ["schema-types", "backend-architecture"])
+        tree.write(`.keenko/docs/conventions/${name}.md`, "Foo is transport-safe and strips document identity.\n");
+
+      yield* runSync(tree);
+
+      for (const name of ["schema-types", "backend-architecture"])
+        expect(tree.read(`.keenko/docs/conventions/${name}.md`, "utf-8")).toBe(
+          yield* readSource(new URL(`files/docs/conventions/${name}.md`, import.meta.url))
+        );
+      const schemaTypes = tree.read(".keenko/docs/conventions/schema-types.md", "utf-8");
+      expect(schemaTypes).toContain("export const sFoo = sFooDoc;");
+      expect(schemaTypes).toContain("Option<Foo>` illustrates explicit construction failure, not a required error API");
+      expect(schemaTypes).toContain(".check(S.makeFilter(relationsAgree))");
+      expect(schemaTypes).toContain(".mapFields(Struct.assign({ bar: sBar }), { unsafePreserveChecks: true })");
+      expect(schemaTypes).toContain("it does not run full schema decoding again");
+      expect(schemaTypes).toContain("A storage-only table may expose");
+      expect(schemaTypes).not.toContain("export const sFoo = sFooFields;");
+      expect(schemaTypes).not.toContain('Struct.omit(doc, ["_id", "_creationTime"])');
+      expect(schemaTypes).not.toContain("canonical application/transport representation");
+      expect(schemaTypes).not.toContain("sFoo.Type` itself must be transport-safe/plain");
+      const architecture = tree.read(".keenko/docs/conventions/backend-architecture.md", "utf-8");
+      expect(architecture).toContain("Features orchestrate persistence reads returning `FooDoc`");
+      expect(architecture).toContain("graph of mandatory full-Entity embedding dependencies");
+      expect(architecture).toContain("Create `domain/` only when real code needs it");
+      expect(architecture).toContain("A frontend consuming a transport projection does not justify moving backend `Foo` there");
+      for (const [path, content] of Object.entries(projectFiles)) expect(tree.read(path, "utf-8")).toBe(content);
+      expect(tree.exists("packages/backend/domain")).toBe(false);
+    })
+  );
+
+  it("preserves source document checks alongside hydrated Entity relationship checks", () => {
+    const sFooDoc = S.Struct({
+      _creationTime: S.Number,
+      _id: S.String,
+      barId: S.String,
+      endsAt: S.Number,
+      startsAt: S.Number,
+    }).check(S.makeFilter((doc) => doc.startsAt < doc.endsAt));
+    type FooDoc = typeof sFooDoc.Type;
+    const sBar = S.Struct({ _id: S.String });
+    type Bar = typeof sBar.Type;
+    const relationsAgree = (value: FooDoc & { readonly bar: Bar }) => value.barId === value.bar._id;
+    const sFoo = sFooDoc.mapFields(Struct.assign({ bar: sBar }), { unsafePreserveChecks: true }).check(S.makeFilter(relationsAgree));
+    const decode = S.decodeSync(sFoo);
+    const valid = { _creationTime: 0, _id: "foo", bar: { _id: "bar" }, barId: "bar", endsAt: 2, startsAt: 1 };
+
+    expect(decode(valid)).toEqual(valid);
+    expect(() => decode({ ...valid, startsAt: valid.endsAt })).toThrow();
+    expect(() => decode({ ...valid, bar: { _id: "other" } })).toThrow();
+  });
 
   it.live("refreshes identity guidance without migrating project-owned identity state", () =>
     E.gen(function* () {
