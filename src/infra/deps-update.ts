@@ -5,20 +5,20 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { packageVersions, runtimeVersions } from "../generators/versions.js";
 
 // POLICY ---------------------------------------------------------------------------------------------------------------------------------
-// One channel for the deliberately prerelease-qualified Nx family (nx and owned @nx/* packages).
+// Report Nx next-channel drift alongside stable; adopt only the qualified family pin.
 export const prereleaseChannels = { nx: "next" } satisfies Readonly<Record<string, string>>;
 
 // Holds reflect current upstream contracts; requalify the whole tuple before changing them.
 export const compatibilityVersionOverrides = {
-  // Stable @nx/vitest supports only Vitest 3/4. beta.9 is the newest Nx line supporting Vitest 5.
-  "@nx/devkit": "23.3.0-beta.9",
-  "@nx/oxlint": "23.3.0-beta.9",
-  "@nx/vitest": "23.3.0-beta.9",
+  // Qualify the Nx family together; stable 23.3 supports Vitest 5.
+  "@nx/devkit": "23.3.0",
+  "@nx/oxlint": "23.3.0",
+  "@nx/vitest": "23.3.0",
   // Both AuthKit integrations exclude Node SDK 11; use the newest shared SDK 10 release.
   "@workos-inc/node": "10.14.0",
-  nx: "23.3.0-beta.9",
-  // @effect/tsgo 0.48.1 rejects Oxlint 1.87.0 when patching its native binding.
-  oxlint: "1.86.0",
+  nx: "23.3.0",
+  // Qualify Oxlint native patching with the selected @effect/tsgo tuple.
+  oxlint: "1.87.0",
   // Nx and Keenko migrations require the JavaScript compiler API absent from TypeScript 7.
   typescript: "6.0.3",
 };

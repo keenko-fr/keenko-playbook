@@ -7,7 +7,7 @@ import { describe, expect } from "vitest";
 
 import type { PackageJson } from "../generators/helpers.js";
 import { presetProgram } from "../generators/preset/preset.js";
-import migrate from "./managed-dependencies-1-0-3.js";
+import migrate from "./managed-dependencies-1-0-4.js";
 
 const fixture = E.gen(function* () {
   const tree = createTreeWithEmptyWorkspace();
