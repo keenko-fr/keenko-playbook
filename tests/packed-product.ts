@@ -1056,6 +1056,7 @@ const product = E.gen(function* () {
       "button",
       "input-otp",
       "--yes",
+      "--overwrite",
     ]);
     for (const component of ["button.tsx", "input-otp.tsx"]) {
       yield* assert(

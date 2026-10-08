@@ -71,6 +71,8 @@ Anoulà: `nx sync`, `nx sync:check`, codegen, format, lint, typecheck, tests, bu
 
 Keenko: complete `bun run check` passes, including 20 Bun tests, 160 Vitest tests, build/pack validation and release progression checks. Native plan verification and version dry run pass. Lint reports tsgo warnings without errors. The complete packed-product gate passes in 158.622 seconds for fresh creation and the unchanged published 1.0.3 forward upgrade. Both consumers prove canonical, packed and generated guidance equality, required peer compatibility, codegen/check, reinstall stability and sync idempotence. The local candidate is `1.0.4-rc.0-product.run-keenko-product-ao1AUA`. Verdaccio prints its existing shutdown message `Failed to start verdaccio: undefined` after completed phases; the gate exits successfully.
 
+The live `bun run test:shadcn` smoke also passes. Its existing `button.tsx` triggered an overwrite prompt that `--yes` did not answer. The disposable-consumer smoke now supplies `--overwrite`; scoped lint/typecheck and formatting pass after that one-line test correction. Frozen installs in both repositories preserve the reconciled lockfiles.
+
 ## Remaining release boundary
 
 Keenko publication needs review, the established release workflow and explicit publication authorization. No branch was pushed and no PR was created or merged. Anoulà PR #14 stays unmerged and is linked to this thread.
