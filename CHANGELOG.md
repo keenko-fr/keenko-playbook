@@ -1,3 +1,13 @@
+## 1.0.4 (2026-10-08)
+
+### Changes
+
+- Move Entity hydration constructors into features ([#57](https://github.com/keenko-fr/keenko-playbook/pull/57))
+
+### ❤️ Thank You
+
+- Gregory Bouteiller
+
 ## 1.0.3 (2026-10-07)
 
 ### Changes
