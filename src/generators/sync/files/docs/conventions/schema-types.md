@@ -263,7 +263,7 @@ const adminFrom = E.fn("admins.features.adminFrom")(function* (doc: AdminDoc) {
 
 Loading User with `getById(doc.userId)` already establishes its identity. Do not add `adminRelationsAgree`, an `admin.userId === admin.user._id` check, or an artificial `Option<Admin>` or failure path for that equality. Required relations use the existing retrieval semantics; valid absence in a lookup remains distinct from hydration.
 
-Preserve genuine structural and business invariants. For example, a PickupRule and its CapacityPool must belong to the same Establishment. Loading a pool by its ID does not establish that ownership. Keep the meaningful schema check and enforce that invariant in the owning feature/domain without repeating full schema decoding. A pure invariant predicate may be shared where both owners need the same rule.
+Preserve genuine structural and business invariants. For example, when a Foo and its Bar must have the same owner, loading Bar by `doc.barId` establishes its identity but does not establish `doc.ownerId === bar.ownerId`. Keep the meaningful schema check and enforce that invariant in the owning feature/domain without repeating full schema decoding. A pure invariant predicate may be shared where both owners need the same rule.
 
 Constructors trust decoded internal documents and relation Entities. Do not require an additional runtime schema decode merely to assemble them. Preserve source-schema checks when deriving the enriched schema according to the installed structural API's behavior. Do not introduce a generic hydration framework, repository or EntityLoader.
 

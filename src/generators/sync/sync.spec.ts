@@ -310,13 +310,16 @@ describe("keenko sync", () => {
       expect(schemaTypes).not.toContain("Option.some(value) : Option.none()");
       expect(schemaTypes).toContain(".mapFields(Struct.assign({ user: sUser }), { unsafePreserveChecks: true })");
       expect(schemaTypes).toContain("Do not require an additional runtime schema decode");
-      expect(schemaTypes).toContain("a PickupRule and its CapacityPool must belong to the same Establishment");
+      expect(schemaTypes).toContain("a Foo and its Bar must have the same owner");
+      expect(schemaTypes).toContain("doc.ownerId === bar.ownerId");
       expect(schemaTypes).toContain("A storage-only table may expose");
       expect(schemaTypes).not.toContain("export const sFoo = sFooFields;");
       expect(schemaTypes).not.toContain('Struct.omit(doc, ["_id", "_creationTime"])');
       expect(schemaTypes).not.toContain("canonical application/transport representation");
       expect(schemaTypes).not.toContain("sFoo.Type` itself must be transport-safe/plain");
       const architecture = tree.read(".keenko/docs/conventions/backend-architecture.md", "utf-8");
+      expect(architecture).toContain("doc.ownerId === bar.ownerId");
+      for (const guidance of [schemaTypes, architecture]) expect(guidance).not.toMatch(/PickupRule|CapacityPool|Establishment/u);
       expect(architecture).toContain("Features orchestrate persistence reads returning `FooDoc`");
       expect(architecture).toContain("graph of mandatory full-Entity embedding dependencies");
       expect(architecture).toContain("Create `domain/` only when real code needs it");

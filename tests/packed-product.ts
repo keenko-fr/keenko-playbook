@@ -223,7 +223,8 @@ const createWorkspace = E.fn("product.createWorkspace")(function* (
   return yield* command(temporary, env, "env", [
     ...withoutBackendWorkOSEnv,
     "bunx",
-    "create-nx-workspace@23.3.0-beta.9",
+    // Published 1.0.3 documents this stable bootstrap; fresh uses the candidate cohort.
+    "create-nx-workspace@23.2.1",
     identity,
     `--preset=${preset}`,
     "--packageManager=bun",
