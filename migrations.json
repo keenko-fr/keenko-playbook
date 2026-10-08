@@ -1,9 +1,9 @@
 {
   "generators": {
-    "1.0.3-managed-dependencies": {
-      "version": "1.0.3-rc.0",
+    "1.0.4-managed-dependencies": {
+      "version": "1.0.4-rc.0",
       "description": "Converge Keenko-owned dependency slots to the target package baseline, preserving unrelated dependencies.",
-      "factory": "./dist/migrations/managed-dependencies-1-0-3"
+      "factory": "./dist/migrations/managed-dependencies-1-0-4"
     }
   }
 }

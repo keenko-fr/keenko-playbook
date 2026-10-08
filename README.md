@@ -18,13 +18,13 @@ These are the initial projects, not a permanent maximum.
 Current stable release:
 
 ```sh
-bunx create-nx-workspace@23.2.1 <project> --preset=keenko --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
+bunx create-nx-workspace@23.3.0 <project> --preset=keenko --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
 ```
 
 Current release candidate:
 
 ```sh
-bunx create-nx-workspace@23.3.0-beta.9 <project> --preset=keenko@rc --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
+bunx create-nx-workspace@23.3.0 <project> --preset=keenko@rc --packageManager=bun --nxCloud=skip --interactive=false --trustThirdPartyPreset
 ```
 
 keenko resolves the npm latest dist-tag. keenko@rc resolves the npm rc dist-tag.
@@ -33,7 +33,7 @@ From the created project, bun run check is the canonical merge-ready verificatio
 
 ## Project compatibility
 
-Default direct forward support is immediately preceding stable → current stable. The next `1.0.3` release line supports the real published `1.0.2` source. New projects start current. Prereleases are not permanent supported origins; older stable releases are outside the default direct-support window. There is no default guarantee of recovery through sequential historical releases. A release may explicitly widen the source window.
+Default direct forward support is immediately preceding stable → current stable. The next `1.0.4` release line supports the real published `1.0.3` source. New projects start current. Prereleases are not permanent supported origins; older stable releases are outside the default direct-support window. There is no default guarantee of recovery through sequential historical releases. A release may explicitly widen the source window.
 
 Nx remains migration authority and Bun remains lockfile owner. Migration code and assets are retained only while a supported path or current behavior requires them. Add migrations only when persisted project state needs transformation, then follow the native migration and synchronization lifecycle:
 

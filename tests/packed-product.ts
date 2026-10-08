@@ -223,6 +223,7 @@ const createWorkspace = E.fn("product.createWorkspace")(function* (
   return yield* command(temporary, env, "env", [
     ...withoutBackendWorkOSEnv,
     "bunx",
+    // Published 1.0.3 documents this stable bootstrap; fresh uses the candidate cohort.
     "create-nx-workspace@23.2.1",
     identity,
     `--preset=${preset}`,
@@ -304,7 +305,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
 
   const releasedWorkspaces: string[] = [];
   if (forwardUpgrade) {
-    const sourceStartedAt = yield* startPhase("published 1.0.2 source setup");
+    const sourceStartedAt = yield* startPhase("published 1.0.3 source setup");
     const archives = path.join(temporary, "released-archives");
     yield* fs.makeDirectory(archives);
     const publicEnv = {
@@ -313,11 +314,11 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
       NPM_CONFIG_USERCONFIG: path.join(temporary, "public-npmrc"),
     };
     yield* fs.writeFileString(publicEnv.NPM_CONFIG_USERCONFIG, "registry=https://registry.npmjs.org\n");
-    // N-1 for the 1.0.3 line is the unchanged published stable artifact.
-    yield* command(temporary, publicEnv, "npm", ["pack", "keenko@1.0.2", "--pack-destination", archives, "--ignore-scripts"]);
+    // N-1 for the 1.0.4 line is the unchanged published stable artifact.
+    yield* command(temporary, publicEnv, "npm", ["pack", "keenko@1.0.3", "--pack-destination", archives, "--ignore-scripts"]);
     yield* command(temporary, npmEnv, "npm", [
       "publish",
-      path.join(archives, "keenko-1.0.2.tgz"),
+      path.join(archives, "keenko-1.0.3.tgz"),
       "--ignore-scripts",
       "--provenance=false",
       "--access",
@@ -328,12 +329,12 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     ]);
     yield* createWorkspace(
       temporary,
-      { ...bootstrapEnv, BUN_INSTALL_CACHE_DIR: path.join(temporary, "published-1.0.2-bun-cache") },
+      { ...bootstrapEnv, BUN_INSTALL_CACHE_DIR: path.join(temporary, "published-1.0.3-bun-cache") },
       "upgrade-stable",
-      "keenko@1.0.2"
+      "keenko@1.0.3"
     );
     releasedWorkspaces.push(path.join(temporary, "upgrade-stable"));
-    yield* completePhase("published 1.0.2 source setup", sourceStartedAt);
+    yield* completePhase("published 1.0.3 source setup", sourceStartedAt);
   }
 
   yield* command(repository, env, "bun", ["run", "build"]);
@@ -410,7 +411,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   yield* fs.makeDirectory(bootstrapPrime);
   yield* fs.writeFileString(
     path.join(bootstrapPrime, "package.json"),
-    yield* S.encodeEffect(sManifest)({ dependencies: { "create-nx-workspace": "23.3.0-beta.9" }, private: true })
+    yield* S.encodeEffect(sManifest)({ dependencies: { "create-nx-workspace": "23.3.0" }, private: true })
   );
   yield* command(bootstrapPrime, bootstrapEnv, "bun", ["install", "--ignore-scripts"]);
 
@@ -645,7 +646,7 @@ const verifyBackendRepresentationGuidance = E.fn("product.verifyBackendRepresent
     yield* assert(packed === canonical, `Packed ${name} guidance differs from canonical source`);
     yield* assert(generated === canonical, `Sync did not emit canonical ${name} guidance`);
   }
-  yield* Console.log("KEE-59 canonical, packed, and generated backend representation guidance match byte-for-byte.");
+  yield* Console.log("KEE-62 canonical, packed, and generated backend representation guidance match byte-for-byte.");
 });
 
 const verifyContext7 = E.fn("product.verifyContext7")(function* (workspace: string) {
@@ -768,16 +769,15 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const upgradeStartedAt = yield* startPhase("supported 1.0.2 forward upgrade");
+  const upgradeStartedAt = yield* startPhase("supported 1.0.3 forward upgrade");
   const target = roleBaseline(roles, ["web"]);
   const lockPath = path.join(workspace, "bun.lock");
   const installedPath = path.join(workspace, "node_modules/keenko/package.json");
   yield* assert(
-    (yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPath))).version === "1.0.2",
-    "Stable upgrade source is not the published 1.0.2 package"
+    (yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPath))).version === "1.0.3",
+    "Stable upgrade source is not the published 1.0.3 package"
   );
-  yield* assert(!(yield* fs.exists(path.join(workspace, ".mcp.json"))), "Stable fixture already provisions Context7");
-  yield* verifyDependencySlots(workspace, target);
+  yield* verifyContext7(workspace);
   yield* verifyResolution(workspace, env);
   // Derive one divergent consumer from the authentic installed source. Keep all
   // canonical slots except these explicit owned edits; no second bootstrap.
@@ -812,9 +812,9 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
   )(yield* fs.readFileString(path.join(workspace, "migrations.json")));
   yield* assert(
     plan.migrations.length === 1 &&
-      plan.migrations[0].name === "1.0.3-managed-dependencies" &&
+      plan.migrations[0].name === "1.0.4-managed-dependencies" &&
       plan.migrations[0].package === "keenko" &&
-      plan.migrations[0].version === "1.0.3-rc.0",
+      plan.migrations[0].version === "1.0.4-rc.0",
     "Native Nx selected an unexpected migration plan"
   );
   yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"]);
@@ -842,8 +842,8 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
   yield* verifyMigrationRerun(workspace, env, Object.keys(target));
   yield* verifyInstalledSlots(workspace, target, yield* fs.readFileString(lockPath));
   yield* completePhase("supported upgrade reinstall and sync idempotence", stabilityStartedAt);
-  yield* completePhase("supported 1.0.2 forward upgrade", upgradeStartedAt);
-  yield* Console.log("Published divergent 1.0.2 converged all target dependency slots through native Nx migration and Bun installs.");
+  yield* completePhase("supported 1.0.3 forward upgrade", upgradeStartedAt);
+  yield* Console.log("Published divergent 1.0.3 converged all target dependency slots through native Nx migration and Bun installs.");
 });
 
 const verifyMigrationRerun = E.fn("product.verifyMigrationRerun")(function* (
@@ -933,7 +933,7 @@ const product = E.gen(function* () {
 
   const identity = "product-acceptance";
   const createArguments = [
-    "create-nx-workspace@23.3.0-beta.9",
+    "create-nx-workspace@23.3.0",
     identity,
     source._tag === "local" ? "--preset=keenko" : `--preset=${source.preset}`,
     "--packageManager=bun",
@@ -1026,7 +1026,7 @@ const product = E.gen(function* () {
     const migrationFiles = yield* fs.readDirectory(path.join(installedRoot, "dist/migrations"), { recursive: true });
     yield* assert(
       migrationFiles.toSorted().join(",") ===
-        ["managed-dependencies-1-0-3.d.ts", "managed-dependencies-1-0-3.d.ts.map", "managed-dependencies-1-0-3.js"].join(","),
+        ["managed-dependencies-1-0-4.d.ts", "managed-dependencies-1-0-4.d.ts.map", "managed-dependencies-1-0-4.js"].join(","),
       "Packed migrations contain retired factories or assets"
     );
     for (const artifact of [
@@ -1057,6 +1057,7 @@ const product = E.gen(function* () {
       "button",
       "input-otp",
       "--yes",
+      "--overwrite",
     ]);
     for (const component of ["button.tsx", "input-otp.tsx"]) {
       yield* assert(

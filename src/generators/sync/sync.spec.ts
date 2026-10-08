@@ -304,16 +304,22 @@ describe("keenko sync", () => {
         );
       const schemaTypes = tree.read(".keenko/docs/conventions/schema-types.md", "utf-8");
       expect(schemaTypes).toContain("export const sFoo = sFooDoc;");
-      expect(schemaTypes).toContain("Option<Foo>` illustrates explicit construction failure, not a required error API");
-      expect(schemaTypes).toContain(".check(S.makeFilter(relationsAgree))");
-      expect(schemaTypes).toContain(".mapFields(Struct.assign({ bar: sBar }), { unsafePreserveChecks: true })");
-      expect(schemaTypes).toContain("it does not run full schema decoding again");
+      expect(schemaTypes).toContain('const adminFrom = E.fn("admins.features.adminFrom")');
+      expect(schemaTypes).toContain("yield* userData.getById(doc.userId)");
+      expect(schemaTypes).not.toContain("schema-owned `fooFrom");
+      expect(schemaTypes).not.toContain("Option.some(value) : Option.none()");
+      expect(schemaTypes).toContain(".mapFields(Struct.assign({ user: sUser }), { unsafePreserveChecks: true })");
+      expect(schemaTypes).toContain("Do not require an additional runtime schema decode");
+      expect(schemaTypes).toContain("a Foo and its Bar must have the same owner");
+      expect(schemaTypes).toContain("doc.ownerId === bar.ownerId");
       expect(schemaTypes).toContain("A storage-only table may expose");
       expect(schemaTypes).not.toContain("export const sFoo = sFooFields;");
       expect(schemaTypes).not.toContain('Struct.omit(doc, ["_id", "_creationTime"])');
       expect(schemaTypes).not.toContain("canonical application/transport representation");
       expect(schemaTypes).not.toContain("sFoo.Type` itself must be transport-safe/plain");
       const architecture = tree.read(".keenko/docs/conventions/backend-architecture.md", "utf-8");
+      expect(architecture).toContain("doc.ownerId === bar.ownerId");
+      for (const guidance of [schemaTypes, architecture]) expect(guidance).not.toMatch(/PickupRule|CapacityPool|Establishment/u);
       expect(architecture).toContain("Features orchestrate persistence reads returning `FooDoc`");
       expect(architecture).toContain("graph of mandatory full-Entity embedding dependencies");
       expect(architecture).toContain("Create `domain/` only when real code needs it");
@@ -323,25 +329,34 @@ describe("keenko sync", () => {
     })
   );
 
-  it("preserves source document checks alongside hydrated Entity relationship checks", () => {
+  it("preserves source document checks and meaningful cross-Entity ownership checks", () => {
     const sFooDoc = S.Struct({
       _creationTime: S.Number,
       _id: S.String,
       barId: S.String,
       endsAt: S.Number,
+      ownerId: S.String,
       startsAt: S.Number,
     }).check(S.makeFilter((doc) => doc.startsAt < doc.endsAt));
     type FooDoc = typeof sFooDoc.Type;
-    const sBar = S.Struct({ _id: S.String });
+    const sBar = S.Struct({ _id: S.String, ownerId: S.String });
     type Bar = typeof sBar.Type;
-    const relationsAgree = (value: FooDoc & { readonly bar: Bar }) => value.barId === value.bar._id;
-    const sFoo = sFooDoc.mapFields(Struct.assign({ bar: sBar }), { unsafePreserveChecks: true }).check(S.makeFilter(relationsAgree));
+    const ownershipAgrees = (value: FooDoc & { readonly bar: Bar }) => value.ownerId === value.bar.ownerId;
+    const sFoo = sFooDoc.mapFields(Struct.assign({ bar: sBar }), { unsafePreserveChecks: true }).check(S.makeFilter(ownershipAgrees));
     const decode = S.decodeSync(sFoo);
-    const valid = { _creationTime: 0, _id: "foo", bar: { _id: "bar" }, barId: "bar", endsAt: 2, startsAt: 1 };
+    const valid = {
+      _creationTime: 0,
+      _id: "foo",
+      bar: { _id: "bar", ownerId: "owner" },
+      barId: "bar",
+      endsAt: 2,
+      ownerId: "owner",
+      startsAt: 1,
+    };
 
     expect(decode(valid)).toEqual(valid);
     expect(() => decode({ ...valid, startsAt: valid.endsAt })).toThrow();
-    expect(() => decode({ ...valid, bar: { _id: "other" } })).toThrow();
+    expect(() => decode({ ...valid, bar: { ...valid.bar, ownerId: "other" } })).toThrow();
   });
 
   it.live("refreshes identity guidance without migrating project-owned identity state", () =>

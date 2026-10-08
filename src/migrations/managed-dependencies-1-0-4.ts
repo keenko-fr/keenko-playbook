@@ -22,8 +22,8 @@ const sManifest = S.Struct({
 const sClassification = S.Struct({ nx: S.optionalKey(S.Struct({ tags: S.optionalKey(S.Array(S.String)) })) });
 
 // Current target-package preset maps own the tuple. N-1 sources select this
-// boundary throughout the 1.0.3 line; no retired RC snapshot is loaded.
-export default function managedDependencies103(tree: Tree) {
+// boundary throughout the 1.0.4 line; no retired RC snapshot is loaded.
+export default function managedDependencies104(tree: Tree) {
   const surfaces = new Map([
     ["package.json", { dependencies: {}, devDependencies: rootDevDependencies }],
     ["packages/backend/package.json", { dependencies: backendDependencies, devDependencies: backendDevDependencies }],

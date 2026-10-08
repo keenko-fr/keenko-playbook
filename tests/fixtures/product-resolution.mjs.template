@@ -62,7 +62,6 @@ for (const [name, version] of Object.entries({ ...manifest.dependencies, ...mani
 }
 if (manifest.devDependencies["@effect/vitest"]) {
   assert.equal(root("vitest/package.json").version, "5.0.3");
-  assert.equal(root("@effect/vitest/package.json").version, "4.0.1");
   assert.equal(root("@effect/vitest/package.json").version, manifest.devDependencies["@effect/vitest"]);
   assert.equal(
     createRequire(root.resolve("vitest/package.json"))("vite/package.json").version.split(".")[0],

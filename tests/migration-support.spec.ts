@@ -5,8 +5,8 @@ import { readJsonFile } from "@nx/devkit";
 import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-line/migrate/migrate";
 
 describe("supported stable N-1 migration planning", () => {
-  for (const target of ["1.0.3-rc.0", "1.0.3"])
-    test(`native Nx updates 1.0.2 to ${target} with managed-slot convergence`, async () => {
+  for (const target of ["1.0.4-rc.0", "1.0.4"])
+    test(`native Nx updates 1.0.3 to ${target} with managed-slot convergence`, async () => {
       const config = readJsonFile<ResolvedMigrationConfiguration>("migrations.json");
       const migrator = new Migrator({
         fetch: async (name, version) => {
@@ -14,11 +14,11 @@ describe("supported stable N-1 migration planning", () => {
           return { ...config, version };
         },
         from: {},
-        getInstalledPackageVersion: () => "1.0.2",
+        getInstalledPackageVersion: () => "1.0.3",
         interactive: false,
         packageJson: {
           dependencies: { "consumer-owned": "^7.0.0", effect: "consumer-customized" },
-          devDependencies: { keenko: "1.0.2", oxlint: "consumer-customized" },
+          devDependencies: { keenko: "1.0.3", oxlint: "consumer-customized" },
           name: "consumer",
           version: "0.0.0",
         },
@@ -28,7 +28,7 @@ describe("supported stable N-1 migration planning", () => {
       // Native package updates leave nested manifests to the selected Keenko factory.
       expect(plan.packageUpdates).toEqual({ keenko: { addToPackageJson: false, version: target } });
       expect(plan.migrations.map(({ name, package: owner, version }) => ({ name, owner, version }))).toEqual([
-        { name: "1.0.3-managed-dependencies", owner: "keenko", version: "1.0.3-rc.0" },
+        { name: "1.0.4-managed-dependencies", owner: "keenko", version: "1.0.4-rc.0" },
       ]);
     });
 });
