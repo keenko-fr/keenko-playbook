@@ -20,10 +20,10 @@ confect
 → backend function contracts and Confect implementations
 
 schemas
-→ organized cross-layer representations, canonical backend Entities and their constructors, and provider-namespaced wire representations
+→ organized cross-layer representations, canonical backend Entity schemas/types, meaningful schema checks, and provider-namespaced wire representations
 
 features
-→ application/use-case orchestration, policy, and constitutive relation hydration exposing canonical Entities
+→ fooFrom(doc), constitutive relation loading, Entity assembly, and application/use-case orchestration and policy
 
 data
 → focused persistence reads/writes, returning decoded FooDoc documents
@@ -56,7 +56,7 @@ Use contextual names. Do not repeat the owning module or domain noun when the mo
 
 `schemas/` owns organized representation schemas, not every Effect Schema in the backend.
 
-For a persisted resource with a meaningful backend business Entity, `schemas/foo.ts` owns canonical `Foo` and `fooFrom(...)` when construction/enrichment is needed. `Foo` retains `FooDoc` persistence identity and persisted relation IDs. An identity Entity aliases its complete `FooDoc` without a constructor. A storage-only table does not need a canonical Entity.
+For a persisted resource with a meaningful backend business Entity, `schemas/foo.ts` owns `sFoo`, canonical `Foo`, and meaningful schema validations. It has no hydration functions or data dependencies. `Foo` retains `FooDoc` persistence identity and persisted relation IDs. An identity Entity aliases its complete `FooDoc` without a constructor. A storage-only table does not need a canonical Entity.
 
 Shared application representations used across backend layers live directly under the resource owner, for example:
 
@@ -83,13 +83,13 @@ See `schema-types.md` for persisted-resource grammar, provider schema ownership,
 
 Features remain flat by default, for example `features/shows.ts`. Do not create a directory per feature merely for organization.
 
-Features orchestrate persistence reads returning `FooDoc`, obtain required constitutive relation Entities, and call schema-owned `fooFrom(...)` to expose canonical `Foo`. Hydration is additive; persistence remains normalized. Embed only a stable, constitutive relation required by the Entity's own representation or invariants, never every foreign key. The resulting Entity has mandatory hydrated relations rather than optional lazy-loading states. Reverse relations and child collections normally belong to queries/use-case projections.
+Features orchestrate persistence reads returning `FooDoc`. `features/foo.ts` owns `fooFrom(doc)`, loads required constitutive relations directly through data/features, and assembles canonical `Foo`. Hydration is additive; persistence remains normalized. Embed only a stable, constitutive relation required by the Entity's own representation or invariants, never every foreign key. The resulting Entity has mandatory hydrated relations rather than optional lazy-loading states. Reverse relations and child collections normally belong to queries/use-case projections.
 
 A feature may compose another resource feature to obtain a canonical hydrated Entity when this follows the directed acyclic graph of mandatory full-Entity embedding dependencies. This composition is permitted, not required. Concrete collection features may batch or deduplicate reads where useful. Do not introduce Repository, EntityRepository, EntityLoader, generic hydration services/layers, DataLoader conventions, or generic cache abstractions.
 
 Canonical mandatory Entity embedding should remain directed and acyclic. If embedding both directions would create a cycle, revisit ownership rather than introducing lazy, partial, or recursive Entity representations. Business/domain relationships in general need not be acyclic.
 
-Constructors trust typed internal documents and relation Entities and check the relationship coherence needed to produce a valid Entity. The owning feature maps explicit construction failure to its local outcome; `Option<Foo>` is one possible constructor result, not a universal error contract. See `schema-types.md` for shared schema/constructor predicates and trust-boundary rules.
+Constructors trust decoded internal documents and relation Entities without another runtime schema decode merely for assembly. Do not revalidate trivial FK equality when a relation was loaded through its persisted identifier, or create an artificial `Option<Foo>` or failure path for it. Preserve genuine structural and business invariants: loading a CapacityPool by ID does not establish that it belongs to a PickupRule's Establishment. Keep meaningful schema checks and enforce owned invariants in features/domain. See `schema-types.md` for the constructor example and trust-boundary rules.
 
 Do not preserve a feature wrapper merely for symmetry. If a future function becomes a literal pass-through with no policy, invariant, coordination, representation conversion, or interface simplification, remove the wrapper and let the narrower owner serve the caller directly.
 

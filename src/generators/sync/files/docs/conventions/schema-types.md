@@ -93,7 +93,7 @@ Omit empty sections. Use the separator mechanics from `backend-file-topology.md`
 
 - `CONSTANTS` owns semantic leaf schemas and genuine constants, including finite vocabularies, branded IDs, bounded semantic scalars, other semantic primitives, and real runtime constants.
 - `FIELDS` owns `sFooFields` / `FooFields` and `sFooDoc` / `FooDoc`. `FooDoc` stays in `FIELDS`; do not create a `DOC` section.
-- `ENTITY` owns `sFoo` / `Foo` when the persisted resource has a meaningful canonical backend business Entity, plus `fooFrom(...)` when construction/enrichment is needed. Omit `ENTITY` when the table is only a persistence encoding of another application concept and no canonical `Foo` exists.
+- `ENTITY` owns `sFoo` / `Foo` when the persisted resource has a meaningful canonical backend business Entity and meaningful schema checks. Hydration constructors belong in `features/`, never in this section. Omit `ENTITY` when the table is only a persistence encoding of another application concept and no canonical `Foo` exists.
 - `INSERT` owns `sFooInsert` / `FooInsert` when creation is meaningful.
 - `PATCH` exists only when the shared schema module genuinely owns a reusable patch contract.
 - `INTERNALS` owns only genuine private implementation helpers.
@@ -219,7 +219,7 @@ Do not encode the source representation in ordinary value-producing function nam
 
 Ownership follows the target/boundary semantics:
 
-- `FooDoc` plus constitutive relations produces `Foo` through schema-owned `fooFrom(...)` when construction is needed;
+- `features/foo.ts` owns `fooFrom(doc)`, which loads constitutive relations through data/features and assembles `Foo`;
 - foreign `Dto -> Foo` schema composition lives in the adapter/infra boundary that knows both representations unless a narrower genuine boundary owner exists;
 - persistence-only conversion lives in data;
 - workflow/business transition lives in the feature.
@@ -241,23 +241,31 @@ Embed a related Entity in canonical `Foo` only when that relation is a stable an
 
 Canonical mandatory Entity embedding should remain directed and acyclic. If embedding both directions would create a cycle, revisit ownership rather than introducing lazy, partial, or recursive Entity representations. This rule applies to the graph of mandatory full-Entity embedding dependencies, not all business/domain relationships.
 
-If `Bar` is constitutive for the example above, the schema module owning `Foo` can replace the identity alias with construction from `FooDoc` and a hydrated `Bar`:
+The schema module describes the Entity. The resource feature owns its hydration constructor and loads the required relations directly.
+
+`schemas/admins.ts`:
 
 ```ts
-const relationsAgree = (value: FooDoc & { readonly bar: Bar }) => value.barId === value.bar._id;
-
-export const sFoo = sFooDoc.mapFields(Struct.assign({ bar: sBar }), { unsafePreserveChecks: true }).check(S.makeFilter(relationsAgree));
-export type Foo = typeof sFoo.Type;
-
-export const fooFrom = (doc: FooDoc, relations: { readonly bar: Bar }): Option<Foo> => {
-  const value = { ...doc, ...relations };
-  return relationsAgree(value) ? Option.some(value) : Option.none();
-};
+export const sAdmin = sAdminDoc.mapFields(Struct.assign({ user: sUser }), { unsafePreserveChecks: true });
+export type Admin = typeof sAdmin.Type;
 ```
 
-`schemas/foo.ts` owns both `Foo` and `fooFrom(...)`. The constructor receives already trusted `FooDoc` and `Bar` values. It checks only the structural relationship coherence needed to construct a valid Entity; it does not run full schema decoding again. `sFoo` still describes a valid Entity, and schema and constructor share the pure `relationsAgree` predicate. Preserve any source-schema checks when deriving the enriched schema according to the installed structural API's behavior.
+`features/admins.ts`:
 
-`Option<Foo>` illustrates explicit construction failure, not a required error API. The owning feature decides whether failure becomes a typed failure, defect, invalid configuration, or another locally owned outcome. Semantic/business invariants remain with their owning domain/capability. Entity relationship coherence does not replace them.
+```ts
+const adminFrom = E.fn("admins.features.adminFrom")(function* (doc: AdminDoc) {
+  const user = yield* userData.getById(doc.userId);
+  return { ...doc, user } satisfies Admin;
+});
+```
+
+`schemas/` owns Entity representations, types and meaningful schema validations. It has no hydration functions or data dependencies. `features/` owns `fooFrom(doc)`, constitutive relation loading, Entity assembly and use-case orchestration. `data/` returns decoded `FooDoc`; `domain/` owns pure business behavior.
+
+Loading User with `getById(doc.userId)` already establishes its identity. Do not add `adminRelationsAgree`, an `admin.userId === admin.user._id` check, or an artificial `Option<Admin>` or failure path for that equality. Required relations use the existing retrieval semantics; valid absence in a lookup remains distinct from hydration.
+
+Preserve genuine structural and business invariants. For example, a PickupRule and its CapacityPool must belong to the same Establishment. Loading a pool by its ID does not establish that ownership. Keep the meaningful schema check and enforce that invariant in the owning feature/domain without repeating full schema decoding. A pure invariant predicate may be shared where both owners need the same rule.
+
+Constructors trust decoded internal documents and relation Entities. Do not require an additional runtime schema decode merely to assemble them. Preserve source-schema checks when deriving the enriched schema according to the installed structural API's behavior. Do not introduce a generic hydration framework, repository or EntityLoader.
 
 For an actual transport projection, value-level `Struct.pick` / `Struct.omit` may be appropriate at the caller-facing boundary. Removing `_id` or `_creationTime` there does not redefine canonical backend `Foo`. Provider decoding such as `sFooFromDto` remains separate from internal Entity hydration.
 
@@ -333,7 +341,7 @@ Confect/API/facade boundaries own the caller-facing projection and choose schema
 
 ## Validation and transformations
 
-Decode untrusted data at the owning boundary (HTTP/provider/form/server function/persistence). Persistence codecs validate persistence representations; provider adapters validate new external/provider/SDK inputs. Correctly typed internal values are trusted afterward. Do not repeatedly schema-decode an already trusted `FooDoc`, relation Entity, or other internal representation merely for reassurance. This trust does not bypass semantic/business invariants owned by the domain/capability or relationship coherence required during Entity construction.
+Decode untrusted data at the owning boundary (HTTP/provider/form/server function/persistence). Persistence codecs validate persistence representations; provider adapters validate new external/provider/SDK inputs. Correctly typed internal values are trusted afterward. Do not repeatedly schema-decode an already trusted `FooDoc`, relation Entity, or other internal representation merely for reassurance. This trust does not bypass semantic/business invariants owned by the domain/capability or meaningful ownership invariants enforced during Entity construction.
 
 When generated Confect persistence services are used, pass the decoded representation they expect and let their codecs encode/decode storage. Do not manually convert `Option`/`null` around every DB call.
 
