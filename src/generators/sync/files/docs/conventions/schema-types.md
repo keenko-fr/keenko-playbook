@@ -296,3 +296,5 @@ Share semantic primitive schemas such as canonical email, slug, timestamp, or no
 Brand a primitive only when nominal distinction materially prevents real mistakes between otherwise identical values. Validation alone does not imply a brand.
 
 Stable finite programmatic vocabularies use one canonical `S.Literals([...])` schema and derive the TypeScript type from it. Do not separately maintain an enum/string union/runtime constant object.
+
+<!-- Disposable KEE-64 guidance verification fixture. -->
