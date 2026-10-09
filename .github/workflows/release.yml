@@ -18,6 +18,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 jobs:
@@ -64,13 +65,21 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Find equivalent PR verification
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun run tests/ci-verification.ts --reuse
+
       - name: Verify repository
+        if: steps.evidence.outputs.reuse != 'full' && steps.evidence.outputs.reuse != 'guidance'
         run: bun run check
 
       - name: Verify release plan
         run: bun x nx release plan:check
 
       - name: Verify packed product before publication
+        if: steps.evidence.outputs.reuse != 'full'
         run: bun run test:product
 
       - name: Configure release identity
@@ -125,6 +134,13 @@ jobs:
 
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Revalidate current main before release
+        run: |
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD
 
       - name: Release with Nx
         env:
@@ -204,7 +220,7 @@ jobs:
           PUBLISHED_VERSION: ${{ steps.published.outputs.version }}
         run: |
           if [ "$RELEASE_MODE" = "rc" ]; then
-            bun run test:published -- "$PUBLISHED_VERSION" "keenko@rc"
+            bun run tests/wait-for-published.ts --selector "$PUBLISHED_VERSION" rc
           else
-            bun run test:published -- "$PUBLISHED_VERSION" "keenko"
+            bun run tests/wait-for-published.ts --selector "$PUBLISHED_VERSION" latest
           fi

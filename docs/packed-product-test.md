@@ -87,14 +87,26 @@ Fresh packed creation and supported upgrade verify `.codex/config.toml` and `.mc
 
 Phase logs record package/source setup, fresh creation and compatibility, canonical checks, shadcn, reinstall/sync and the supported upgrade. Total timing measures the same complete gate before and after cleanup. Timings describe the run and impose no performance threshold.
 
+## Repository CI boundaries
+
+This is Keenko repository policy, not generated consumer guidance. The required GitHub Actions `check` runs on every configured PR verification event, including drafts and edits, with no workflow path filters or job-level skip. Main pushes run no CI. PR edits rerun verification so retargeting cannot keep a lightweight check computed against another base. GitHub also sends this event for title/body edits; those metadata edits currently rerun CI to keep the required check unconditional. The two active main rulesets remain unchanged: GitHub Actions `check` and PRs are required for normal changes; only the Release App bypasses review, and no actor bypasses history protection.
+
+`tests/ci-verification.ts` classifies the tested merge tree against the PR common ancestor using a NUL-separated Git diff with rename detection disabled. This includes deletions, both rename paths and concurrent base-side changes. Only explicit canonical Markdown locations (`src/generators/sync/files/docs`, `files/skills`, the two harness fragments and packaged root README) count as guidance. Repository `docs/**/*.md` and version plans are documentation. Every other path, an empty comparison, or any mixed product change selects full verification. Markdown elsewhere has no exemption.
+
+- Repository documentation runs formatting and native release-plan validation. The existing minimum-Node build/typecheck remains.
+- Canonical guidance runs `bun run check` and `bun run test:product -- --guidance`. This uses the same packed artifact and complete fresh acceptance as full product verification, including all canonical Markdown byte equality, consumer checks, reinstall and synchronization/idempotence. Published source setup and the upgrade matrix are omitted because generator, migration, dependency and verification implementation are unchanged. Focused preset/sync regression checks remain in the repository gate.
+- Product, build, dependencies, compatibility, release machinery and verification infrastructure run the unchanged full repository and product gates, including direct N-1, the explicit RC upgrade and partial recovery.
+
+Failures propagate through the required `check`; classification failures never succeed as a skipped job. Removing main CI does not assert that a squash commit SHA was tested. Release preparation independently proves tree equivalence or checks the selected revision again. Anoulà's actual consumer qualification remains a separate release requirement.
+
 ## Exact published package
 
-After both readiness stages in [Release workflow and recovery](#release-workflow-and-recovery) succeed, run the release-grade acceptance with the exact published version and the selector for its release mode:
+After both readiness stages in [Release workflow and recovery](#release-workflow-and-recovery) succeed, run one complete acceptance of the exact published version, then a lightweight public selector installation for its release mode:
 
 ```sh
 bun run test:published -- <exact-version>
-bun run test:published -- <exact-version> keenko
-bun run test:published -- <exact-version> keenko@rc
+bun run tests/wait-for-published.ts --selector <exact-stable-version> latest
+bun run tests/wait-for-published.ts --selector <exact-rc-version> rc
 ```
 
 The public selector contract is:
@@ -102,9 +114,9 @@ The public selector contract is:
 - `keenko` resolves the npm `latest` dist-tag and therefore the current stable release.
 - `keenko@rc` resolves the npm `rc` dist-tag and therefore the current release candidate.
 - Exact-version acceptance proves the published artifact itself.
-- Selector acceptance proves that npm dist-tags and `create-nx-workspace` resolve that artifact through the supported public CLI form.
+- Selector acceptance installs the npm distribution tag in a fresh project with an isolated Bun cache and verifies the installed package version. Fresh preset generation is owned by the exact-version full acceptance. The selector does not repeat generation or consumer checks.
 
-The expected version must be one concrete SemVer, including an optional prerelease or build suffix. By default, published acceptance creates the consumer with `--preset=keenko@<exact-version>`. Release acceptance may additionally provide an explicit public preset selector while keeping the exact expected installed version separate. This mode does not pack repository source, rewrite a package version, start Verdaccio, or override registry configuration. It runs the canonical public bootstrap with the selected preset and verifies the expected exact version in the consumer's installed `node_modules/keenko/package.json`.
+The expected version must be one concrete SemVer, including an optional prerelease or build suffix. By default, published acceptance creates the consumer with `--preset=keenko@<exact-version>`. The full test CLI still accepts an explicit preset selector for diagnosis, but release CI uses it only once with the exact version. This mode does not pack repository source, rewrite a package version, start Verdaccio, or override registry configuration. It runs the canonical public bootstrap with the selected preset and verifies the expected exact version in the consumer's installed `node_modules/keenko/package.json`.
 
 The disposable consumer verifies the installed Keenko version, representative files that must survive packaging, the expected native migration metadata, and fidelity of a representative third-party license. It runs the first-install canonical `bun run check`, verifies frozen and ordinary reinstall stability from the generated lockfile, and verifies the exact Keenko version again. Preset and sync tests own generated shape and managed-state behavior; the consumer check owns its internal codegen, formatting, lint, typecheck, test, and build lifecycle.
 
@@ -130,9 +142,15 @@ The executable procedures live in `tests/packed-product.ts`. Effect scope stops 
 
 Every releasable pull request carries an Nx version plan. Pull-request CI fetches the comparison history and supplies the changed paths from the event's exact base/head comparison to `bun x nx release plan:check --stdin`, so a required plan is enforced before merge. Like Nx's native base/head calculation, the comparison starts at their merge base and disables rename detection so both sides of a rename remain visible. The manually triggered release workflow repeats version-plan validation as a final defense.
 
-Git's exact, root-anchored exclusion pathspecs omit only `.github/workflows/ci.yml`, this repository acceptance document, `tests/packed-product.ts`, `tests/release-version.ts`, `tests/wait-for-published.ts`, `tests/wait-for-published.spec.ts`, and the generated root `CHANGELOG.md` from the CI plan-check input. These seven files are absent from the published archive. No persistent Nx ignore rule is added: `nx.json` retains `versionPlans: true` and is not excluded. Changes to `nx.json`, package manifests, source, generators, migrations, and packaged documentation still require a plan. The release workflow and direct `bun x nx release plan:check` retain their strict repository configuration. An infrastructure change that alters published contents or the runtime contract must include those changed package inputs and follow the normal release process.
+Git's exact, root-anchored exclusion pathspecs omit only `.github/workflows/ci.yml`, repository Markdown under `docs/`, `tests/packed-product.ts`, `tests/release-version.ts`, `tests/wait-for-published.ts`, `tests/wait-for-published.spec.ts`, and the generated root `CHANGELOG.md` from the CI plan-check input. The release workflow and the two `tests/ci-verification` files are also excluded as unpackaged repository infrastructure. These exclusions never select lightweight PR verification: infrastructure changes still receive full checks. All excluded files are absent from the published archive. No persistent Nx ignore rule is added: `nx.json` retains `versionPlans: true` and is not excluded. Changes to `nx.json`, package manifests, source, generators, migrations, and packaged documentation still require a plan. Direct `bun x nx release plan:check` retains its strict repository configuration. An infrastructure change that alters published contents or the runtime contract must include those changed package inputs and follow the normal release process.
 
-The release workflow has one required `mode` choice: `rc` or `stable`. Both modes install from the lockfile, run `bun run check` (which includes `pack:check`), validate version plans, and run `bun run test:product` before invoking the same Nx Release architecture.
+The release workflow has one required `mode` choice: `rc` or `stable`. Both modes install from the frozen lockfile and always validate version plans. Before publication, a bounded lookup examines the latest 50 successful PR runs of this repository's exact CI workflow. GitHub-owned job metadata must prove successful repository and release-plan steps plus full product or focused guidance acceptance, the exact recorded tested Git tree/revision/release-tag and actual Node/Bun versions, and successful minimum-Node verification in that run attempt. Fork runs, docs-only success, missing or skipped required steps, different workflow IDs/paths and different trees are rejected. The CI workflow bytes at the run head must also equal the release workflow's current CI file. This uses GitHub's jobs API and requires only `actions: read` on the ordinary workflow token, not broader Release App permissions.
+
+A full match replaces repeated `bun run check` and `bun run test:product`. A guidance match replaces only `bun run check`, since focused guidance CI also runs that complete repository gate. Release still runs full supported-upgrade acceptance. Actual Node/Bun version equality rejects toolchain drift without changing pins. Exact full-tree equality includes dependency pins/lockfile, generators, migration fixtures, packaging/release scripts, plans and workflows. The recorded tree comes from the actual checked-out PR merge revision, not the run's PR head SHA; a squash commit can reuse it only if its complete tree matches, its parent is the tested merge base, and the tested merge has the recorded PR head as its second parent. The tested and selected revisions must have the same nearest release tag recorded during CI, preserving native Nx history/tag inputs. No comparison is made by branch name. Before evidence can be recorded, CI also rejects tracked repository drift.
+
+Missing, failed, expired or mismatched evidence falls back to both full checks. A release-generated version/changelog/plan-consumption commit has a different tree and therefore retains full verification. Stable promotion commonly takes this fallback. Guidance-only releases retain supported-upgrade verification because focused evidence alone cannot prove full product acceptance. Normalizing release commits or propagating older product evidence would need proof of native Nx candidate selection, metadata and supported-source equivalence; this implementation intentionally keeps that exact blocker rather than relaxing equality.
+
+The workflow validates the exact dispatched current-main SHA at entry and again immediately before Nx mutation. Main advancing during verification aborts release. Nx still owns a fast-forward push, so a race after the second check cannot rewrite main. Release App identity, contents-only App permission, OIDC publication, separate no-bypass history protection, manual mode selection and human publication authorization remain unchanged.
 
 RC mode runs `bun x nx release --skip-publish --preid rc` and then publishes the versioned package with `bun x nx release publish --tag rc`. When starting a new RC line from a stable version, active version plans must use `prepatch`, `preminor`, or `premajor`; for example, `1.0.0` plus `prepatch` produces `1.0.1-rc.0`. When the repository is already on an RC version, RC continuation requires active version plans to use `prerelease`. Plain `patch`, `minor`, or `major` plans are rejected in RC mode before release mutation. After Nx computes the version, RC mode also verifies that the resulting package version has an `-rc.N` prerelease before publication. RC publication moves only the npm `rc` dist-tag and must not move `latest`.
 
@@ -187,14 +205,14 @@ Bun `1.4.2` requests the abridged npm install metadata representation in its [ma
 
 During the accepted `1.0.2` stable release, [Release run 37340418795](https://github.com/keenko-fr/keenko-playbook/actions/runs/37340418795) reported Nx publication success at `16:39:56 UTC`. Bun `1.4.2` then rejected the exact version on all 25 attempts, ending at `16:43:58 UTC`. The attempt cap exhausted after about four minutes and two seconds, leaving almost a minute of the nominal five-minute observation window unused. The error was version resolution, before tarball installation, and the tag stage never ran. No individual probe stalled. The logs did not record contemporaneous npm metadata responses or HTTP cache headers, so they cannot establish whether registry propagation, a stale registry representation, or Bun resolution caused that visibility delay. The later successful manual checks establish recovery, but not its exact time. The correction removes the premature cutoff and bounds stalled attempts while retaining actual installation and both tag invariants.
 
-Only after both readiness stages succeed does the workflow verify the exact published artifact and then its public selector. RC releases use `keenko@rc`; stable releases use bare `keenko`. Both checks expect the exact version published by Nx:
+Only after both readiness stages succeed does the workflow verify the exact published artifact once and then install its public selector with the same bounded readiness policy. RC releases use `keenko@rc`; stable releases use bare `keenko`. Both checks expect the exact version published by Nx:
 
 ```sh
 bun run test:published -- "$PUBLISHED_VERSION"
 if [ "$RELEASE_MODE" = "rc" ]; then
-  bun run test:published -- "$PUBLISHED_VERSION" "keenko@rc"
+  bun run tests/wait-for-published.ts --selector "$PUBLISHED_VERSION" rc
 else
-  bun run test:published -- "$PUBLISHED_VERSION" "keenko"
+  bun run tests/wait-for-published.ts --selector "$PUBLISHED_VERSION" latest
 fi
 ```
 

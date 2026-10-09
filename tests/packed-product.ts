@@ -25,6 +25,7 @@ const sPackageSource = S.Union([S.TaggedStruct("local", {}), S.TaggedStruct("pub
 );
 type PackageSource = S.Schema.Type<typeof sPackageSource>;
 interface Verification {
+  readonly guidanceOnly?: boolean;
   readonly shadcnCompatibility: boolean;
   readonly source: PackageSource;
 }
@@ -36,6 +37,8 @@ const exactSemver =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
 
 const parseVerification = E.fn("product.parseVerification")(function* (args: readonly string[]) {
+  if (args.length === 1 && args[0] === "--guidance")
+    return { guidanceOnly: true, shadcnCompatibility: false, source: { _tag: "local" } } satisfies Verification;
   if (args.length === 0) return { shadcnCompatibility: false, source: { _tag: "local" } } satisfies Verification;
   if (args.length === 1 && args[0] === "--shadcn") return { shadcnCompatibility: true, source: { _tag: "local" } } satisfies Verification;
   const publishedExactArgs = S.decodeUnknownOption(S.Tuple([S.Literal("--published"), S.String]))(args);
@@ -683,22 +686,17 @@ const verifyReinstalls = E.fn("product.verifyReinstalls")(function* (
   }
 });
 
-const verifyBackendRepresentationGuidance = E.fn("product.verifyBackendRepresentationGuidance")(function* (workspace: string) {
+const verifyCanonicalGuidance = E.fn("product.verifyCanonicalGuidance")(function* (workspace: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const canonicalRoot = yield* path.fromFileUrl(new URL("../src/generators/sync/files/", import.meta.url));
   for (const relative of [
-    "docs/conventions/backend-architecture.md",
-    "docs/conventions/backend-file-topology.md",
-    "docs/conventions/schema-types.md",
-    "docs/conventions/validation.md",
-    "docs/core/code-style.md",
-    "docs/core/migrations.md",
-    "docs/core/tooling.md",
-    "docs/stacks/confect/README.md",
-    "docs/stacks/effect/README.md",
-    "docs/stacks/testing/README.md",
-    "skills/confect/SKILL.md",
+    ...(yield* fs.readDirectory(path.join(canonicalRoot, "docs"), { recursive: true }))
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => `docs/${file}`),
+    ...(yield* fs.readDirectory(path.join(canonicalRoot, "skills"), { recursive: true }))
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => `skills/${file}`),
   ]) {
     const canonical = yield* fs.readFileString(path.join(canonicalRoot, relative));
     const packed = yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/generators/sync/files", relative));
@@ -706,7 +704,22 @@ const verifyBackendRepresentationGuidance = E.fn("product.verifyBackendRepresent
     yield* assert(packed === canonical, `Packed ${relative} guidance differs from canonical source`);
     yield* assert(generated === canonical, `Sync did not emit canonical ${relative} guidance`);
   }
-  yield* Console.log("KEE-63 canonical, packed and generated conventions, stack guidance and skill match byte-for-byte.");
+  for (const file of ["AGENTS.md", "CLAUDE.md"]) {
+    const canonical = yield* fs.readFileString(path.join(canonicalRoot, "../fragments", file));
+    const packed = yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/generators/sync/fragments", file));
+    const generated = yield* fs.readFileString(path.join(workspace, file));
+    yield* assert(packed === canonical, `Packed ${file} fragment differs from canonical source`);
+    yield* assert(
+      generated.includes(`<!-- keenko:start -->\n\n${canonical.trimEnd()}\n\n<!-- keenko:end -->`),
+      `Sync did not emit canonical ${file} routing`
+    );
+  }
+  yield* assert(
+    (yield* fs.readFileString(path.join(workspace, "node_modules/keenko/README.md"))) ===
+      (yield* fs.readFileString(yield* path.fromFileUrl(new URL("../README.md", import.meta.url)))),
+    "Packed README differs from repository guidance"
+  );
+  yield* Console.log("All canonical Markdown guidance matches packed and synchronized content byte-for-byte.");
 });
 
 const verifyContext7 = E.fn("product.verifyContext7")(function* (workspace: string) {
@@ -931,7 +944,7 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
       "Recovery changed the compatible common override or its foreign excludeFiles"
     );
   yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
-  yield* verifyBackendRepresentationGuidance(workspace);
+  yield* verifyCanonicalGuidance(workspace);
   yield* verifyContext7(workspace);
   yield* verifyContext7Ownership(workspace, env);
   yield* command(workspace, env, "bun", ["run", "codegen"]);
@@ -1071,7 +1084,7 @@ const startShadcnFixtureRegistry = E.fn("product.startShadcnFixtureRegistry")(fu
 
 const product = E.gen(function* () {
   // oxlint-disable-next-line effect/noGlobals -- process arguments are the published-test command boundary.
-  const { shadcnCompatibility, source } = yield* parseVerification(process.argv.slice(2));
+  const { guidanceOnly, shadcnCompatibility, source } = yield* parseVerification(process.argv.slice(2));
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const repository = yield* path.fromFileUrl(new URL("../", import.meta.url));
@@ -1093,7 +1106,7 @@ const product = E.gen(function* () {
     repository,
     temporary,
     env,
-    !shadcnCompatibility && source._tag === "local"
+    !guidanceOnly && !shadcnCompatibility && source._tag === "local"
   );
   yield* completePhase("package preparation and registry setup", preparationStartedAt);
   if (!shadcnCompatibility && source._tag === "local") yield* startShadcnFixtureRegistry(repository, packageVersion);
@@ -1160,7 +1173,7 @@ const product = E.gen(function* () {
     "Fresh backend must omit the former data layer"
   );
   yield* verifyContext7(workspace);
-  if (source._tag === "local") yield* verifyBackendRepresentationGuidance(workspace);
+  if (source._tag === "local") yield* verifyCanonicalGuidance(workspace);
   if (source._tag === "local" && !shadcnCompatibility) yield* verifyContext7Ownership(workspace, env);
   for (const file of [
     "CONTEXT.md",

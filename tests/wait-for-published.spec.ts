@@ -20,9 +20,31 @@ import {
   waitForPublishedVersion,
   publishedVersionWaitPolicy,
   waitForPublication,
+  waitForPublishedSelector,
 } from "./wait-for-published.js";
 
 const version = "1.2.3";
+
+describe("public distribution-tag installation", () => {
+  for (const selector of ["latest", "rc"] as const)
+    it.live(`${selector} retries stale installation and accepts only the expected public package`, () =>
+      E.gen(function* () {
+        let attempts = 0;
+        const lookup: RegistryLookup = (name, requested) =>
+          E.sync(() => {
+            expect(name).toBe("keenko");
+            expect(requested).toBe(selector);
+            return ++attempts === 1 ? "1.0.0" : version;
+          });
+        expect(yield* waitForPublishedSelector(version, selector, lookup, testPolicy)).toBe(version);
+        expect(attempts).toBe(2);
+        const failure = yield* waitForPublishedSelector(version, selector, () => E.succeed("1.0.0"), testPolicy).pipe(E.flip);
+        expect(failure).toBeInstanceOf(PublishedVersionUnavailable);
+        expect(failure.attempts).toBe(3);
+        expect(failure.message).toContain(`instead of keenko@${version}`);
+      }).pipe(E.provide(NodeServices.layer))
+    );
+});
 const testPolicy = {
   attemptTimeout: "1 second",
   interval: 0,
