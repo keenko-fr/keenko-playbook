@@ -57,14 +57,14 @@ export const hasFullVerification = (run: Run, jobs: readonly Job[], repository: 
 
 const command = E.fn("ci.command")(function* (executable: string, args: readonly string[]) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  return (yield* spawner.string(ChildProcess.make(executable, args, { forceKillAfter: "5 seconds" }))).trim();
+  return yield* spawner.string(ChildProcess.make(executable, args, { forceKillAfter: "5 seconds" }));
 });
 
 const reuseVerification = E.gen(function* () {
   const repository = yield* Config.String("GITHUB_REPOSITORY");
-  const tree = yield* command("git", ["rev-parse", "HEAD^{tree}"]);
+  const tree = (yield* command("git", ["rev-parse", "HEAD^{tree}"])).trim();
   const workflow = yield* command("git", ["show", "HEAD:.github/workflows/ci.yml"]);
-  const workflowId = yield* command("gh", ["api", `repos/${repository}/actions/workflows/ci.yml`, "--jq", ".id"]);
+  const workflowId = (yield* command("gh", ["api", `repos/${repository}/actions/workflows/ci.yml`, "--jq", ".id"])).trim();
   // Bounded lookup; absent/expired evidence costs a full check, never correctness.
   const runs = yield* S.decodeEffect(S.fromJsonString(S.Struct({ workflow_runs: S.Array(sRun) })))(
     yield* command("gh", ["api", `repos/${repository}/actions/workflows/${workflowId}/runs?event=pull_request&status=success&per_page=50`])
@@ -80,16 +80,16 @@ const reuseVerification = E.gen(function* () {
     const tested = recorded?.name.split(" ")[5] ?? "";
     const recordedTag = recorded?.name.split(" ")[7] ?? "";
     yield* command("git", ["fetch", "--no-tags", "origin", tested]);
-    if ((yield* command("git", ["rev-parse", `${tested}^{tree}`])) !== tree) continue;
+    if ((yield* command("git", ["rev-parse", `${tested}^{tree}`])).trim() !== tree) continue;
     if ((yield* command("git", ["show", `${tested}:.github/workflows/ci.yml`])) !== workflow) continue;
     if ((yield* command("git", ["show", `${run.head_sha}:.github/workflows/ci.yml`])) !== workflow) continue;
     // Tree equality alone omits native Nx's Git history/tag inputs. Accept the
     // actual merge, or a squash onto exactly the same tested base, with the same
     // nearest release tag. Release-generated commits deliberately fall back.
-    const revision = yield* command("git", ["rev-parse", "HEAD"]);
+    const revision = (yield* command("git", ["rev-parse", "HEAD"])).trim();
     if (revision !== tested) {
-      const testedParents = (yield* command("git", ["show", "-s", "--format=%P", tested])).split(" ");
-      const releaseParents = (yield* command("git", ["show", "-s", "--format=%P", revision])).split(" ");
+      const testedParents = (yield* command("git", ["show", "-s", "--format=%P", tested])).trim().split(" ");
+      const releaseParents = (yield* command("git", ["show", "-s", "--format=%P", revision])).trim().split(" ");
       if (
         testedParents.length !== 2 ||
         releaseParents.length !== 1 ||
@@ -98,8 +98,11 @@ const reuseVerification = E.gen(function* () {
       )
         continue;
     }
-    const releaseTag = yield* command("git", ["describe", "--tags", "--match", "v*", "--abbrev=0", revision]);
-    if (releaseTag !== recordedTag || (yield* command("git", ["describe", "--tags", "--match", "v*", "--abbrev=0", tested])) !== releaseTag)
+    const releaseTag = (yield* command("git", ["describe", "--tags", "--match", "v*", "--abbrev=0", revision])).trim();
+    if (
+      releaseTag !== recordedTag ||
+      (yield* command("git", ["describe", "--tags", "--match", "v*", "--abbrev=0", tested])).trim() !== releaseTag
+    )
       continue;
     yield* Console.log(`Reusing full verification from https://github.com/${repository}/actions/runs/${run.id} for tree ${tree}`);
     return true;
@@ -110,7 +113,7 @@ const reuseVerification = E.gen(function* () {
 const routeVerification = E.gen(function* () {
   const base = yield* Config.String("PLAN_BASE");
   const head = yield* Config.String("PLAN_HEAD");
-  const mergeBase = yield* command("git", ["merge-base", base, head]);
+  const mergeBase = (yield* command("git", ["merge-base", base, head])).trim();
   // Compare the tested merge tree to the PR's common ancestor. Base-side product
   // changes, deletions and both sides of renames must also receive full checks.
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
