@@ -57,7 +57,9 @@ export const hasVerification = (
       job.steps.some(
         (step) =>
           step.conclusion === "success" &&
-          new RegExp(`^Verified ${mode} tree ${tree} revision [a-f0-9]{40} release-tag v[^ ]+$`, "u").test(step.name)
+          new RegExp(`^Verified ${mode} tree ${tree} revision [a-f0-9]{40} release-tag v[^ ]+ node v[0-9.]+ bun [0-9.]+$`, "u").test(
+            step.name
+          )
       )
   ) &&
   jobs.some((job) => job.name === "minimum-node" && job.conclusion === "success");
@@ -67,6 +69,12 @@ const command = E.fn("ci.command")(function* (executable: string, args: readonly
   return yield* spawner.string(ChildProcess.make(executable, args, { forceKillAfter: "5 seconds" }));
 });
 
+const matchingWorkflow = E.fn("ci.matchingWorkflow")(function* (tested: string, head: string, expected: string) {
+  const testedWorkflow = yield* command("git", ["show", `${tested}:.github/workflows/ci.yml`]);
+  const headWorkflow = yield* command("git", ["show", `${head}:.github/workflows/ci.yml`]);
+  return testedWorkflow === expected && headWorkflow === expected;
+});
+
 const sameSquashBase = (testedParents: readonly string[], releaseParents: readonly string[], head: string) =>
   testedParents.length === 2 && releaseParents.length === 1 && testedParents[0] === releaseParents[0] && testedParents[1] === head;
 
@@ -74,6 +82,7 @@ const reuseVerification = E.gen(function* () {
   const repository = yield* Config.String("GITHUB_REPOSITORY");
   const tree = (yield* command("git", ["rev-parse", "HEAD^{tree}"])).trim();
   const workflow = yield* command("git", ["show", "HEAD:.github/workflows/ci.yml"]);
+  const toolchain = ` node ${(yield* command("node", ["--version"])).trim()} bun ${(yield* command("bun", ["--version"])).trim()}`;
   const workflowId = (yield* command("gh", ["api", `repos/${repository}/actions/workflows/ci.yml`, "--jq", ".id"])).trim();
   // Bounded lookup; absent/expired evidence costs a full check, never correctness.
   const runs = yield* S.decodeEffect(S.fromJsonString(S.Struct({ workflow_runs: S.Array(sRun) })))(
@@ -83,17 +92,21 @@ const reuseVerification = E.gen(function* () {
     const jobs = yield* S.decodeEffect(S.fromJsonString(S.Struct({ jobs: S.Array(sJob) })))(
       yield* command("gh", ["api", `repos/${repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`])
     );
-    const mode = hasVerification(run, jobs.jobs, repository, Number(workflowId), tree) ? "full" : "guidance";
-    if (!hasVerification(run, jobs.jobs, repository, Number(workflowId), tree, mode)) continue;
+    const mode =
+      (["full", "guidance"] as const).find((candidate) =>
+        hasVerification(run, jobs.jobs, repository, Number(workflowId), tree, candidate)
+      ) ?? "none";
+    if (mode === "none") continue;
     const recorded = jobs.jobs
       .find((job) => job.name === "check")
       ?.steps.find((step) => step.name.startsWith(`Verified ${mode} tree ${tree} revision `));
-    const tested = recorded?.name.split(" ")[5] ?? "";
-    const recordedTag = recorded?.name.split(" ")[7] ?? "";
+    const name = recorded?.name ?? "";
+    if (!name.endsWith(toolchain)) continue;
+    const tested = name.split(" ")[5] ?? "";
+    const recordedTag = name.split(" ")[7] ?? "";
     yield* command("git", ["fetch", "--no-tags", "origin", tested]);
     if ((yield* command("git", ["rev-parse", `${tested}^{tree}`])).trim() !== tree) continue;
-    if ((yield* command("git", ["show", `${tested}:.github/workflows/ci.yml`])) !== workflow) continue;
-    if ((yield* command("git", ["show", `${run.head_sha}:.github/workflows/ci.yml`])) !== workflow) continue;
+    if (!(yield* matchingWorkflow(tested, run.head_sha, workflow))) continue;
     // Tree equality alone omits native Nx's Git history/tag inputs. Accept the
     // actual merge, or a squash onto exactly the same tested base, with the same
     // nearest release tag. Release-generated commits deliberately fall back.

@@ -29,7 +29,7 @@ const jobs = [
       "Verify repository",
       "Verify release plan",
       "Verify packed product",
-      `Verified full tree ${tree} revision ${run.head_sha} release-tag v1.0.0`,
+      `Verified full tree ${tree} revision ${run.head_sha} release-tag v1.0.0 node v24.21.0 bun 1.4.2`,
     ].map((name) => ({
       conclusion: "success",
       name,
@@ -230,7 +230,13 @@ test("release CLI accepts a squash with the same tree, rejects changed workflows
     const returnedRun = { ...run, head_sha: head };
     const returnedJobs = jobs.map((job) => ({
       ...job,
-      steps: job.steps.map((step) => ({ ...step, name: step.name.replace(tree, testedTree).replace(run.head_sha, tested) })),
+      steps: job.steps.map((step) => ({
+        ...step,
+        name: step.name
+          .replace(tree, testedTree)
+          .replace(run.head_sha, tested)
+          .replace("v24.21.0", spawnSync("node", ["--version"], { encoding: "utf-8" }).stdout.trim()),
+      })),
     }));
     write(
       "bin/gh",
@@ -257,6 +263,17 @@ test("release CLI accepts a squash with the same tree, rejects changed workflows
       return readFileSync(output, "utf-8");
     };
     expect(reuse()).toBe("reuse=full\n");
+    write(
+      "jobs.json",
+      JSON.stringify({
+        jobs: returnedJobs.map((job) => ({
+          ...job,
+          steps: job.steps.map((step) => ({ ...step, name: step.name.replace(/node v[0-9.]+/u, "node v0.0.0") })),
+        })),
+      })
+    );
+    expect(reuse()).toBe("reuse=none\n");
+    write("jobs.json", JSON.stringify({ jobs: returnedJobs }));
     const guidanceJobs = returnedJobs.map((job) => ({
       ...job,
       steps: job.steps.map((step) => ({

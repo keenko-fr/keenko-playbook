@@ -53,6 +53,8 @@ jobs:
         run: |
           echo "tree=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+          echo "bun=$(bun --version)" >> "$GITHUB_OUTPUT"
           echo "release-tag=$(git describe --tags --match 'v*' --abbrev=0 HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Verify repository
@@ -91,7 +93,7 @@ jobs:
         if: steps.route.outputs.mode == 'guidance'
         run: bun run test:product -- --guidance
 
-      - name: Verified ${{ steps.route.outputs.mode }} tree ${{ steps.revision.outputs.tree }} revision ${{ steps.revision.outputs.commit }} release-tag ${{ steps.revision.outputs.release-tag }}
+      - name: Verified ${{ steps.route.outputs.mode }} tree ${{ steps.revision.outputs.tree }} revision ${{ steps.revision.outputs.commit }} release-tag ${{ steps.revision.outputs.release-tag }} node ${{ steps.revision.outputs.node }} bun ${{ steps.revision.outputs.bun }}
         run: git diff --exit-code HEAD
 
   minimum-node:
