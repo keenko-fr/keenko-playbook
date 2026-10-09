@@ -5,7 +5,7 @@ import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { hasFullVerification, verificationMode } from "./ci-verification.js";
+import { hasVerification, verificationMode } from "./ci-verification.js";
 
 const guidance = "src/generators/sync/files/docs/conventions/schema-types.md";
 const tree = "a".repeat(40);
@@ -77,7 +77,7 @@ describe("PR verification routing", () => {
 
 describe("release evidence", () => {
   test("requires GitHub-owned successful full steps, exact tree and minimum Node acceptance", () => {
-    expect(hasFullVerification(run, jobs, repository, 2, tree)).toBe(true);
+    expect(hasVerification(run, jobs, repository, 2, tree)).toBe(true);
     for (const changedRun of [
       { ...run, conclusion: "failure" },
       { ...run, event: "push" },
@@ -88,16 +88,16 @@ describe("release evidence", () => {
       { ...run, head_repository: null },
       { ...run, repository: { full_name: "other/repo" } },
     ])
-      expect(hasFullVerification(changedRun, jobs, repository, 2, tree)).toBe(false);
-    expect(hasFullVerification(run, jobs, repository, 2, "c".repeat(40))).toBe(false);
+      expect(hasVerification(changedRun, jobs, repository, 2, tree)).toBe(false);
+    expect(hasVerification(run, jobs, repository, 2, "c".repeat(40))).toBe(false);
     for (const missing of jobs[0].steps)
       expect(
-        hasFullVerification(run, [{ ...jobs[0], steps: jobs[0].steps.filter((step) => step !== missing) }, jobs[1]], repository, 2, tree)
+        hasVerification(run, [{ ...jobs[0], steps: jobs[0].steps.filter((step) => step !== missing) }, jobs[1]], repository, 2, tree)
       ).toBe(false);
     for (const conclusion of ["failure", "skipped", "cancelled"])
       for (const index of [0, 1])
         expect(
-          hasFullVerification(
+          hasVerification(
             run,
             jobs.map((job, i) => (i === index ? { ...job, conclusion } : job)),
             repository,
@@ -106,7 +106,7 @@ describe("release evidence", () => {
           )
         ).toBe(false);
     expect(
-      hasFullVerification(
+      hasVerification(
         run,
         [{ ...jobs[0], steps: jobs[0].steps.map((step) => ({ ...step, conclusion: "skipped" })) }, jobs[1]],
         repository,
@@ -115,7 +115,7 @@ describe("release evidence", () => {
       )
     ).toBe(false);
     expect(
-      hasFullVerification(
+      hasVerification(
         run,
         [{ ...jobs[0], steps: jobs[0].steps.map((step) => ({ ...step, name: step.name.replace("full tree", "guidance tree") })) }, jobs[1]],
         repository,
@@ -158,7 +158,7 @@ test("workflow keeps the required check unconditional and publication behind ful
   expect(ci).toContain("      - edited\n");
   const release = readFileSync(path.join(import.meta.dirname, "../.github/workflows/release.yml"), "utf-8");
   for (const step of ["Verify repository", "Verify packed product before publication"])
-    expect(release.split(`      - name: ${step}\n`)[1]?.split("      - name:")[0]).toContain("if: steps.evidence.outputs.reuse != 'true'");
+    expect(release.split(`      - name: ${step}\n`)[1]?.split("      - name:")[0]).toContain("steps.evidence.outputs.reuse != 'full'");
   expect(release.match(/bun run test:published --/gu)).toHaveLength(1);
   expect(release).toContain("permission-contents: write");
   expect(release).toContain("id-token: write");
@@ -256,12 +256,22 @@ test("release CLI accepts a squash with the same tree, rejects changed workflows
       expect(result.status, result.stderr).toBe(0);
       return readFileSync(output, "utf-8");
     };
-    expect(reuse()).toBe("reuse=true\n");
+    expect(reuse()).toBe("reuse=full\n");
+    const guidanceJobs = returnedJobs.map((job) => ({
+      ...job,
+      steps: job.steps.map((step) => ({
+        ...step,
+        name: step.name.replace("Verified full tree", "Verified guidance tree").replace("Verify packed product", "Verify packed guidance"),
+      })),
+    }));
+    write("jobs.json", JSON.stringify({ jobs: guidanceJobs }));
+    expect(reuse()).toBe("reuse=guidance\n");
+    write("jobs.json", JSON.stringify({ jobs: returnedJobs }));
     git(["tag", "v2.0.0", tested]);
-    expect(reuse()).toBe("reuse=false\n");
+    expect(reuse()).toBe("reuse=none\n");
     git(["tag", "--delete", "v2.0.0"]);
     git(["commit", "--quiet", "--allow-empty", "-m", "Unverified release identity"]);
-    expect(reuse()).toBe("reuse=false\n");
+    expect(reuse()).toBe("reuse=none\n");
     git(["reset", "--hard", "HEAD^"]);
     write(".github/workflows/ci.yml", `${workflow}\n# changed workflow\n`);
     git(["add", ".github/workflows/ci.yml"]);
@@ -277,8 +287,8 @@ test("release CLI accepts a squash with the same tree, rejects changed workflows
         })),
       })
     );
-    expect(reuse()).toBe("reuse=false\n");
+    expect(reuse()).toBe("reuse=none\n");
     write("bin/gh", "#!/bin/sh\nexit 1\n");
-    expect(reuse()).toBe("reuse=false\n");
+    expect(reuse()).toBe("reuse=none\n");
   });
 });

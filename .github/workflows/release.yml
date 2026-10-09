@@ -65,21 +65,21 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Find equivalent full PR verification
+      - name: Find equivalent PR verification
         id: evidence
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun run tests/ci-verification.ts --reuse
 
       - name: Verify repository
-        if: steps.evidence.outputs.reuse != 'true'
+        if: steps.evidence.outputs.reuse != 'full' && steps.evidence.outputs.reuse != 'guidance'
         run: bun run check
 
       - name: Verify release plan
         run: bun x nx release plan:check
 
       - name: Verify packed product before publication
-        if: steps.evidence.outputs.reuse != 'true'
+        if: steps.evidence.outputs.reuse != 'full'
         run: bun run test:product
 
       - name: Configure release identity

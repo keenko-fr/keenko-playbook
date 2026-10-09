@@ -32,7 +32,14 @@ const sJob = S.Struct({
 type Run = S.Schema.Type<typeof sRun>;
 type Job = S.Schema.Type<typeof sJob>;
 
-export const hasFullVerification = (run: Run, jobs: readonly Job[], repository: string, workflowId: number, tree: string) =>
+export const hasVerification = (
+  run: Run,
+  jobs: readonly Job[],
+  repository: string,
+  workflowId: number,
+  tree: string,
+  mode: "full" | "guidance" = "full"
+) =>
   run.repository.full_name === repository &&
   run.head_repository?.full_name === repository &&
   run.workflow_id === workflowId &&
@@ -44,13 +51,13 @@ export const hasFullVerification = (run: Run, jobs: readonly Job[], repository: 
     (job) =>
       job.name === "check" &&
       job.conclusion === "success" &&
-      ["Verify repository", "Verify release plan", "Verify packed product"].every((name) =>
+      ["Verify repository", "Verify release plan", mode === "full" ? "Verify packed product" : "Verify packed guidance"].every((name) =>
         job.steps.some((step) => step.name === name && step.conclusion === "success")
       ) &&
       job.steps.some(
         (step) =>
           step.conclusion === "success" &&
-          new RegExp(`^Verified full tree ${tree} revision [a-f0-9]{40} release-tag v[^ ]+$`, "u").test(step.name)
+          new RegExp(`^Verified ${mode} tree ${tree} revision [a-f0-9]{40} release-tag v[^ ]+$`, "u").test(step.name)
       )
   ) &&
   jobs.some((job) => job.name === "minimum-node" && job.conclusion === "success");
@@ -73,10 +80,11 @@ const reuseVerification = E.gen(function* () {
     const jobs = yield* S.decodeEffect(S.fromJsonString(S.Struct({ jobs: S.Array(sJob) })))(
       yield* command("gh", ["api", `repos/${repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`])
     );
-    if (!hasFullVerification(run, jobs.jobs, repository, Number(workflowId), tree)) continue;
+    const mode = hasVerification(run, jobs.jobs, repository, Number(workflowId), tree) ? "full" : "guidance";
+    if (!hasVerification(run, jobs.jobs, repository, Number(workflowId), tree, mode)) continue;
     const recorded = jobs.jobs
       .find((job) => job.name === "check")
-      ?.steps.find((step) => step.name.startsWith(`Verified full tree ${tree} revision `));
+      ?.steps.find((step) => step.name.startsWith(`Verified ${mode} tree ${tree} revision `));
     const tested = recorded?.name.split(" ")[5] ?? "";
     const recordedTag = recorded?.name.split(" ")[7] ?? "";
     yield* command("git", ["fetch", "--no-tags", "origin", tested]);
@@ -104,10 +112,10 @@ const reuseVerification = E.gen(function* () {
       (yield* command("git", ["describe", "--tags", "--match", "v*", "--abbrev=0", tested])).trim() !== releaseTag
     )
       continue;
-    yield* Console.log(`Reusing full verification from https://github.com/${repository}/actions/runs/${run.id} for tree ${tree}`);
-    return true;
+    yield* Console.log(`Reusing ${mode} verification from https://github.com/${repository}/actions/runs/${run.id} for tree ${tree}`);
+    return mode;
   }
-  return false;
+  return "none";
 });
 
 const routeVerification = E.gen(function* () {
@@ -130,7 +138,7 @@ if (import.meta.main)
       const reuse = process.argv[2] === "--reuse";
       const value = reuse
         ? yield* reuseVerification.pipe(
-            E.catch((error) => Console.log(`Verification evidence unavailable; running full checks: ${String(error)}`).pipe(E.as(false)))
+            E.catch((error) => Console.log(`Verification evidence unavailable; running full checks: ${String(error)}`).pipe(E.as("none")))
           )
         : yield* routeVerification;
       const output = yield* Config.String("GITHUB_OUTPUT");
