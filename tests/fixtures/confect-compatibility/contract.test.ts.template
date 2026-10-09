@@ -76,10 +76,10 @@ it.effect("qualifies stable Confect codegen, named runners, codecs and cardinali
         const ctx = yield* MutationCtx;
         yield* E.promise(() => ctx.db.insert("compatibilityRows", { key: "invalid-field", score: -1 }));
         expect((yield* rows.get("by_key", "invalid-field").pipe(E.flip))._tag).toBe("DocumentDecodeError");
-        // Structural system-field derivation still drops this outer check; field checks survive in the registered reader.
+        // The qualified system-field derivation preserves outer checks in the registered reader.
         expect(S.is(sChecked)({ key: "outer-invalid", score: 1 })).toBe(false);
         yield* E.promise(() => ctx.db.insert("compatibilityRows", { key: "outer-invalid", score: 1 }));
-        expect((yield* rows.get("by_key", "outer-invalid")).key).toBe("outer-invalid");
+        expect((yield* rows.get("by_key", "outer-invalid").pipe(E.flip))._tag).toBe("DocumentDecodeError");
       })
     );
     expect(O.getOrThrow(yield* t.query(refs.public.compatibility.forward, { key: "runner" })).score).toBe(3);

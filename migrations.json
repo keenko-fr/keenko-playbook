@@ -4,6 +4,11 @@
       "version": "1.0.4-rc.0",
       "description": "Converge Keenko-owned dependency slots to the target package baseline, preserving unrelated dependencies.",
       "factory": "./dist/migrations/managed-dependencies-1-0-4"
+    },
+    "1.0.5-backend-convention": {
+      "version": "1.0.5-rc.0",
+      "description": "Converge managed dependencies and safely extend backend compiler/lint coverage without moving application code.",
+      "factory": "./dist/migrations/backend-convention-1-0-5"
     }
   }
 }

@@ -105,7 +105,7 @@ export const sFooDoc = SystemFields.extendWithSystemFields("foos", sFooFields);
 export type FooDoc = typeof sFooDoc.Type;
 ```
 
-Here `S` is Effect Schema and `SystemFields` comes from `@confect/core`. With installed Confect `10.0.0`, `extendWithSystemFields(tableName, schema)` takes the table name first. Do not manually recreate Convex `_id` or `_creationTime`. A table may use its fields Schema directly without exporting every shown type or a separate Doc Schema.
+Here `S` is Effect Schema and `SystemFields` comes from `@confect/core`. With qualified Confect `10.1.0`, `extendWithSystemFields(tableName, schema)` takes the table name first. Do not manually recreate Convex `_id` or `_creationTime`. A table may use its fields Schema directly without exporting every shown type or a separate Doc Schema.
 
 Non-persisted/provider schemas follow their own semantics, with Schema/type adjacency and narrow ownership.
 
@@ -126,7 +126,7 @@ Inspect installed equivalents of `Struct.assign`, `S.toEncoded`, `S.toType`, `S.
 
 Composition can drop outer checks. In particular, `mapFields` drops them by default; `unsafePreserveChecks: true` is valid only when the existing predicate remains sound for the resulting shape. Reapply or rewrite checks when changing their required facts.
 
-Confect's registered table reader builds the complete document decoder from the declared table Schema. In installed Confect `10.0.0`, the plain Struct system-field path can drop outer table checks while preserving field checks. A separately checked `sFooDoc` is not proof that the registered reader enforces that check. Preserve required multi-field/business invariants explicitly in the owning operation and verify through the persistence path.
+Confect's registered table reader builds the complete document decoder from the declared table Schema. In qualified Confect `10.1.0`, the Struct and Union system-field paths preserve outer checks with `unsafePreserveChecks: true`; the plain Struct path in `10.0.0` dropped them. The original predicate must remain sound after adding system fields. Verify required checks through the registered persistence path, not only a separately checked `sFooDoc`. Preserve independent interresource and business invariants in their owning operation.
 
 ## Creation and patch contracts
 

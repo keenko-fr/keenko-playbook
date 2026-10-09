@@ -21,7 +21,7 @@ The fresh preset moves technical helpers to `features/confect.ts`, removes its f
 
 The generated backend disables only `typescript/consistent-type-definitions` in `packages/backend/**/*.ts`. Other workspaces retain their policy. Root declaration-order options permit hoisted functions/types; the existing backend override remains unchanged.
 
-## Installed behavior
+## Installed behavior at efd135b
 
 Verification used Node 24.15.0 and Bun 1.4.2. The ordinary shell resolves Node 26, which is outside Keenko's supported range; checks used an explicit local Node 24 PATH.
 
@@ -33,7 +33,7 @@ Installed source confirms the plain Struct system-field path uses fieldsAssign a
 
 Additional probes verified the documented system-field API, structural pick/omit/evolve/fieldsAssign operations and optionalKey/optional behavior. Installed Oxlint accepted the canonical hoisted helper under the stricter root options and rejected a later const helper. All backend documentation/template separators measured exactly 140 characters.
 
-## Results
+## Initial convention verification at efd135b
 
 | Check | Result |
 | --- | --- |
@@ -50,10 +50,49 @@ Additional probes verified the documented system-field API, structural pick/omit
 
 Oxlint/Effect tooling emitted 314 nonblocking warnings, mostly unstable-API diagnostics. The live shadcn option and a separate published 1.0.4-origin upgrade were not run; the complete configured product gate used its existing unchanged 1.0.3 source fixture.
 
+## Release preparation for 1.0.5-rc.0
+
+The owner reported independent APPROVE for the initial change; GitHub CI on `efd135b` is green. The changes below require a new review. Commit `879d51b` replaces obsolete test-guide vocabulary with ownership by Confect, features, pure domain behavior and justified direct persistence tests.
+
+### Dependency qualification
+
+`bun run deps:update` completed on 2026-10-09 and discovered 64 managed packages, including the aligned root Nx package. The selected updates retain exact pins:
+
+| Packages | Previous → selected | Qualification |
+| --- | --- | --- |
+| @confect/cli, core, server, test | 10.0.0 → 10.1.0 | Qualify the family together. CLI/server require Effect ^4.0.1, satisfied by 4.0.2; core accepts Convex ^1.32.0, satisfied by 1.46.0. Installed reader, codegen, specs, runners and rollback are checked in both consumers. |
+| @tanstack/react-table | 9.2.6 → 9.2.8 | Patch updates table-core/tree shaking and types; React >=18 and Node >=20 accept the existing tuple. |
+| lucide-react | 1.52.0 → 1.53.0 | Icon additions/fixes; React 19 remains supported. |
+| vite | 8.3.3 → 8.3.4 | Build/HMR fixes; Node 24 and Vitest 5 peers remain supported. Root manifest/lock and generated application baseline agree. |
+
+The Nx family remains 23.3.0; the next-channel candidate is not adopted. TypeScript remains 6.0.3 because native compiler 7 does not replace the JavaScript compiler API needed by Nx and migrations. `@typescript/native` stays `npm:typescript@7.0.2`. Oxlint 1.87.0 retains its qualified Effect-tsgo native patching tuple. WorkOS SDK 11 remains excluded by both AuthKit integrations; SDK 10.14.0 and the existing AuthKit test-entrypoint patch remain. Effect 4.0.2, tsgo 0.51.1, Convex 1.46.0 and the remaining TanStack/AuthKit packages are unchanged. Bun alone refreshed `bun.lock`, including Vite's PostCSS transitives.
+
+Primary release evidence: [Confect CLI](https://github.com/rjdellecese/confect/releases/tag/%40confect%2Fcli%4010.1.0), [Table](https://github.com/TanStack/table/releases/tag/%40tanstack%2Freact-table%409.2.8), [Lucide](https://github.com/lucide-icons/lucide/releases/tag/1.53.0), [Vite](https://github.com/vitejs/vite/releases/tag/v8.3.4). Exact registry manifests and shipped Confect source were inspected as well.
+
+Confect 10.1.0's shipped `SystemFields` uses `mapFields`/`mapMembers` with `unsafePreserveChecks: true`. The canonical guide and registered-reader regression now reflect preservation of outer checks, replacing the obsolete 10.0.0 plain-Struct caveat. Independent business and cross-resource checks remain required.
+
+### Native migration and N-1 proof
+
+`1.0.5-backend-convention` at `1.0.5-rc.0` prevalidates compiler/lint configuration before reusing `1.0.4-managed-dependencies`. It adds domain/errors compiler includes and the backend-only type-definition override through targeted text edits. It preserves existing data includes, custom options/comments, unrelated workspaces/dependencies, lock ownership and all application source. Customized rules, computed/duplicate overrides, excluded owners or malformed configuration fail with manual reconciliation instructions before this migration writes. Reruns are byte-stable. The old metadata/factory remains for its real dependency responsibility and historical boundary.
+
+The sole full supported upgrade originates from the unchanged published stable package named by `tests/fixtures/upgrade-source.json`, currently 1.0.4. Bootstrap Nx derives from that archive's exact devkit dependency. Native planning selects only the new entry for RC and stable targets. Historical 1.0.3 → 1.0.4 planning tests remain, without widening the supported product window.
+
+Frozen published compiler/lint fixtures seed focused migration tests. Vitest's stale 1.0.3 test path is corrected, and Bun excludes the new Vitest suite. The product gate checks all 76 managed dependency slots and ten canonical/packed/generated guidance files. The upgraded consumer repeats Confect compatibility; negative domain/errors compiler probes prove coverage. Reinstall, sync and actual migration reruns compare configuration and the original data helper as well as manifests and lock state.
+
+### Release checks
+
+- Frozen install and full `bun run check` pass on Node 24.15.0 / Bun 1.4.2: 22 Bun tests and 174 Vitest tests, including 14 focused migration tests.
+- Native plan checking passes. Full `nx release --dry-run --skip-publish --preid rc` resolves 1.0.5-rc.0, renders the plan's changelog/GitHub release and makes no writes or publication. Root package version remains 1.0.4.
+- Existing release verification passes for RC/stable versioning, changelog ownership, `rc`/`latest` dist-tags, the publication waiter and exact/tag-selected published-product commands. Release workflow remains manual; stable promotion derives the version from the accepted RC and refreshes no dependencies.
+- Full `bun run test:product` passes in 267.709 seconds, including published 1.0.4 → local `1.0.5-rc.0-product.<run-id>`, native migration, Confect generation/registered checks, compilation, lint, tests, build, foreign dependency preservation, frozen/ordinary reinstall and byte-stable sync/migration reruns. The new factory is present in the packed package and selected by Nx.
+- Final formatting and `git diff --check` pass. Product teardown emits the existing Verdaccio shutdown diagnostic after all phases complete; the gate exits 0.
+
+Lint reports 321 warnings versus the initial 314. Five new unstable-API diagnostics belong to the migration test suite and two to the product compiler probes; the migration implementation introduces none. No warning policy was suppressed to hide the difference.
+
 ## Review and consumer adoption
 
-Changes are prepared on branch `kee-63` for pull-request review. CI and independent Reviewer acceptance remain pending. Public publication, merge, deployment and Anoulà adaptation are separate steps.
+Changes are prepared on branch `kee-63` for renewed review of PR #58. Initial CI/approval predates release preparation. Final-head CI and independent Reviewer acceptance remain pending. Public publication, merge, deployment and Anoulà adaptation are separate steps. The live shadcn smoke and public 1.0.5-rc.0 acceptance are not run before publication.
 
 After publication, Anoulà must regenerate package-owned guidance, reconcile project/Linear decisions, then adapt its runtime under Coder Anoulà and Reviewer. ANO-16 product decisions and established authorization, allocation, replay and cross-resource invariants remain authoritative.
 
-Sync preserves application-owned files. Older consumers must explicitly adjust their backend lint/compiler configuration when adopting the convention, and move their own data helpers during their runtime adaptation. This change does not automate that source migration.
+Sync preserves application-owned files. Native Nx now handles recognized lint/compiler configuration; customized configurations require reconciliation. Consumers move their own data helpers during their runtime adaptation. This change does not automate that source migration.
