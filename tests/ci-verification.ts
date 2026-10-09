@@ -67,6 +67,9 @@ const command = E.fn("ci.command")(function* (executable: string, args: readonly
   return yield* spawner.string(ChildProcess.make(executable, args, { forceKillAfter: "5 seconds" }));
 });
 
+const sameSquashBase = (testedParents: readonly string[], releaseParents: readonly string[], head: string) =>
+  testedParents.length === 2 && releaseParents.length === 1 && testedParents[0] === releaseParents[0] && testedParents[1] === head;
+
 const reuseVerification = E.gen(function* () {
   const repository = yield* Config.String("GITHUB_REPOSITORY");
   const tree = (yield* command("git", ["rev-parse", "HEAD^{tree}"])).trim();
@@ -98,13 +101,7 @@ const reuseVerification = E.gen(function* () {
     if (revision !== tested) {
       const testedParents = (yield* command("git", ["show", "-s", "--format=%P", tested])).trim().split(" ");
       const releaseParents = (yield* command("git", ["show", "-s", "--format=%P", revision])).trim().split(" ");
-      if (
-        testedParents.length !== 2 ||
-        releaseParents.length !== 1 ||
-        testedParents[0] !== releaseParents[0] ||
-        testedParents[1] !== run.head_sha
-      )
-        continue;
+      if (!sameSquashBase(testedParents, releaseParents, run.head_sha)) continue;
     }
     const releaseTag = (yield* command("git", ["describe", "--tags", "--match", "v*", "--abbrev=0", revision])).trim();
     if (
