@@ -2,20 +2,23 @@
 
 Use representations that correspond to real ownership or runtime boundaries. Naming symmetry is never a reason to create another layer.
 
-## Canonical vocabulary
+## Representation vocabulary
 
-For a persisted resource `Foo`:
+`FooFields`, `FooDoc`, `Foo`, `FooInsert` and `FooPatch` are optional roles, not a mandatory family for each table:
 
-- `sFooFields` / `FooFields`: application-owned persisted fields, excluding Convex `_id` and `_creationTime`;
-- `sFooDoc` / `FooDoc`: complete decoded persistence document including system fields;
-- `sFoo` / `Foo`: canonical backend business Entity, retaining persistence identity and optionally adding constitutive related Entities;
-- `sFooInsert` / `FooInsert`: application-controlled creation payload required to create the persisted resource;
-- focused Patch contracts: operation-scoped update payloads when the operation owns meaningful invariants;
-- `sFooDto` / `FooDto`: faithful foreign-system-owned representation crossing an integration boundary.
+- `Fields` describes application-controlled persisted fields when that distinction is useful.
+- `Doc` describes the full decoded persisted document, including system identity.
+- `Foo` describes a meaningful stable business representation, possibly enriched.
+- `Insert` or `Input` describes a real creation/business input contract.
+- `Patch` describes a meaningful partial-update contract.
+- `Args` describes function parameters, not an independent business representation.
+- `Dto` describes a faithful foreign-system-owned representation.
 
-Persisted resources expose `Fields` and `Doc`. A canonical `Foo` exists when the persisted resource also owns a meaningful backend business Entity. `Insert`, Patch contracts, foreign `Dto`, and other representations exist when meaningful. Do not manufacture `Foo` solely because a table exists in persistence. This Entity contract concerns persisted resources; it does not redefine every non-persisted application representation as an Entity. `Dto` is not a generic synonym for an object that transports data: do not use it for Keenko-owned application models, feature inputs, forms, command payloads, Confect inputs, persistence documents, inserts, patches, view models, arbitrary response objects, or internal intermediates. Keep the canonical name `Foo`; do not introduce `FooEntity`, `FooModel`, `FooViewModel`, or `Entry` synonyms, or a generic `Entity` base class. `ENTITY` below is a section heading, not another representation name.
+Keep the Schemas required for table definition and persistence decoding. Removing redundant aliases or read/write representations does not remove Confect validation. Use existing documents when sufficient; do not create `Foo = FooDoc` or an identity `sFoo` alias merely for symmetry.
 
-Effect Schema values use the `s` prefix exclusively. An `s...` value is an Effect Schema, never a Standard Schema adapter.
+No canonical Entity, full Entity argument or hydration is mandatory. Do not invent Entity/Model/ViewModel alternatives or a generic Entity base to preserve the former architecture. A longer name remains valid when it expresses a real semantic distinction.
+
+Effect Schema values use the `s` prefix exclusively. An `s...` value is an Effect Schema, never a Standard Schema adapter. `Dto` remains reserved for foreign representations, not internal inputs, persistence documents or application transport projections.
 
 ## Schema-derived type adjacency
 
@@ -36,7 +39,7 @@ export type FooEncoded = typeof sFoo.Encoded;
 
 Do not routinely export encoded aliases. Private schemas do not need artificial exported companion types.
 
-`TYPES` sections remain valid in file grammars for standalone types that do not correspond directly to a colocated schema declaration, such as helper types and function contracts. Do not collect schema-derived aliases in a trailing generic `TYPES` section.
+Local argument/helper types follow their owning operation as described in `backend-file-topology.md`. Do not collect Schema-derived aliases in a trailing generic `TYPES` section.
 
 A class declared with `S.TaggedError` already provides its TypeScript type identity. Do not add a redundant alias for it.
 
@@ -45,14 +48,15 @@ A class declared with `S.TaggedError` already provides its TypeScript type ident
 Keep every schema at the narrowest layer that genuinely owns its semantics. Do not move a schema merely because it is an Effect Schema.
 
 - Endpoint-only Confect input/output details stay with the endpoint/spec; simple one-use schemas normally stay inline.
-- Feature-local application schemas and issue vocabularies stay with the feature.
+- Feature-local runtime contracts stay with the feature only when a real validation boundary justifies them; internal args may be plain types.
+- Context issue/Failure/Defect contracts belong in `errors/<concept>.ts`; declare only used families.
 - Application representations genuinely shared across multiple backend layers belong in `packages/backend/schemas/<resource>.ts`.
 - Foreign-system-owned wire/data representations belong in `packages/backend/schemas/<provider>/<resource>.ts` from the first real provider schema.
-- Persistence-only schemas, including focused patches used only by data, stay with the narrowest persistence/data owner.
-- Infra `Issue` / `Failure` schemas stay with the infra capability because they describe our adapter contract rather than the provider wire format.
+- Persisted/runtime representations belong in `schemas/<concept>.ts`; operation-local contracts stay with their narrower owner.
+- Infra error contracts describe the capability, not the provider wire shape, and belong in `errors/<concept>.ts`.
 - Move/expose an application schema through `packages/shared/schemas` only when a real second workspace/runtime consumes the same representation; do not create `packages/shared` in anticipation of that consumer.
 
-A backend-only Entity stays under backend schema ownership. A frontend consuming a transport projection does not consume the same representation as backend `Foo` and does not justify moving `sFoo` to `packages/shared`. Boundary-specific transport schemas stay at the narrowest Confect/API/facade owner. Share only the exact representation that has a real cross-workspace/runtime consumer.
+A backend runtime representation stays under backend schema ownership; an internal enrichment can remain a plain type with its operation owner. A frontend consuming a transport projection does not consume the same representation as backend `Foo` and does not justify moving `sFoo` to `packages/shared`. Boundary-specific transport schemas stay at the narrowest Confect/API/facade owner. Share only the exact representation that has a real cross-workspace/runtime consumer.
 
 `packages/backend/schemas` owns organized representation schemas, not every Effect Schema in the backend.
 
@@ -78,7 +82,7 @@ See `backend-architecture.md` for package/layer boundaries and `validation.md` f
 
 ## Persisted resource schema files
 
-Persisted resource schema modules use this major order:
+Use only sections for existing contracts, in this semantic order:
 
 ```text
 CONSTANTS
@@ -86,70 +90,30 @@ FIELDS
 ENTITY
 INSERT
 PATCH
-INTERNALS
 ```
 
-Omit empty sections. Use the separator mechanics from `backend-file-topology.md`.
+Omit unused sections. `CONSTANTS` contains real semantic primitives/constants. `FIELDS` contains application-controlled table fields and any useful complete document Schema. `ENTITY`, `INSERT` and `PATCH` exist only for meaningful runtime contracts. No identity Entity or symmetric insert/patch family is required. Local helpers stay with their contract rather than in a compulsory final `INTERNALS` block.
 
-- `CONSTANTS` owns semantic leaf schemas and genuine constants, including finite vocabularies, branded IDs, bounded semantic scalars, other semantic primitives, and real runtime constants.
-- `FIELDS` owns `sFooFields` / `FooFields` and `sFooDoc` / `FooDoc`. `FooDoc` stays in `FIELDS`; do not create a `DOC` section.
-- `ENTITY` owns `sFoo` / `Foo` when the persisted resource has a meaningful canonical backend business Entity and meaningful schema checks. Hydration constructors belong in `features/`, never in this section. Omit `ENTITY` when the table is only a persistence encoding of another application concept and no canonical `Foo` exists.
-- `INSERT` owns `sFooInsert` / `FooInsert` when creation is meaningful.
-- `PATCH` exists only when the shared schema module genuinely owns a reusable patch contract.
-- `INTERNALS` owns only genuine private implementation helpers.
-
-Do not introduce competing headings such as `DOC`, `TRANSFORMS`, `PRIMITIVES`, `VALUES`, or `ENUMS`.
-
-A representative file can begin like this:
+Use the 140-character separator mechanics in `backend-file-topology.md`. A minimal persistence module can stop here:
 
 ```ts
-// CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
-export const sFooStatus = S.Literals(["active", "archived"]);
-export type FooStatus = typeof sFooStatus.Type;
-
 // FIELDS ----------------------------------------------------------------------------------------------------------------------------------
-export const sFooFields = S.Struct({ barId: sBarId, status: sFooStatus });
+export const sFooFields = S.Struct({ name: S.String });
 export type FooFields = typeof sFooFields.Type;
 
-export const sFooDoc = SystemFields.extendWithSystemFields("foo", sFooFields);
+export const sFooDoc = SystemFields.extendWithSystemFields("foos", sFooFields);
 export type FooDoc = typeof sFooDoc.Type;
-
-// ENTITY ----------------------------------------------------------------------------------------------------------------------------------
-export const sFoo = sFooDoc;
-export type Foo = typeof sFoo.Type;
-
-// INSERT ----------------------------------------------------------------------------------------------------------------------------------
-export const sFooInsert = sFooFields;
-export type FooInsert = typeof sFooInsert.Type;
 ```
 
-Here `sBarId` comes from the related resource's schema owner. This identity Entity retains `_id`, `_creationTime`, and `barId`; the foreign key alone does not require embedding `Bar`. Persistence alone does not require an `ENTITY` section. A storage-only table may expose `Fields`, `Doc`, `Insert`, and focused Patch contracts as meaningful without inventing `Foo`.
+Here `S` is Effect Schema and `SystemFields` comes from `@confect/core`. With installed Confect `10.0.0`, `extendWithSystemFields(tableName, schema)` takes the table name first. Do not manually recreate Convex `_id` or `_creationTime`. A table may use its fields Schema directly without exporting every shown type or a separate Doc Schema.
 
-For Confect `10.0.0-next.21`, `SystemFields.extendWithSystemFields(tableName, schema)` takes the table name first and the schema second. Inspect the installed Confect source before documenting exact syntax for another version. Do not manually recreate `_id` or `_creationTime`.
+Non-persisted/provider schemas follow their own semantics, with Schema/type adjacency and narrow ownership.
 
-Non-persisted, provider, and other schema owners are not forced into this persisted-resource grammar. Organize them only by relevant semantics while still following the universal adjacency, derivation, narrowest-owner, and no-duplicate-declaration rules.
+## Structural authority and derivation
 
-## One structural authority and derivation
+Derive related contracts from the nearest owner of their facts rather than repeating equivalent field declarations. Alias only when distinct, already-earned contracts genuinely share a structure.
 
-Related schemas derive, compose, or alias rather than independently repeating equivalent field declarations.
-
-When a persisted-resource Entity needs no enrichment beyond its complete decoded document, alias `Doc`:
-
-```ts
-export const sFoo = sFooDoc;
-export type Foo = typeof sFoo.Type;
-```
-
-Likewise, if creation semantics are identical:
-
-```ts
-export const sFooInsert = sFooFields;
-export type FooInsert = typeof sFooInsert.Type;
-```
-
-Do not create an identity `fooFrom` when `Foo === FooDoc`. Naming symmetry is not a reason to add a constructor. `Foo`, `Doc`, `Fields`, and `Insert` retain their semantic ownership even when some schemas currently alias.
-
-Derive from the nearest representation that already owns the facts you need. For Effect 4, inspect the installed API and prefer its structural algebra over reconstructing field objects manually. Supported Effect `4.0.0-beta.107` examples include:
+The installed Effect `4.0.2` structural APIs include:
 
 ```ts
 const sSelected = schema.mapFields(Struct.pick(["a", "b"]));
@@ -158,34 +122,24 @@ const sEvolved = schema.mapFields(Struct.evolve({ field: (field) => S.optionalKe
 const sExtended = schema.pipe(S.fieldsAssign({ other: S.String }));
 ```
 
-Use the installed equivalents of `Struct.assign`, `S.toEncoded(...)`, `S.toType(...)`, `S.decodeTo(...)`, and Schema transformation facilities when they express the actual relationship. For values, prefer `Struct.pick` / `Struct.omit` when the operation is structural projection.
+Inspect installed equivalents of `Struct.assign`, `S.toEncoded`, `S.toType`, `S.decodeTo` and transformation facilities when they express the relationship. Use value-level `Struct.pick`/`Struct.omit` for structural projections. Do not rebuild raw field objects when structural APIs express the operation.
 
-Do not default to raw reconstruction such as `S.Struct({ ...otherSchema.fields })` when an installed structural API expresses the relationship directly.
+Composition can drop outer checks. In particular, `mapFields` drops them by default; `unsafePreserveChecks: true` is valid only when the existing predicate remains sound for the resulting shape. Reapply or rewrite checks when changing their required facts.
 
-Schema composition can interact with checks/refinements. Preserve intended validation semantics rather than applying a transformation mechanically. In particular, inspect the installed `mapFields`/composition behavior when the source schema carries checks.
+Confect's registered table reader builds the complete document decoder from the declared table Schema. In installed Confect `10.0.0`, the plain Struct system-field path can drop outer table checks while preserving field checks. A separately checked `sFooDoc` is not proof that the registered reader enforces that check. Preserve required multi-field/business invariants explicitly in the owning operation and verify through the persistence path.
 
-## Fields, Doc, Foo, Insert, and Patch
+## Creation and patch contracts
 
-`sFooFields` owns application-controlled persisted field semantics.
+Use the data the operation actually needs. `create` may accept a direct value, an args object or a genuine business Input; it does not require `FooInsert` for every table. Native Confect writes still receive their installed decoded payload contract.
 
-`sFooDoc` derives from `sFooFields` with the installed Confect/Convex system-field facility.
-
-`sFoo` describes the canonical backend business Entity for a persisted resource that owns one. `Foo` retains `FooDoc` persistence/system identity, including `_id` and `_creationTime`. It may add constitutive related Entities and use backend/Effect-native values. Caller-facing transport/application projections are separate boundary-owned contracts.
-
-`sFooInsert` owns creation semantics. Creation APIs accept `FooInsert`, not `FooFields` or `Foo`, even when the current shapes coincide. Server-owned/defaulted values may still be added by the feature/data layer.
-
-A Patch represents operation scope and invariants, not “make every selected field optional.” For a status-only operation where status is required:
+A Patch expresses operation scope and invariants, not automatically an optional version of every field. For a status-only operation where status is required:
 
 ```ts
 const sFooStatusPatch = sFooFields.mapFields(Struct.pick(["status"]));
 type FooStatusPatch = typeof sFooStatusPatch.Type;
 ```
 
-Do not make `status` optional merely because the representation is called a patch. Do not manufacture a broad partial Patch contract for symmetry.
-
-The narrowest owner wins. If a focused patch is only a persistence/data contract, keep it data-local under that file's `SCHEMAS` section while deriving it from shared `Fields`. Move a patch into the shared schema module's `PATCH` section only when it is genuinely a cross-layer representation.
-
-Do not collapse an already-earned focused Patch to a naked scalar merely because it currently contains one field.
+This example assumes a fields Schema owning `status`. Do not make it optional merely because the contract is called Patch. Keep local update args at their operation owner; move a runtime patch to the resource Schema only for a real shared contract. Do not generate broad partial schemas by symmetry.
 
 ## Absence, optionality, and nullability
 
@@ -200,7 +154,7 @@ Transport projection: caller-appropriate encoding, such as null | string
 
 Reserve omitted keys for contracts where presence itself has semantics, especially patches and genuinely optional inputs.
 
-For Effect `4.0.0-beta.107`, distinguish intentionally:
+For installed Effect `4.0.2`, distinguish intentionally:
 
 - `S.optionalKey(schema)`: the key may be absent; explicit `undefined` is not automatically accepted as the field value;
 - `S.optional(schema)`: absence/explicit `undefined` semantics differ and may be appropriate when intentionally clearing an optional value;
@@ -210,19 +164,19 @@ Use `Struct.evolve` plus the appropriate optional schema when omission genuinely
 
 ## Transform ownership
 
-Name transforms by the representation they produce:
+Choose the shortest transform name that makes its output clear in context. In a resource namespace, `from` may suffice. In a mixed-representation scope:
 
 - `fooFrom(...)` produces `Foo`;
 - `fooDocFrom(...)` produces `FooDoc` when a reverse conversion genuinely exists;
 
-Do not encode the source representation in ordinary value-producing function names and do not create transforms for symmetry. A schema describing a boundary relationship is different: `sFooFromDto` intentionally identifies its foreign source so it cannot be confused with canonical `sFoo`.
+Do not create transforms for symmetry or require an enrichment helper. A schema describing a boundary relationship uses `sFooFromDto` to distinguish its foreign source from `sFoo`.
 
 Ownership follows the target/boundary semantics:
 
-- `features/foo.ts` owns `fooFrom(doc)`, which loads constitutive relations through data/features and assembles `Foo`;
+- enrichment that reads relations belongs in its impl or extracted feature; deterministic business computation belongs in domain only when extraction is useful;
 - foreign `Dto -> Foo` schema composition lives in the adapter/infra boundary that knows both representations unless a narrower genuine boundary owner exists;
-- persistence-only conversion lives in data;
-- workflow/business transition lives in the feature.
+- persistence representation codecs stay with their runtime contract;
+- workflow/business transition stays in its impl or extracted feature.
 
 Effect Schema transformations may model one-way, information-losing decoding across a real representation or trust boundary. This is appropriate when the foreign representation has an authored DTO schema, the decoded application representation has meaningful owned semantics, and omission, renaming, nullable normalization, image selection, flattening, nested normalization, defaults, or similar conversion naturally belongs to decoding. Name that relationship schema `sFooFromDto`. Its encoded side is the faithful foreign `FooDto`, its decoded side is canonical `Foo`, and encoding must be forbidden when the normalization cannot honestly be reversed. The relationship schema does not introduce another domain representation, so normally do not add a `FooFromDto` type.
 
@@ -230,44 +184,32 @@ Inside provider-specific adapter code such as `infra/tvmaze.ts`, prefer `sShowFr
 
 Do not force every mapper into Schema. Use a plain deterministic TypeScript function for business or workflow transitions, arbitrary internal computation, mappings outside a schema/trust boundary, or cases where a schema transformation would obscure ownership.
 
-## Constitutive relations and Entity construction
+## Enrichment on demand
 
-Embed a related Entity in canonical `Foo` only when that relation is a stable and constitutive part of `Foo`'s own business representation or invariants. A foreign key alone does not justify embedding.
+Prefer, in order:
 
-- Embedded relations are mandatory parts of that Entity representation. Do not use `Option<Bar>` merely to represent hydration that has not happened yet.
-- Persisted relation IDs remain present. Hydration adds relations while retaining persistence identity.
-- Persistence remains normalized. Embedded Entities are not recursively persisted merely because they appear in backend `Foo`.
-- Reverse relations and child collections normally remain queries or use-case projections rather than canonical parent fields.
+1. The existing document when it suffices.
+2. Enrichment of the existing resource when a relation has useful semantics.
+3. Local variables for resources needed only briefly.
+4. A distinct representation for a genuinely distinct meaning.
 
-Canonical mandatory Entity embedding should remain directed and acyclic. If embedding both directions would create a cycle, revisit ownership rather than introducing lazy, partial, or recursive Entity representations. This rule applies to the graph of mandatory full-Entity embedding dependencies, not all business/domain relationships.
-
-The schema module describes the Entity. The resource feature owns its hydration constructor and loads the required relations directly.
-
-`schemas/admins.ts`:
+If Bar is a significant constitutive relation, an internal representation can simply be:
 
 ```ts
-export const sAdmin = sAdminDoc.mapFields(Struct.assign({ user: sUser }), { unsafePreserveChecks: true });
-export type Admin = typeof sAdmin.Type;
+type Foo = FooDoc & {
+  readonly bar: BarDoc;
+};
 ```
 
-`features/admins.ts`:
+This assumes existing decoded `FooDoc` and `BarDoc` contracts. It does not require `sFoo`, a constructor, another resource bundle or enrichment at every read. Put the type with its narrowest semantic owner; use `schemas/` when a real runtime representation is owned there.
 
-```ts
-const adminFrom = E.fn("admins.features.adminFrom")(function* (doc: AdminDoc) {
-  const user = yield* userData.getById(doc.userId);
-  return { ...doc, user } satisfies Admin;
-});
-```
+Keep persistence normalized. Enrichment does not recursively persist relations or require a graph of complete Entities. Do not introduce generic hydration, Repository or EntityLoader infrastructure.
 
-`schemas/` owns Entity representations, types and meaningful schema validations. It has no hydration functions or data dependencies. `features/` owns `fooFrom(doc)`, constitutive relation loading, Entity assembly and use-case orchestration. `data/` returns decoded `FooDoc`; `domain/` owns pure business behavior.
+Loading Bar by `doc.barId` establishes identity. Do not add a redundant FK equality check or an artificial absence/failure path just to assemble the representation.
 
-Loading User with `getById(doc.userId)` already establishes its identity. Do not add `adminRelationsAgree`, an `admin.userId === admin.user._id` check, or an artificial `Option<Admin>` or failure path for that equality. Required relations use the existing retrieval semantics; valid absence in a lookup remains distinct from hydration.
+When a Foo and its Bar must have the same owner, identity does not establish `doc.ownerId === bar.ownerId`. Check that independent business invariant when both resources are available and correctness requires it. Reusable pure predicates belong in domain and receive independent facts; structural constraints stay local to their Schema. Avoid schema/domain cycles.
 
-Preserve genuine structural and business invariants. For example, when a Foo and its Bar must have the same owner, loading Bar by `doc.barId` establishes its identity but does not establish `doc.ownerId === bar.ownerId`. Keep the meaningful schema check and enforce that invariant in the owning feature/domain without repeating full schema decoding. A pure invariant predicate may be shared where both owners need the same rule.
-
-Constructors trust decoded internal documents and relation Entities. Do not require an additional runtime schema decode merely to assemble them. Preserve source-schema checks when deriving the enriched schema according to the installed structural API's behavior. Do not introduce a generic hydration framework, repository or EntityLoader.
-
-For an actual transport projection, value-level `Struct.pick` / `Struct.omit` may be appropriate at the caller-facing boundary. Removing `_id` or `_creationTime` there does not redefine canonical backend `Foo`. Provider decoding such as `sFooFromDto` remains separate from internal Entity hydration.
+Do not require an additional runtime schema decode merely to assemble trusted documents. This does not bypass meaningful business checks or Schema checks at actual validation boundaries. A caller-facing projection may omit metadata without redefining the persisted resource.
 
 ## Foreign DTO representations
 
@@ -296,7 +238,7 @@ export const sShowDto = S.Struct({ id: S.Int, name: S.String });
 export type ShowDto = typeof sShowDto.Type;
 ```
 
-This provider-normalization example uses a non-persisted application `Show`, not a persisted-resource Entity. It does not replace document-to-Entity construction or remove persisted identity. The application schema remains independent of the provider's DTO and wire representation. Provider independence does not require erasing provider identity when that identity is part of the application model:
+This provider-normalization example uses a non-persisted application `Show`. It does not prescribe another representation for persisted resources. The application schema remains independent of the provider's DTO and wire representation. Provider independence does not require erasing provider identity when that identity is part of the application model:
 
 ```ts
 // schemas/shows.ts
@@ -326,9 +268,9 @@ Use `typeof sFoo.Type` for the normal decoded TypeScript type. Use `.Encoded` on
 
 `FooFields` and `FooDoc` are backend/persistence decoded representations and may use useful Effect-native values such as `Option` when the schema encodes them to Convex-compatible primitives.
 
-For a persisted-resource Entity, `Foo` is the canonical backend business representation. It may contain `Option`, appropriate date/time/domain types, and embedded Entities. It is not automatically a frontend/server-client transport contract. Its shape and semantics remain independent of foreign provider DTOs; an explicit provider identity may still be part of `Foo` when the application owns and depends on it.
+A meaningful business representation may contain `Option`, appropriate date/time/domain types and useful relations. It is not automatically a frontend/server-client transport contract. Its shape and semantics remain independent of foreign provider DTOs; an explicit provider identity may still be part of `Foo` when the application owns and depends on it.
 
-Confect/API/facade boundaries own the caller-facing projection and choose schemas/codecs appropriate to their transport and runtime requirements. Do not distort backend Entity design solely to make it serializable by a caller, or rely on callers to remember to encode backend values. Projection names follow actual endpoint semantics; no mandatory `FooResponse`, `FooTransport`, or generic `FooDto` convention is introduced. `Dto` remains reserved for foreign-system-owned representations.
+Confect/API/facade boundaries own the caller-facing projection and choose schemas/codecs appropriate to their transport and runtime requirements. Do not distort internal representation design solely to make it serializable by a caller, or rely on callers to remember to encode backend values. Projection names follow actual endpoint semantics; no mandatory `FooResponse`, `FooTransport`, or generic `FooDto` convention is introduced. `Dto` remains reserved for foreign-system-owned representations.
 
 ## Timestamps
 
@@ -336,12 +278,12 @@ Confect/API/facade boundaries own the caller-facing projection and choose schema
 - Add explicit timestamps for distinct domain events (`publishedAt`, `requestedAt`, `paidAt`, etc.).
 - Add `updatedAt` only when last-modified semantics are genuinely used for UI, ordering, synchronization, concurrency, audit, or another product need.
 - Application-owned persisted timestamps use a shared semantic schema for finite, non-negative integer epoch milliseconds.
-- Persist and transport application-owned timestamps as numeric epoch milliseconds by default. A canonical backend Entity may use an appropriate date/time/domain type when its semantics need one; the owning transport boundary chooses its caller-facing encoding. Do not add a generic Date hydration layer.
+- Persist and transport application-owned timestamps as numeric epoch milliseconds by default. A business representation may use an appropriate date/time/domain type when its semantics need one; the owning transport boundary chooses its caller-facing encoding. Do not add a generic Date hydration layer.
 - Obtain `now` at a trusted outer mutation/action boundary and pass the same value through a workflow when consistency matters. A small `WithNow<T>`-style helper is legitimate shared semantics.
 
 ## Validation and transformations
 
-Decode untrusted data at the owning boundary (HTTP/provider/form/server function/persistence). Persistence codecs validate persistence representations; provider adapters validate new external/provider/SDK inputs. Correctly typed internal values are trusted afterward. Do not repeatedly schema-decode an already trusted `FooDoc`, relation Entity, or other internal representation merely for reassurance. This trust does not bypass semantic/business invariants owned by the domain/capability or meaningful ownership invariants enforced during Entity construction.
+Decode untrusted data at the owning boundary (HTTP/provider/form/server function/persistence). Persistence codecs validate persistence representations; provider adapters validate new external/provider/SDK inputs. Correctly typed internal values are trusted afterward. Do not repeatedly schema-decode an already trusted document, related resource or other internal representation merely for reassurance. This trust does not bypass semantic/business invariants owned by the domain/capability or meaningful cross-resource ownership invariants.
 
 When generated Confect persistence services are used, pass the decoded representation they expect and let their codecs encode/decode storage. Do not manually convert `Option`/`null` around every DB call.
 

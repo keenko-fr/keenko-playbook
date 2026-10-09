@@ -51,6 +51,8 @@ Fresh and supported upgraded consumers prove target inference and root orchestra
 
 Fresh owns the authored Confect compatibility fixture against current APIs and generated containers. Codegen, backend typechecking and real TestConfect execution verify argument field maps, client-safe core tables, named runners, direct test layers, registered decoding, cardinality, stream composition and pagination. Removing the fixture and rerunning codegen restores canonical state.
 
+The fixture also compiles and lints the domain and three error-family examples extracted from the generated canonical guidance, using the fresh backend's scoped type-definition policy. An extracted feature writes directly through DatabaseWriter; a typed Failure after that write proves root mutation rollback. SchemaError, expected Failure and Defect channels remain distinct. The temporary fixtures are removed before ordinary consumer verification.
+
 Packed assertions require exactly the current managed-dependency metadata/factory, absence of all retired migration factories/assets, and presence of fresh preset, guidance, skill/license and AuthKit compatibility assets. The deterministic shadcn fixture and fresh reinstall/sync checks remain intact. CI and release invoke the same sequential gate; there is no reduced CI mode.
 
 ### Verification ownership after KEE-60

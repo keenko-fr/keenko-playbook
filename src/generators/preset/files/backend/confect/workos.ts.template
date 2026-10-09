@@ -10,6 +10,12 @@ import { components } from "./_generated/components";
 // The synchronized WorkOS user is authentication infrastructure identity. It is not the application's canonical domain user.
 export const makeAuthKit = (config: WorkOSConfig) => new AuthKit<GenericDataModel>(components.workOSAuthKit, config);
 
+export interface WorkOSConfig {
+  readonly apiKey: string;
+  readonly clientId: string;
+  readonly webhookSecret: string;
+}
+
 // RECONCILIATION --------------------------------------------------------------------------------------------------------------------------
 const configProvider = ConvexConfigProvider.make();
 const webhookSecretOpt = E.runSync(CFG.option(CFG.String("WORKOS_WEBHOOK_SECRET")).parse(configProvider));
@@ -33,10 +39,3 @@ export const backfillUsers = O.match(webhookSecretOpt, {
     return makeAuthKit({ apiKey, clientId, webhookSecret }).utils().backfillUsers;
   },
 });
-
-// TYPES -----------------------------------------------------------------------------------------------------------------------------------
-export interface WorkOSConfig {
-  readonly apiKey: string;
-  readonly clientId: string;
-  readonly webhookSecret: string;
-}

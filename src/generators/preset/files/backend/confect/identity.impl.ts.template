@@ -15,6 +15,14 @@ const findCurrent = FunctionImpl.make(databaseSchema, spec, "findCurrent", () =>
   })
 );
 
+function toCurrentIdentity(userIdentity: UserIdentity): CurrentIdentity {
+  return {
+    email: O.fromNullishOr(userIdentity.email),
+    subject: userIdentity.subject,
+    tokenIdentifier: userIdentity.tokenIdentifier,
+  };
+}
+
 const getCurrent = FunctionImpl.make(databaseSchema, spec, "getCurrent", () =>
   E.gen(function* () {
     const auth = yield* Auth;
@@ -44,13 +52,6 @@ const findSynchronized = FunctionImpl.make(databaseSchema, spec, "findSynchroniz
     );
   })
 );
-
-// INTERNALS --------------------------------------------------------------------------------------------------------------------------------
-const toCurrentIdentity = (userIdentity: UserIdentity): CurrentIdentity => ({
-  email: O.fromNullishOr(userIdentity.email),
-  subject: userIdentity.subject,
-  tokenIdentifier: userIdentity.tokenIdentifier,
-});
 
 // GROUP -----------------------------------------------------------------------------------------------------------------------------------
 export default GroupImpl.make(databaseSchema, spec).pipe(

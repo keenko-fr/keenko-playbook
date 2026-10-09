@@ -497,13 +497,38 @@ const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspa
   const testFile = path.join(backend, "test/keenko-confect.test.ts");
   yield* fs.makeDirectory(path.dirname(testFile), { recursive: true });
   yield* fs.writeFileString(testFile, yield* fs.readFileString(path.join(fixture, "contract.test.ts.template")));
+  const conventionFiles = ["features/compatibility.ts", "domain/foo.ts", "errors/foo.ts"];
+  const docs = path.join(workspace, ".keenko/docs/conventions");
+  const validation = yield* fs.readFileString(path.join(docs, "validation.md"));
+  const topology = yield* fs.readFileString(path.join(docs, "backend-file-topology.md"));
+  const errorExample = validation.split("```ts\n")[1]?.split("\n```")[0] ?? "";
+  const domainExample = topology.split("This complete pure-domain example")[1]?.split("```ts\n")[1]?.split("\n```")[0] ?? "";
+  yield* assert(errorExample !== "" && domainExample !== "", "Backend convention examples must be present");
+  for (const [relative, content] of [
+    ["features/compatibility.ts", yield* fs.readFileString(path.join(fixture, "feature.ts.template"))],
+    ["domain/foo.ts", domainExample],
+    ["errors/foo.ts", errorExample],
+  ]) {
+    const target = path.join(backend, relative);
+    yield* fs.makeDirectory(path.dirname(target), { recursive: true });
+    yield* fs.writeFileString(target, `${content}\n`);
+  }
   yield* command(workspace, env, "bun", ["run", "codegen"]);
+  yield* command(backend, env, "bun", [
+    "x",
+    "oxlint",
+    "features/compatibility.ts",
+    "features/confect.ts",
+    "domain/foo.ts",
+    "errors/foo.ts",
+  ]);
   yield* command(workspace, env, "bun", ["x", "nx", "run", "backend:typecheck", "--outputStyle=static"]);
   yield* command(backend, env, "bun", ["x", "vitest", "run", "test/keenko-confect.test.ts"]);
   yield* Console.log(
-    `Stable Confect compatibility passed in ${workspace}: generated containers, field-map args, core tables, named runner, direct test layer, registered decoder, and KEE-52 cardinality.`
+    `Stable Confect compatibility passed in ${workspace}: generated containers, codecs, cardinality, canonical error/domain examples, direct feature persistence and root rollback.`
   );
   for (const relative of files) yield* fs.remove(path.join(backend, "confect", relative));
+  for (const relative of conventionFiles) yield* fs.remove(path.join(backend, relative));
   yield* fs.remove(testFile);
   yield* command(workspace, env, "bun", ["run", "codegen"]);
 });
@@ -638,15 +663,24 @@ const verifyBackendRepresentationGuidance = E.fn("product.verifyBackendRepresent
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const canonicalRoot = yield* path.fromFileUrl(new URL("../src/generators/sync/files/", import.meta.url));
-  for (const name of ["schema-types", "backend-architecture"]) {
-    const relative = `docs/conventions/${name}.md`;
+  for (const relative of [
+    "docs/conventions/backend-architecture.md",
+    "docs/conventions/backend-file-topology.md",
+    "docs/conventions/schema-types.md",
+    "docs/conventions/validation.md",
+    "docs/core/code-style.md",
+    "docs/core/tooling.md",
+    "docs/stacks/confect/README.md",
+    "docs/stacks/effect/README.md",
+    "skills/confect/SKILL.md",
+  ]) {
     const canonical = yield* fs.readFileString(path.join(canonicalRoot, relative));
     const packed = yield* fs.readFileString(path.join(workspace, "node_modules/keenko/dist/generators/sync/files", relative));
     const generated = yield* fs.readFileString(path.join(workspace, ".keenko", relative));
-    yield* assert(packed === canonical, `Packed ${name} guidance differs from canonical source`);
-    yield* assert(generated === canonical, `Sync did not emit canonical ${name} guidance`);
+    yield* assert(packed === canonical, `Packed ${relative} guidance differs from canonical source`);
+    yield* assert(generated === canonical, `Sync did not emit canonical ${relative} guidance`);
   }
-  yield* Console.log("KEE-62 canonical, packed, and generated backend representation guidance match byte-for-byte.");
+  yield* Console.log("KEE-63 canonical, packed and generated conventions, stack guidance and skill match byte-for-byte.");
 });
 
 const verifyContext7 = E.fn("product.verifyContext7")(function* (workspace: string) {
@@ -983,6 +1017,14 @@ const product = E.gen(function* () {
   yield* verifyConfectTuple(workspace, env);
   yield* completePhase("fresh compatibility verification", freshCompatibilityStartedAt);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
+  yield* assert(
+    yield* fs.exists(path.join(workspace, "packages/backend/features/confect.ts")),
+    "Fresh backend must use features/confect.ts"
+  );
+  yield* assert(
+    !(yield* fs.exists(path.join(workspace, "packages/backend/data/confect.ts"))),
+    "Fresh backend must omit the former data layer"
+  );
   yield* verifyContext7(workspace);
   if (source._tag === "local") yield* verifyBackendRepresentationGuidance(workspace);
   if (source._tag === "local" && !shadcnCompatibility) yield* verifyContext7Ownership(workspace, env);
@@ -1033,9 +1075,14 @@ const product = E.gen(function* () {
       "dist/compatibility/authkit-test.js",
       "dist/compatibility/files/workos-authkit-0.2.10.patch",
       "dist/generators/preset/files/backend/vitest.config.ts.template",
+      "dist/generators/preset/files/backend/features/confect.ts.template",
       "dist/generators/sync/files/docs/core/migrations.md",
     ])
       yield* assert(yield* fs.exists(path.join(installedRoot, artifact)), `Missing current generator/guidance artifact: ${artifact}`);
+    yield* assert(
+      !(yield* fs.exists(path.join(installedRoot, "dist/generators/preset/files/backend/data/confect.ts.template"))),
+      "Packed fresh preset still contains the former data helper"
+    );
   }
   const packedLicense = yield* fs.readFileString(
     path.join(workspace, "node_modules/keenko/dist/generators/sync/files/skills/grilling/LICENSE")

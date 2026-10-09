@@ -284,48 +284,67 @@ describe("keenko sync", () => {
     })
   );
 
-  it.live("refreshes backend Entity guidance from canonical docs without changing application ownership", () =>
+  it.live("replaces contradictory backend conventions without rewriting application-owned source", () =>
     E.gen(function* () {
       const tree = createTreeWithEmptyWorkspace();
       const projectFiles = {
         "docs/project/overrides.md": "# Project representation policy\n",
-        "packages/backend/features/foo.ts": "export const projectHydration = 'owned';\n",
-        "packages/backend/schemas/foo.ts": "export const projectEntity = 'owned';\n",
+        "packages/backend/data/confect.ts": "export const legacyProjectHelper = 'owned';\n",
+        "packages/backend/features/foo.ts": "export const projectOperation = 'owned';\n",
+        "packages/backend/schemas/foo.ts": "export const projectRepresentation = 'owned';\n",
       };
       for (const [path, content] of Object.entries(projectFiles)) tree.write(path, content);
-      for (const name of ["schema-types", "backend-architecture"])
-        tree.write(`.keenko/docs/conventions/${name}.md`, "Foo is transport-safe and strips document identity.\n");
+      const guides = [
+        "conventions/backend-architecture",
+        "conventions/backend-file-topology",
+        "conventions/schema-types",
+        "conventions/validation",
+        "core/code-style",
+        "core/tooling",
+      ];
+      for (const name of guides) tree.write(`.keenko/docs/${name}.md`, "Old mandatory Entity/data architecture.\n");
 
       yield* runSync(tree);
 
-      for (const name of ["schema-types", "backend-architecture"])
-        expect(tree.read(`.keenko/docs/conventions/${name}.md`, "utf-8")).toBe(
-          yield* readSource(new URL(`files/docs/conventions/${name}.md`, import.meta.url))
-        );
+      for (const name of guides)
+        expect(tree.read(`.keenko/docs/${name}.md`, "utf-8")).toBe(yield* readSource(new URL(`files/docs/${name}.md`, import.meta.url)));
       const schemaTypes = tree.read(".keenko/docs/conventions/schema-types.md", "utf-8");
-      expect(schemaTypes).toContain("export const sFoo = sFooDoc;");
-      expect(schemaTypes).toContain('const adminFrom = E.fn("admins.features.adminFrom")');
-      expect(schemaTypes).toContain("yield* userData.getById(doc.userId)");
-      expect(schemaTypes).not.toContain("schema-owned `fooFrom");
-      expect(schemaTypes).not.toContain("Option.some(value) : Option.none()");
-      expect(schemaTypes).toContain(".mapFields(Struct.assign({ user: sUser }), { unsafePreserveChecks: true })");
+      expect(schemaTypes).toContain("No canonical Entity, full Entity argument or hydration is mandatory");
+      expect(schemaTypes).toContain("type Foo = FooDoc &");
       expect(schemaTypes).toContain("Do not require an additional runtime schema decode");
-      expect(schemaTypes).toContain("a Foo and its Bar must have the same owner");
       expect(schemaTypes).toContain("doc.ownerId === bar.ownerId");
-      expect(schemaTypes).toContain("A storage-only table may expose");
-      expect(schemaTypes).not.toContain("export const sFoo = sFooFields;");
-      expect(schemaTypes).not.toContain('Struct.omit(doc, ["_id", "_creationTime"])');
-      expect(schemaTypes).not.toContain("canonical application/transport representation");
-      expect(schemaTypes).not.toContain("sFoo.Type` itself must be transport-safe/plain");
+      expect(schemaTypes).not.toContain("export const sFoo = sFooDoc;");
+      expect(schemaTypes).not.toContain("userData");
+
       const architecture = tree.read(".keenko/docs/conventions/backend-architecture.md", "utf-8");
+      expect(architecture).toContain("There is no mandatory feature delegation");
+      expect(architecture).toContain("It may use generated `DatabaseReader`, `DatabaseWriter`");
+      expect(architecture).toContain("one root Convex mutation");
+      expect(architecture).toContain("KEE-59 and KEE-62");
       expect(architecture).toContain("doc.ownerId === bar.ownerId");
+      expect(architecture).toContain("`features/confect.ts`");
       for (const guidance of [schemaTypes, architecture]) expect(guidance).not.toMatch(/PickupRule|CapacityPool|Establishment/u);
-      expect(architecture).toContain("Features orchestrate persistence reads returning `FooDoc`");
-      expect(architecture).toContain("graph of mandatory full-Entity embedding dependencies");
-      expect(architecture).toContain("Create `domain/` only when real code needs it");
-      expect(architecture).toContain("A frontend consuming a transport projection does not justify moving backend `Foo` there");
+
+      const topology = tree.read(".keenko/docs/conventions/backend-file-topology.md", "utf-8");
+      expect(topology).toContain("SCHEMA\nFAILURES\nDEFECTS");
+      expect(topology).toContain("GROUP");
+      expect(topology).not.toContain("ISSUES\nFAILURES");
+      const codeStyle = tree.read(".keenko/docs/core/code-style.md", "utf-8");
+      expect(codeStyle).toContain("paymentAccountFeature");
+      expect(codeStyle).toContain("zero or one argument");
+      expect(codeStyle).toContain("`create` is the canonical creation verb");
+      expect(codeStyle).not.toContain("import * as data");
+      const validation = tree.read(".keenko/docs/conventions/validation.md", "utf-8");
+      expect(validation).toContain("sFooSchemaIssue");
+      expect(validation).toContain("sFooFailureIssue");
+      expect(validation).toContain("sFooDefectIssue");
+      expect(validation).toContain("E.die(new FooDefect");
+      expect(validation).toContain("native `S.SchemaError`");
+
       for (const [path, content] of Object.entries(projectFiles)) expect(tree.read(path, "utf-8")).toBe(content);
       expect(tree.exists("packages/backend/domain")).toBe(false);
+      yield* runSync(tree);
+      for (const [path, content] of Object.entries(projectFiles)) expect(tree.read(path, "utf-8")).toBe(content);
     })
   );
 
@@ -418,7 +437,7 @@ describe("keenko sync", () => {
     })
   );
 
-  it.live("publishes corrected Confect compatibility and backend data guidance", () =>
+  it.live("publishes corrected Confect compatibility and backend persistence guidance", () =>
     E.gen(function* () {
       const tree = createTreeWithEmptyWorkspace();
 
@@ -433,13 +452,13 @@ describe("keenko sync", () => {
       expect(confect).toContain("The owned `confect` skill");
 
       const backend = tree.read(".keenko/docs/conventions/backend-architecture.md", "utf-8");
-      expect(backend).toContain("`data/confect.ts`");
-      expect(backend).toContain("map it to `Option.none` for `find` / `findByX`");
-      expect(backend).toContain("Preserve not-found as a typed failure for `get` / `getByX`");
+      expect(backend).toContain("`features/confect.ts`");
+      expect(backend).toContain("normal find absence");
+      expect(backend).toContain("preserve expected not-found as a typed get failure");
     })
   );
 
-  it.live("refreshes Confect cardinality guidance without changing consumer reads or data-file grammar", () =>
+  it.live("refreshes Confect cardinality guidance without changing consumer reads", () =>
     E.gen(function* () {
       const tree = createTreeWithEmptyWorkspace();
       const guidePath = ".keenko/docs/stacks/confect/README.md";
@@ -466,7 +485,7 @@ describe("keenko sync", () => {
         "`QueryStream.filterEffect` also retains the QueryStream for a later `unique`",
         "Do not introduce QueryStream merely for stylistic consistency",
         "QueryStream is experimental in Confect `10.0.0`",
-        "belong under the existing `FIND` section",
+        "Extracted operations use operation/coherent-group sections",
       ])
         expect(guide).toContain(semantics);
       expect(tree.read(".keenko/docs/conventions/backend-file-topology.md", "utf-8")).toBe(

@@ -57,6 +57,8 @@ export default defineConfig({
         "no-use-before-define": "off",
         "promise/prefer-await-to-callbacks": "off",
         "promise/prefer-await-to-then": "off",
+        // Backend facts and operation args use types; interfaces remain available when their semantics are needed.
+        "typescript/consistent-type-definitions": "off",
         "typescript/promise-function-async": "off",
         "typescript/return-await": "off",
         "unicorn/filename-case": "off",

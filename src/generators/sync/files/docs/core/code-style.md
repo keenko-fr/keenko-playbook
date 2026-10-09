@@ -12,50 +12,69 @@ Oxfmt is the canonical owner of arbitrary source formatting. Follow its output i
 - Prefer named exports. Use default exports only when a framework/tooling contract naturally requires one.
 - Use lowercase `kebab-case` by default for Keenko-owned filenames. A concrete framework, tool, generator, or ecosystem filename contract takes precedence over the Keenko default.
 
-### Architectural module imports
+### Backend feature and domain imports
 
-Only architectural `data` and `features` modules use a special namespace-import convention.
-
-Always namespace-import a data module. When the imported module represents the same concept as the consuming file, use the short architectural name:
+Namespace-import business modules in `features/` and `domain/`. For the same concept as the consuming file:
 
 ```ts
-import * as data from "../data/watchlist";
+import * as domain from "../domain/orders";
+import * as feature from "../features/orders";
 ```
 
-When it represents a different concept, preserve the missing concept information:
+For another concept, use its singular name followed by Feature or Domain:
 
 ```ts
-import * as usersData from "../data/users";
+import * as paymentAccountDomain from "../domain/payment-accounts";
+import * as paymentAccountFeature from "../features/payment-accounts";
 ```
 
-Always namespace-import a features module using the same rule:
+This preserves natural variable names such as paymentAccount or orders. Do not use a generic data alias for business operations.
 
-```ts
-import * as usersFeatures from "../features/users";
-import * as features from "../features/watchlist";
-```
-
-Do not redundantly name same-concept imports `watchlistData` or `watchlistFeatures` when the consuming file already supplies the `watchlist` context.
-
-Other architectural modules use named imports by default, including infra, schemas, Confect helpers, and ordinary modules:
-
-```ts
-import { TvMaze } from "../infra/tvmaze";
-import { sWatchlist, type Watchlist, type WatchlistInsert } from "../schemas/watchlist";
-```
-
-Do not use generic `infra` or `schemas` namespace aliases. The convention optimizes for information that is not already present in the current module's concept.
+Infra, schemas, Confect services and ordinary modules keep responsibility-appropriate imports, normally named imports. The narrow technical `features/confect.ts` helper file follows its technical responsibility rather than pretending to be a business concept.
 
 ## Naming
 
-- Prefer concise contextual names. Inside `data/packs.ts`, `find`, `get`, `insert`, `patch`, and `remove` are better than repeating `Pack` in every identifier when imports remain clear.
+- Choose the shortest name retaining necessary meaning in its module. Prefer orderIntents.convert, orders.markReady and orderIntents.effectiveStatus over repeating the resource noun. No arbitrary name-length limit applies.
 - Avoid cryptic abbreviations. Conventional short forms such as `id`, `url`, `api`, `ctx`, and genuine `dto` usage are fine.
 - Name booleans as readable predicates when useful (`isActive`, `hasAccess`, `canPublish`, `shouldRetry`) without mechanically forcing a prefix when the domain word is already boolean (`enabled`, `verified`).
-- Prefer specific mutation verbs such as `insert`, `patch`, `remove`, `publish`, `archive`, `attach`, `detach`, `sync`, `record`, and `resolve`. Avoid vague `handle`, `process`, `manage`, `do`, or `execute` unless the function genuinely owns that generic boundary.
+- Preserve business verbs such as submit, convert, decline, cancel, conclude, transition, markReady, publish and archive. Do not mechanically rename a transition to create because it also writes a document.
+- Avoid vague handle/process/manage/do/execute and decorative Manager/Service/Handler/Helper/Context/Setup/Operation suffixes when a precise contextual name suffices. No suffix is mechanically banned when it expresses a real distinction.
 - Use `remove` for authored deletion operations; retain native `.delete()` when calling an API that uses that name.
 - Preserve canonical domain vocabulary. Do not create synonyms for established concepts.
 
+### Backend CRUD vocabulary
+
+| Verb              | Meaning                                      |
+| ----------------- | -------------------------------------------- |
+| `create`          | Create a resource                            |
+| `find`, `findByX` | Read with normal absence                     |
+| `get`, `getByX`   | Read with exceptional absence                |
+| `list`, `listByX` | Read multiple resources                      |
+| `patch`           | Partial modification                         |
+| `replace`         | Full replacement                             |
+| `remove`          | Deletion                                     |
+| `ensure`          | Guarantee existence, creating when necessary |
+
+`create` is the canonical creation verb in features. Reserve insert for native persistence calls. Do not expose insert/add/save/open synonyms for the same simple creation semantics. Use is/has/can for boolean predicates and check for fallible validation, with the specific exceptions in `validation.md`.
+
 ## Functions and types
+
+Every exported business function in features/domain takes zero or one argument. Use zero parameters when nothing is needed, a direct parameter for one natural value, and one args object for several values. For example, feature.getById(id), feature.convert({ intentId, now }) and domain.transition({ order, command }). Private helpers and framework callbacks follow the signature that serves their actual contract.
+
+Use ConvertArgs or FoobarArgs for function parameters. Input denotes an independently reusable business input. Simple signatures need no named type, and coincidentally identical shapes do not justify sharing an alias.
+
+Prefer type for ordinary contracts; retain interface when its specific properties are useful. Do not mechanically rewrite existing interfaces. Verify the effective lint policy and apply the justified scope in `tooling.md`.
+
+| Type                                | Narrowest semantic owner |
+| ----------------------------------- | ------------------------ |
+| Pure business facts/contracts       | domain/<concept>.ts      |
+| Workflow args and local types       | features/<concept>.ts    |
+| Runtime/persistence representations | schemas/<concept>.ts     |
+| Exposed Confect contracts           | confect/*.spec.ts        |
+| Context issues and errors           | errors/<concept>.ts      |
+| Truly cross-workspace contracts     | packages/shared          |
+
+No global types directory or runtime Schema for each internal interface is required. Local types/helpers follow their owner; Schema-derived types remain immediately adjacent.
 
 - Use `const` for values and configured functions returned by APIs.
 - Use function declarations for ordinary authored functions when hoisting improves main-first reading order. Do not impose arrows everywhere.

@@ -512,6 +512,9 @@ describe("keenko preset", () => {
 
       expect(backend.include).toContain("vitest.config.ts");
       expect(backend.include).toContain("test/**/*.ts");
+      expect(backend.include).toContain("domain/**/*.ts");
+      expect(backend.include).toContain("errors/**/*.ts");
+      expect(backend.include).not.toContain("data/**/*.ts");
       expect(shared.include).toContain("vitest.config.ts");
       expect(ui.include).toContain("vitest.config.ts");
       expect(web.include).toContain("**/*.ts");
@@ -659,11 +662,12 @@ describe("keenko preset", () => {
 
       expect(tree.exists("packages/backend/confect/.gitkeep")).toBe(true);
       expect(tree.exists("packages/backend/convex/convex.config.ts")).toBe(true);
-      expect(tree.exists("packages/backend/data/confect.ts")).toBe(true);
+      expect(tree.exists("packages/backend/features/confect.ts")).toBe(true);
+      expect(tree.exists("packages/backend/data/confect.ts")).toBe(false);
       expect(tree.exists("packages/shared/data/confect.ts")).toBe(false);
       expect(tree.exists("packages/backend/confect/data.ts")).toBe(false);
 
-      const dataHelpers = tree.read("packages/backend/data/confect.ts", "utf-8");
+      const confectHelpers = tree.read("packages/backend/features/confect.ts", "utf-8");
       for (const helper of [
         "dieOnCodecError",
         "dieOnDecodeError",
@@ -673,7 +677,9 @@ describe("keenko preset", () => {
         "optionById",
         "optionByIndex",
       ])
-        expect(dataHelpers).toContain(`export function ${helper}`);
+        expect(confectHelpers).toContain(`export function ${helper}`);
+      const oxlint = tree.read("oxlint.config.ts", "utf-8");
+      expect(oxlint).toContain('"typescript/consistent-type-definitions": "off"');
     })
   );
 
