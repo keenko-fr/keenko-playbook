@@ -1,3 +1,14 @@
+## 1.0.5 (2026-10-09)
+
+### Changes
+
+- Extend type preference to backend/shared and prepare RC.1 recovery ([#59](https://github.com/keenko-fr/keenko-playbook/pull/59))
+- Finalize Confect-first guidance and prepare 1.0.5-rc.0 ([#58](https://github.com/keenko-fr/keenko-playbook/pull/58))
+
+### ❤️ Thank You
+
+- Gregory Bouteiller
+
 ## 1.0.4 (2026-10-08)
 
 ### Changes
