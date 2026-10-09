@@ -62,6 +62,16 @@ Exact overlap rule names are compatibility data, not permanent Keenko convention
 
 Do not duplicate formatter rules or TypeScript compiler diagnostics merely for ceremony.
 
+### Backend type definitions and declaration order
+
+Inspect the installed presets and effective overrides rather than guessing which rule rewrites a type. The current Ultracite preset enables `typescript/consistent-type-definitions` with its interface default. This is unrelated to `no-redeclare`.
+
+The generated backend override disables `typescript/consistent-type-definitions` for `packages/backend/**/*.ts`. Backend business facts, function args, representation intersections and Schema-derived contracts share the convention in `code-style.md`; permit ordinary type declarations and retain interfaces when useful. This scoped reusable backend policy does not change other workspaces' effective rule. Anoulà needs no additional exception for this backend preference; unrelated project preferences still require explicit local overrides.
+
+Existing consumers own their root lint configuration. Guidance sync does not overwrite it. The native backend-convention migration extends recognized backend compiler includes with `domain/**/*.ts` and `errors/**/*.ts` and adds the backend-scoped type-definition override. It preserves existing `data/` coverage and application files. Customized or ambiguous configuration stops with manual reconciliation instructions before this migration writes; reconcile it and rerun Nx. The fresh preset already includes the target configuration.
+
+Read the effective `no-use-before-define` policy too. Root options permit hoisted functions and type declarations, while the current backend Effect override disables that rule. Examples still use initialization-safe declarations and work with the stricter root options. This override is not permission to reference an uninitialized value.
+
 ## Compatibility ownership
 
 Current tooling package specifications are implementation data.

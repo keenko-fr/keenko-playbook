@@ -21,7 +21,7 @@ Use this workflow for `@confect/*`, Confect specs/implementations/refs/codegen, 
 3. Read project architecture/overrides and relevant ADRs.
 4. Inspect the exact installed Confect, Effect, and Convex versions.
 5. For version-sensitive behavior, inspect installed package source/types and current first-party documentation before choosing an API.
-6. Identify the owning boundary (`confect`, `schemas`, `features`, `data`, `infra`, browser Form, serverFn, or native Convex integration) before editing.
+6. Identify the owning boundary (`confect`, `schemas`, `features`, `domain`, `errors`, `infra`, browser Form, serverFn, or native Convex integration) before editing.
 7. Implement the narrowest change that satisfies that boundary while preserving the canonical rules above.
 8. Run focused verification for the changed contract, codegen when contracts changed, then the repository's complete verification before merge-ready review.
 

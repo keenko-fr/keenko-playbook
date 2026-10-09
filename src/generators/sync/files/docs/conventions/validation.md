@@ -1,48 +1,63 @@
-# Validation issues and failures
+# Validation, issues, failures and defects
 
-## Issue vocabulary
+## Predicates and checks
 
-`Issue` is stable programmatic vocabulary. `Failure` is a typed Effect error-channel value.
+| Prefix  | Contract                                   |
+| ------- | ------------------------------------------ |
+| `is`    | Boolean state/property predicate           |
+| `has`   | Boolean presence/possession predicate      |
+| `can`   | Boolean capability/permission predicate    |
+| `check` | Validation that can return a typed failure |
 
-Use one canonical Effect Schema for each meaningful finite issue vocabulary and derive its TypeScript type immediately below that schema:
+A check may return an Effect, Result or useful success value. Do not use validate, verify, assert and require as interchangeable check synonyms. Keep actual `Schema.check`, decode/encode, programming assertions and technical operations such as `verifySignature` with their specific semantics. Do not extract every trivial condition.
+
+Reusable deterministic business predicates belong in domain; structural Schema constraints stay local. Predicates used to construct a Schema must not depend circularly on that Schema. Use independent fact types or keep the predicate local when sharing would be disproportionate. Runtime validation stays at the Schema's boundary.
+
+## Three error families
+
+Group the context's used families in `errors/<concept>.ts`, not one file per family. Declare only meaningful vocabularies, with Schema-derived types immediately adjacent. This complete `errors/foo.ts` example illustrates all three families:
 
 ```ts
 import { Schema as S } from "effect";
 
-export const sShowIssue = S.Literals(["unavailable", "invalid_response"]);
-export type ShowIssue = typeof sShowIssue.Type;
-```
+// SCHEMA ----------------------------------------------------------------------------------------------------------------------------------
+export const sFooSchemaIssue = S.Literals(["invalid_state"]);
+export type FooSchemaIssue = typeof sFooSchemaIssue.Type;
 
-- Issue values are lowercase `snake_case` stable programmatic values.
-- User-facing copy never lives in issue values.
-- Prefer short context-local issue values; prefix only when values genuinely share a global namespace.
-- Do not create enum-like constant objects solely to name literal issue values.
-- Introduce a custom issue when the application needs specific copy/handling, the failure crosses a boundary, multiple consumers need to recognize it, or it represents a meaningful domain/application condition.
-- Do not create operation-specific issue schemas merely to document which failures an implementation might produce.
+// FAILURES --------------------------------------------------------------------------------------------------------------------------------
+export const sFooFailureIssue = S.Literals(["forbidden", "not_found"]);
+export type FooFailureIssue = typeof sFooFailureIssue.Type;
 
-Keep the issue schema at the narrowest genuinely shared owner. If one backend feature alone owns the vocabulary, keep it feature-local. If the same backend Failure or Issue contract must be imported by multiple backend owners, including a Confect spec, move it to a client-safe `errors/<context>.ts` contract module rather than importing a feature implementation module. If another workspace/runtime later genuinely consumes the vocabulary, move or expose the canonical schema through the earned shared package boundary rather than importing backend implementation files.
+export class FooFailure extends S.TaggedError<FooFailure>()("FooFailure", {
+  issue: sFooFailureIssue,
+}) {}
 
-Do not create `errors/` modules merely to mirror `schemas/`, features, or resources. Shared error-contract ownership must be earned by a real cross-owner consumer.
+// DEFECTS ---------------------------------------------------------------------------------------------------------------------------------
+export const sFooDefectIssue = S.Literals(["inconsistent_state"]);
+export type FooDefectIssue = typeof sFooDefectIssue.Type;
 
-## Expected typed Failures
-
-Expected typed failures in owned Effect code use Schema-tagged error values. Do not maintain handwritten tagged-object unions as a parallel canonical Failure model.
-
-A Failure carrying canonical issue semantics uses the property name `issue`:
-
-```ts
-export class ShowFailure extends S.TaggedError<ShowFailure>()("ShowFailure", {
-  issue: sShowIssue,
+export class FooDefect extends S.TaggedError<FooDefect>()("FooDefect", {
+  issue: sFooDefectIssue,
 }) {}
 ```
 
-The class already provides the TypeScript type identity `ShowFailure`; do not add a redundant companion alias.
+- SchemaIssue identifies a Schema contract violation. Decoding/checking uses native `S.SchemaError`, without compulsory custom FooValidation or FooSchemaError classes.
+- FailureIssue identifies an expected caller-interpretable failure. Failures travel through Effect's typed error channel, for example `E.fail(new FooFailure({ issue: "forbidden" }))`.
+- DefectIssue identifies an impossible internal state or invariant violation. Use `E.die(new FooDefect({ issue: "inconsistent_state" }))`, not the expected Failure channel.
 
-Do not use competing canonical field names such as `reason` or `code` for the Failure's issue field.
+A one-off defect may retain its original cause without a custom class/vocabulary. Invalid data does not automatically imply Failure or Defect: provenance and the owning trust boundary determine the category. Translation between categories must be explicit. A SchemaIssue vocabulary does not replace or wrap the native SchemaError.
 
-A Failure contract imported by a Confect spec must remain client-bundle-safe. Its owning `errors/<context>.ts` module may depend on client-safe schema and contract modules, but must not reach data implementations, infra implementations, generated server services, `@confect/server`, or other server-only dependencies.
+## Issue vocabulary and ownership
 
-This placement separates the shared Failure contract from the feature implementation without moving infra-local diagnostic Failures out of their capability owner.
+Issues are stable, short `snake_case` programmatic values. User messages stay separate. Prefer context-local values and no enum-like object merely to name literals.
+
+Create a vocabulary for meaningful contract/business conditions or actual consumer handling, not to enumerate every implementation error. Use the category-qualified names `sFooSchemaIssue`, `sFooFailureIssue`, `sFooDefectIssue` and their derived types. Do not merge their distinct meanings into a generic FooIssue.
+
+Context families stay together in `errors/<concept>.ts`, including feature/infra-owned contexts, declaring only used families. Do not create files for contexts with no custom errors. A real cross-workspace consumer can earn shared contract ownership.
+
+Failure classes use the property `issue`; do not introduce competing reason/code fields for the same semantics. TaggedError classes already own their type identity and need no companion alias.
+
+A contract imported by Confect specs remains client-safe. It may import safe Schema/contracts but must not import feature/infra implementations, generated server services, `@confect/server` or other server-only modules. The owning capability can retain internal diagnostic causes while the public boundary exposes only deliberate payload.
 
 ## One Failure or several
 
@@ -64,7 +79,7 @@ Internal typed Failures preserve the originating technical cause when it is usef
 
 ```ts
 export class TvMazeFailure extends S.TaggedError<TvMazeFailure>()("TvMazeFailure", {
-  issue: sTvMazeIssue,
+  issue: sTvMazeFailureIssue,
   cause: S.optional(S.Defect()),
 }) {}
 ```
@@ -103,7 +118,7 @@ Create or translate to a feature-owned Failure when the feature adds policy: it 
 Use a named pure mapper such as:
 
 ```ts
-function showIssueFrom(issue: TvMazeIssue): ShowIssue {
+function showIssueFrom(issue: TvMazeFailureIssue): ShowFailureIssue {
   // exhaustive pure mapping
 }
 ```

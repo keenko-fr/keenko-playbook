@@ -1,6 +1,7 @@
 import { FunctionSpec, GroupSpec } from "@confect/core";
 import { Schema as S } from "effect";
 
+import { FooFailure } from "../errors/foo";
 import compatibilityRows from "./_generated/tables/compatibilityRows";
 
 export default GroupSpec.make()
@@ -16,5 +17,13 @@ export default GroupSpec.make()
       name: "forward",
       args: () => ({ key: S.String }),
       returns: () => S.OptionFromNullOr(compatibilityRows.Doc),
+    })
+  )
+  .addFunction(
+    FunctionSpec.publicMutation({
+      name: "create",
+      args: () => ({ key: S.String, reject: S.Boolean, score: S.Number }),
+      returns: () => S.String,
+      error: () => FooFailure,
     })
   );

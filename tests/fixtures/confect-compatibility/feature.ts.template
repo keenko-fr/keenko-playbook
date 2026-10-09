@@ -1,0 +1,25 @@
+import { Effect as E } from "effect";
+
+import { DatabaseWriter } from "../confect/_generated/services";
+import * as fooDomain from "../domain/foo";
+import { FooFailure } from "../errors/foo";
+
+// CREATE ----------------------------------------------------------------------------------------------------------------------------------
+export const create = E.fn("compatibility.create")(function* (args: CreateArgs) {
+  if (!fooDomain.canSubmit({ enabled: args.score >= 0, items: [args.key] }))
+    return yield* new FooFailure({ issue: "forbidden" });
+  const writer = yield* DatabaseWriter;
+  const id = yield* writer.table("compatibilityRows").insert({ key: args.key, score: args.score }).pipe(E.orDie);
+  yield* checkCommit(args.reject);
+  return id;
+});
+
+type CreateArgs = {
+  key: string;
+  reject: boolean;
+  score: number;
+};
+
+function checkCommit(reject: boolean) {
+  return reject ? E.fail(new FooFailure({ issue: "forbidden" })) : E.void;
+}

@@ -201,15 +201,15 @@ Every authored `E.fn` has an explicit stable tracing name.
 Use:
 
 ```text
-<domain>.<layer>.<operation>
+<concept>.<operation>
 ```
 
 For example:
 
 ```text
-packs.data.get
-packs.features.attachVideoForUpload
-tvmaze.infra.search
+packs.get
+packs.attachVideoForUpload
+tvmaze.search
 ```
 
 The explicit string owns the stable operation and tracing identity.
@@ -217,7 +217,7 @@ The explicit string owns the stable operation and tracing identity.
 Keep the callback anonymous rather than giving it a second semantic operation name:
 
 ```ts
-const search = E.fn("tvmaze.infra.search")(function* (query: string) {
+const search = E.fn("tvmaze.search")(function* (query: string) {
   // ...
 });
 ```
@@ -277,11 +277,11 @@ Expected typed failures in owned Effect code use Schema-tagged error values rath
 A canonical issue-bearing failure follows the shared validation guidance:
 
 ```ts
-export const sTvMazeIssue = S.Literals(["unavailable", "invalid_response"]);
-export type TvMazeIssue = typeof sTvMazeIssue.Type;
+export const sTvMazeFailureIssue = S.Literals(["unavailable", "invalid_response"]);
+export type TvMazeFailureIssue = typeof sTvMazeFailureIssue.Type;
 
 export class TvMazeFailure extends S.TaggedError<TvMazeFailure>()("TvMazeFailure", {
-  issue: sTvMazeIssue,
+  issue: sTvMazeFailureIssue,
   cause: S.optional(S.Defect()),
 }) {}
 ```
@@ -293,6 +293,8 @@ Application behavior branches on stable `issue`, not on `cause`.
 Do not automatically expose an internal cause through public/server-client failure contracts.
 
 See `validation.md` for one-failure-versus-several and public-boundary rules.
+
+Group used SchemaIssue, FailureIssue and DefectIssue families in `errors/<concept>.ts`. Schema validation uses native SchemaError; expected Failures use the typed channel; internal Defects use `E.die`. Do not fabricate all three families when only one is needed.
 
 Audit tagged-error `_tag` values when adding or modifying them. Tags must be unique and semantically correct.
 
@@ -350,7 +352,7 @@ For example:
 const make = E.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
 
-  const search = E.fn("tvmaze.infra.search")(function* (query: string) {
+  const search = E.fn("tvmaze.search")(function* (query: string) {
     // use httpClient and return application representations
   });
 
@@ -515,8 +517,8 @@ For reusable exhaustive pure mapping over a known finite union, prefer the insta
 Conceptually:
 
 ```ts
-const showIssueFrom = Match.type<TvMazeIssue>().pipe(
-  Match.withReturnType<ShowIssue>(),
+const showIssueFrom = Match.type<TvMazeFailureIssue>().pipe(
+  Match.withReturnType<ShowFailureIssue>(),
   Match.when("unavailable", () => "unavailable"),
   Match.when("invalid_response", () => "invalid_response"),
   Match.exhaustive

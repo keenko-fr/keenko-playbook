@@ -1,7 +1,7 @@
 import { QueryStream } from "@confect/server";
 import { TestConfect } from "@confect/test";
 import { it } from "@effect/vitest";
-import { Effect as E, Option as O, Schema as S, Stream } from "effect";
+import { Cause, Effect as E, Option as O, Schema as S, Stream } from "effect";
 import { expect } from "vitest";
 
 import convexSchema from "../confect/_generated/convexSchema";
@@ -9,12 +9,35 @@ import refs from "../confect/_generated/refs";
 import schema from "../confect/_generated/schema";
 import { DatabaseReader, DatabaseWriter, MutationCtx } from "../confect/_generated/services";
 import { sChecked } from "../confect/tables/compatibilityRows";
+import { FooDefect, FooFailure, sFooSchemaIssue } from "../errors/foo";
 
 const Test = TestConfect.TestConfect<typeof schema>();
 const layer = TestConfect.layer(schema, convexSchema, {
   "../convex/_generated/api.js": () => import("../convex/_generated/api.js"),
   "../convex/compatibility.ts": () => import("../convex/compatibility"),
 });
+
+it.effect("preserves typed failures and root rollback with direct feature writes", () =>
+  E.gen(function* () {
+    const t = yield* Test;
+    const failure = yield* t.mutation(refs.public.compatibility.create, { key: "rollback", score: 1, reject: true }).pipe(E.flip);
+    expect(failure).toBeInstanceOf(FooFailure);
+    expect(failure.issue).toBe("forbidden");
+    expect(O.isNone(yield* t.query(refs.public.compatibility.find, { key: "rollback" }))).toBe(true);
+    yield* t.mutation(refs.public.compatibility.create, { key: "committed", score: 1, reject: false });
+    expect(O.getOrThrow(yield* t.query(refs.public.compatibility.find, { key: "committed" })).score).toBe(1);
+  }).pipe(E.provide(layer))
+);
+
+it.effect("keeps canonical SchemaError, Failure and Defect categories distinct", () =>
+  E.gen(function* () {
+    expect(yield* S.decodeUnknownEffect(sFooSchemaIssue)("invalid").pipe(E.flip)).toBeInstanceOf(S.SchemaError);
+    expect(yield* E.fail(new FooFailure({ issue: "not_found" })).pipe(E.flip)).toBeInstanceOf(FooFailure);
+    const defect = yield* E.die(new FooDefect({ issue: "inconsistent_state" })).pipe(E.exit);
+    expect(defect._tag).toBe("Failure");
+    if (defect._tag === "Failure") expect(Cause.hasDies(defect.cause)).toBe(true);
+  })
+);
 
 it.effect("qualifies stable Confect codegen, named runners, codecs and cardinality", () =>
   E.gen(function* () {
@@ -53,10 +76,10 @@ it.effect("qualifies stable Confect codegen, named runners, codecs and cardinali
         const ctx = yield* MutationCtx;
         yield* E.promise(() => ctx.db.insert("compatibilityRows", { key: "invalid-field", score: -1 }));
         expect((yield* rows.get("by_key", "invalid-field").pipe(E.flip))._tag).toBe("DocumentDecodeError");
-        // Structural system-field derivation still drops this outer check; field checks survive in the registered reader.
+        // The qualified system-field derivation preserves outer checks in the registered reader.
         expect(S.is(sChecked)({ key: "outer-invalid", score: 1 })).toBe(false);
         yield* E.promise(() => ctx.db.insert("compatibilityRows", { key: "outer-invalid", score: 1 }));
-        expect((yield* rows.get("by_key", "outer-invalid")).key).toBe("outer-invalid");
+        expect((yield* rows.get("by_key", "outer-invalid").pipe(E.flip))._tag).toBe("DocumentDecodeError");
       })
     );
     expect(O.getOrThrow(yield* t.query(refs.public.compatibility.forward, { key: "runner" })).score).toBe(3);

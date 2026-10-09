@@ -7,6 +7,11 @@ import { Effect as E, Option as O } from "effect";
 export function dieOnCodecError<A, Err extends TaggedError, R>(effect: E.Effect<A, DocumentDecodeError | DocumentEncodeError | Err, R>) {
   return effect.pipe(dieOnDecodeError, dieOnEncodeError);
 }
+
+type TaggedError = {
+  readonly _tag: string;
+};
+
 export function dieOnDecodeError<A, Err extends TaggedError, R>(effect: E.Effect<A, DocumentDecodeError | Err, R>) {
   return effect.pipe(E.catchTag("DocumentDecodeError", E.die));
 }
@@ -33,9 +38,4 @@ export function optionById<A, R>(effect: E.Effect<A, DocumentDecodeError | GetBy
 
 export function optionByIndex<A, R>(effect: E.Effect<A, DocumentDecodeError | GetByIndexFailure, R>) {
   return effect.pipe(E.asSome, E.catchTags({ GetByIndexFailure: () => E.succeed(O.none<A>()) }), dieOnDecodeError);
-}
-
-// TYPES -----------------------------------------------------------------------------------------------------------------------------------
-interface TaggedError {
-  readonly _tag: string;
 }

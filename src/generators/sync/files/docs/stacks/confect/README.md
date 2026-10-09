@@ -22,6 +22,8 @@ Do not extract a schema solely to name a one-use endpoint field. Prefer Effect S
 
 Generated Confect services/context are used directly; do not wrap them merely to rename or re-expose them.
 
+Simple operations may remain entirely in `*.impl.ts`, including direct persistence and business checks. Extract effectful responsibilities into features only when complexity, ownership, reuse or caller readability justifies it. Features may directly use DatabaseReader/DatabaseWriter; no data layer or full Entity is required. Internal registered functions serve actual execution boundaries, not ordinary TypeScript reuse. Preserve root mutation atomicity when composing operations. See `backend-architecture.md`.
+
 Function `args` callbacks return field maps; `returns`, `item`, and `error` callbacks return schemas. Omit `args` for no-argument functions. Table declarations still return object-shaped schemas and import `Table` from `@confect/core` so specs and generated table bindings stay client-safe. Codegen rejects reachable value imports of `@confect/server` from specs.
 
 Runners expose named methods. Destructure `runQuery`, `runMutation`, or `runAction` from the generated runner service before calling it. `StorageWriter.generateUploadUrl` is an Effect value; yield it directly. `TestConfect.layer(schema, convexSchema, modules)` returns a Layer directly, so provide the generated `TestConfect.layer` without an extra call. Each provision creates a fresh database.
@@ -46,9 +48,9 @@ Effect/Confect callers decode the result as `void`. Callers using the generated 
 
 ## Persisted document system fields
 
-Persisted resource schema modules start from application-controlled `sFooFields` and derive the complete `sFooDoc` with Confect's installed system-field facility. Do not manually recreate Convex `_id` or `_creationTime`.
+Table Schemas retain application-controlled persisted fields and Confect's document decoding. Export a separate `sFooDoc` only when the complete document contract is useful; do not require a Fields/Doc/Entity/Insert/Patch family. Derive system fields with the installed facility rather than manually recreating Convex `_id` or `_creationTime`.
 
-For Confect `10.0.0`, the verified API is:
+For Confect `10.1.0`, the verified API is:
 
 ```ts
 export const sFooDoc = SystemFields.extendWithSystemFields("foo", sFooFields);
@@ -69,7 +71,7 @@ That topology is authoritative for:
 - level-2 query/mutation/action function-kind grouping inside `GroupSpec.make()`;
 - implementation grouping by public/internal Confect function kind;
 - schema/type adjacency;
-- empty-section omission and `INTERNALS` / standalone-only `TYPES` placement.
+- empty-section omission, local types/helpers below their owner and final `GROUP` assembly.
 
 Do not duplicate or invent a different section grammar in project-local Confect files.
 
@@ -136,7 +138,7 @@ Choose the read API from the contract's cardinality and how the result will be c
 
 These APIs are not interchangeable style choices. Do not introduce QueryStream merely for stylistic consistency or mechanically replace indexed single-resource lookups or legitimate collection reads.
 
-For the supported Confect `10.0.0` baseline, indexed `get(index, ...)` already calls Convex's `unique()` internally. Zero rows produce typed `GetByIndexFailure`; one row is decoded and returned; multiple rows cause a defect through the rejected uniqueness check. Keep indexed `get` when duplicates violate a single-resource invariant. Preserve the existing `get`/optional `find` absence distinction owned by [backend architecture](../../conventions/backend-architecture.md); absence is not automatically a defect.
+For the supported Confect `10.1.0` baseline, indexed `get(index, ...)` already calls Convex's `unique()` internally. Zero rows produce typed `GetByIndexFailure`; one row is decoded and returned; multiple rows cause a defect through the rejected uniqueness check. Keep indexed `get` when duplicates violate a single-resource invariant. Preserve the existing `get`/optional `find` absence distinction owned by [backend architecture](../../conventions/backend-architecture.md); absence is not automatically a defect.
 
 `QueryStream.unique` instead consumes an explicitly `0..1` stream:
 
@@ -189,19 +191,19 @@ const optionalCustomerAccount = reader
 
 Use ordered `merge`, key-prefix deduplication through `distinct`, key-range `narrow`, `reverse`, joins through `flatMap`, and similar QueryStream operations only when their specific query/key semantics are materially required. The verified version exports `distinct`, not `deduplicate`. This is not a requirement to rewrite ordinary reads with streams.
 
-QueryStream is experimental in Confect `10.0.0`; its API may change between releases. Reverify installed source/types before adopting syntax on another baseline. See first-party [reading](https://confect.dev/server/database/reading) and [streams](https://confect.dev/server/database/streams) documentation for API details. Stream pagination also has its own reactive-client integration requirements; verify those before exposing a paginated contract.
+QueryStream is experimental in Confect `10.1.0`; its API may change between releases. Reverify installed source/types before adopting syntax on another baseline. See first-party [reading](https://confect.dev/server/database/reading) and [streams](https://confect.dev/server/database/streams) documentation for API details. Stream pagination also has its own reactive-client integration requirements; verify those before exposing a paginated contract.
 
-Data-local boolean persistence predicates such as `hasCurrentByFooId` belong under the existing `FIND` section. [Backend file topology](../../conventions/backend-file-topology.md) remains the grammar owner; do not introduce `PREDICATE`, `EXISTS`, or synonymous headings.
+Boolean persistence predicates such as `hasCurrentByFooId` may remain local to an impl or an extracted feature responsibility. Extracted operations use operation/coherent-group sections with local details below their owner. [Backend file topology](../../conventions/backend-file-topology.md) remains the grammar owner.
 
 ## Persistence patches
 
 Preserve the semantic difference between `S.optionalKey` and `S.optional`; explicit `undefined` may be meaningful for clearing an optional Convex field. Prefer focused patch contracts when invariants exist; use broad partial patches only when every field is independently patchable.
 
-Focused persistence-only Patch schemas stay with the data owner; shared Patch representations live in the persisted resource schema module only when they have a genuine cross-layer consumer.
+Operation-local patch args stay with their impl/feature owner. Runtime Patch representations belong in the resource schema module only when a real boundary/shared contract justifies them.
 
 ## Versions and generated code
 
-For Confect `10.0.0`, treat both `confect/_generated/` and the sibling `convex/` directory as generator-owned targets. Do not edit generated root Convex entrypoints such as `convex/schema.ts` or generated function modules manually. The supported authored exceptions inside `convex/` are `tsconfig.json` and `convex.config.ts`; keep those under normal authored-source ownership and typecheck the Convex runtime through `convex/tsconfig.json`.
+For Confect `10.1.0`, treat both `confect/_generated/` and the sibling `convex/` directory as generator-owned targets. Do not edit generated root Convex entrypoints such as `convex/schema.ts` or generated function modules manually. The supported authored exceptions inside `convex/` are `tsconfig.json` and `convex.config.ts`; keep those under normal authored-source ownership and typecheck the Convex runtime through `convex/tsconfig.json`.
 
 Confect-generated deployment/runtime modules are source-required generated artifacts for the checked-in application shape. Track them when the repository deploys/tests from source and regenerate them through the repository's canonical codegen command after Confect inputs change. The sibling official Convex `convex/_generated/api.*` surface has a distinct lifecycle: after generated Convex module topology changes, refresh it through the configured official `convex dev` workflow. Offline CI may validate the committed surface but cannot prove that deployment-bound API output is fresh. Make CI detect drift across generated targets while excluding the authored `convex/` exceptions from generator-byte comparison.
 

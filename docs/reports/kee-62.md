@@ -2,6 +2,8 @@
 
 [KEE-62](https://linear.app/keenko/issue/KEE-62/simplify-entity-hydration-ownership-and-eliminate-redundant) is the reusable guidance defect implementing the accepted follow-up to KEE-59 and ANO-16. Equivalent-issue searches found only the completed original guidance issue and adjacent work.
 
+Historical report: [KEE-63](https://linear.app/keenko/issue/KEE-63/adopt-the-confect-first-backend-convention-vnext) supersedes its mandatory data-layer, Entity/hydration and file/naming prescriptions. The recorded product and cross-resource invariants remain applicable.
+
 Keenko branch `kee-62` starts at fetched `origin/main`, `1e1646e`, the published 1.0.3 revision. Its isolated worktree preserves the original checkout's editor customization. Anoulà continues on `ano-16` from `3e5c21e`; the six existing uncommitted table-index/data/error edits remain uncommitted and unchanged.
 
 ## Ownership and examples
