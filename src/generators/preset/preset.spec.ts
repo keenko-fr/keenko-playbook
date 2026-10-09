@@ -679,7 +679,11 @@ describe("keenko preset", () => {
       ])
         expect(confectHelpers).toContain(`export function ${helper}`);
       const oxlint = tree.read("oxlint.config.ts", "utf-8");
+      expect(oxlint).toContain('files: ["packages/backend/**/*.ts", "packages/shared/**/*.ts"]');
       expect(oxlint).toContain('"typescript/consistent-type-definitions": "off"');
+      const typeOverride = oxlint?.slice(oxlint.lastIndexOf('files: ["packages/backend/**/*.ts", "packages/shared/**/*.ts"]'));
+      expect(typeOverride?.split("plugins:")[0]).not.toContain("...effectRules");
+      expect(oxlint).toContain('files: ["packages/backend/**/*.ts"],\n      rules: {\n        ...effectRules');
     })
   );
 

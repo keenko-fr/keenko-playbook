@@ -63,7 +63,7 @@ Every exported business function in features/domain takes zero or one argument. 
 
 Use ConvertArgs or FoobarArgs for function parameters. Input denotes an independently reusable business input. Simple signatures need no named type, and coincidentally identical shapes do not justify sharing an alias.
 
-Prefer type for ordinary contracts; retain interface when its specific properties are useful. Do not mechanically rewrite existing interfaces. Verify the effective lint policy and apply the justified scope in `tooling.md`.
+In `packages/backend/**/*.ts` and `packages/shared/**/*.ts`, prefer type for ordinary contracts; retain interface when its specific properties are useful. This preference does not extend backend-specific architecture or file grammar to shared. Do not mechanically rewrite existing interfaces. Verify the effective lint policy and apply the justified scope in `tooling.md`.
 
 | Type                                | Narrowest semantic owner |
 | ----------------------------------- | ------------------------ |

@@ -8,6 +8,7 @@ import managedDependencies from "./managed-dependencies-1-0-4.js";
 const compilerPath = "packages/backend/tsconfig.json";
 const lintPath = "oxlint.config.ts";
 const typeRule = "typescript/consistent-type-definitions";
+const typeOwners = ["packages/backend/**/*.ts", "packages/shared/**/*.ts"];
 
 // Qualify both configurations before the existing dependency migration can write.
 export default async function backendConvention105(tree: Tree) {
@@ -102,49 +103,38 @@ function updateLint(source: string) {
   if (!ts.isObjectLiteralExpression(config)) return conflict(lintPath);
   const overrides = property(config, "overrides", lintPath);
   if (overrides === undefined || !ts.isArrayLiteralExpression(overrides.initializer)) return conflict(lintPath);
-  const rules = backendRules(overrides.initializer);
-  const existing = property(rules, typeRule, lintPath);
-  if (existing !== undefined) {
-    const value = ts.isArrayLiteralExpression(existing.initializer) ? existing.initializer.elements[0] : existing.initializer;
-    if (value === undefined) return conflict(`${lintPath}#${typeRule}`);
-    if ((ts.isStringLiteral(value) && value.text === "off") || (ts.isNumericLiteral(value) && value.text === "0")) return source;
-    return conflict(`${lintPath}#${typeRule}`);
-  }
-  const following = rules.properties.find(
-    (entry) => ts.isPropertyAssignment(entry) && ts.isStringLiteral(entry.name) && entry.name.text > typeRule
-  );
-  if (following === undefined) return append(file, rules.properties, rules.end - 1, [`"${typeRule}": "off"`]);
-  const position = following.getStart(file);
-  const indent = /^\s*/u.exec(source.slice(source.lastIndexOf("\n", position) + 1, position))?.[0] ?? "";
-  return `${source.slice(0, position)}"${typeRule}": "off",\n${indent}${source.slice(position)}`;
+  const covered = new Set(overrides.initializer.elements.flatMap(checkTypeOverride));
+  const missing = typeOwners.filter((owner) => !covered.has(owner));
+  if (missing.length === 0) return source;
+  // Add only the type policy; consumer Effect rules and common/separate overrides stay byte-identical.
+  return append(file, overrides.initializer.elements, overrides.initializer.end - 1, [
+    `{ files: [${missing.map((owner) => `"${owner}"`).join(", ")}], rules: { "${typeRule}": "off" } }`,
+  ]);
 }
 
-function backendRules(overrides: ts.ArrayLiteralExpression) {
-  const backends: ts.ObjectLiteralExpression[] = [];
-  for (const override of overrides.elements) {
-    if (!ts.isObjectLiteralExpression(override)) return conflict(lintPath);
-    const files = property(override, "files", lintPath);
-    if (files === undefined || !ts.isArrayLiteralExpression(files.initializer)) return conflict(lintPath);
-    const patterns = literals(files.initializer, lintPath);
-    if (!patterns.includes("packages/backend/**/*.ts")) {
-      checkOtherOverride(override, patterns);
-      continue;
-    }
-    if (patterns.length !== 1) return conflict(lintPath);
-    backends.push(override);
-  }
-  if (backends.length !== 1) return conflict(lintPath);
-  const rules = property(backends[0], "rules", lintPath);
-  if (rules === undefined || !ts.isObjectLiteralExpression(rules.initializer)) return conflict(lintPath);
-  return rules.initializer;
-}
-
-function checkOtherOverride(override: ts.ObjectLiteralExpression, patterns: readonly string[]) {
-  if (patterns.every((pattern) => /^(?:apps\/|packages\/(?:ui|shared)\/)/u.test(pattern))) return;
+function checkTypeOverride(override: ts.Expression) {
+  if (!ts.isObjectLiteralExpression(override)) return conflict(lintPath);
+  const files = property(override, "files", lintPath);
+  if (files === undefined || !ts.isArrayLiteralExpression(files.initializer)) return conflict(lintPath);
+  const patterns = literals(files.initializer, lintPath);
+  if (
+    !patterns.some((pattern) =>
+      ["packages/backend", "packages/shared"].some((owner) => minimatch(owner, pattern, { dot: true, nocase: true, partial: true }))
+    )
+  )
+    return [];
   const rules = property(override, "rules", lintPath);
-  if (rules === undefined) return;
-  if (!ts.isObjectLiteralExpression(rules.initializer) || property(rules.initializer, typeRule, lintPath) !== undefined)
-    return conflict(`${lintPath}#competing backend override`);
+  if (rules === undefined) return [];
+  if (!ts.isObjectLiteralExpression(rules.initializer)) return conflict(lintPath);
+  const existing = property(rules.initializer, typeRule, lintPath);
+  if (existing === undefined) return [];
+  const value = ts.isArrayLiteralExpression(existing.initializer) ? existing.initializer.elements[0] : existing.initializer;
+  if (value === undefined || !((ts.isStringLiteral(value) && value.text === "off") || (ts.isNumericLiteral(value) && value.text === "0")))
+    return conflict(`${lintPath}#competing backend/shared ${typeRule}`);
+  const excluded = property(override, "excludedFiles", lintPath);
+  if (excluded !== undefined && (!ts.isArrayLiteralExpression(excluded.initializer) || excluded.initializer.elements.length !== 0))
+    return conflict(`${lintPath}#excluded backend/shared override`);
+  return patterns.filter((pattern) => typeOwners.includes(pattern));
 }
 
 function property(object: ts.ObjectLiteralExpression, name: string, path: string): ts.PropertyAssignment | undefined {

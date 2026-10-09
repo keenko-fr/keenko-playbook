@@ -1,5 +1,7 @@
 # KEE-63 backend convention verification
 
+This report records the initial convention through 1.0.5-rc.0. The owner subsequently extended only the type-definition preference to backend and shared; see [the RC correction report](kee-63-shared-types.md) for the superseding scope and recovery evidence.
+
 [KEE-63](https://linear.app/keenko/issue/KEE-63/adopt-the-confect-first-backend-convention-vnext) records the Backend Convention vNext supplied and validated by Anoulà's owner. It was created before repository edits after duplicate searches, and is related to KEE-59, KEE-62 and ANO-16.
 
 The local `kee-63` worktree starts at `9898567`, the published 1.0.4 revision. The original main checkout remains clean.

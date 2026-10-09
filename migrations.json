@@ -7,7 +7,12 @@
     },
     "1.0.5-backend-convention": {
       "version": "1.0.5-rc.0",
-      "description": "Converge managed dependencies and safely extend backend compiler/lint coverage without moving application code.",
+      "description": "Converge managed dependencies, backend compiler coverage and backend/shared type policy without moving application code.",
+      "factory": "./dist/migrations/backend-convention-1-0-5"
+    },
+    "1.0.5-backend-shared-types": {
+      "version": "1.0.5-rc.1",
+      "description": "Ensure the backend/shared type policy and reconcile partially applied 1.0.5 upgrades, preserving consumer configuration.",
       "factory": "./dist/migrations/backend-convention-1-0-5"
     }
   }
