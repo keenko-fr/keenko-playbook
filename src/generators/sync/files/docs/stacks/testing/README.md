@@ -7,11 +7,11 @@ Vitest is the canonical general test runner. Keenko registers `@nx/vitest` so ea
 - `packages/backend` uses the Node environment for ordinary tests colocated with their authored owners. Assembled backend integration tests live under `packages/backend/test/` and use the Edge Runtime environment; author `test/TestConfect.ts` and `test/*.test.ts` when real behavior requires them. For Confect-owned application functions, prefer generated Confect refs through [`@confect/test`](https://confect.dev/guides/testing); it wraps `convex-test` with Effect-native APIs. The generated `convex/` modules are loaded by the test layer and remain generator-owned rather than becoming an authored test location.
 - Direct `convex-test` usage remains appropriate when a genuinely Convex-native boundary owns the behavior. A Convex simulation is not the default for the rest of the backend, and real-provider or staging verification remains separate when runtime fidelity materially matters.
 
-- Prefer behavior tests through the highest meaningful stable application interface.
-- Direct data-helper tests are reserved for persistence-specific semantics that are not better observed through the feature interface.
+- Test behavior through the most relevant stable boundary: registered Confect functions for Confect-owned operations, extracted feature operations for their responsibilities, and direct domain functions for pure business rules. A Confect operation does not need a feature wrapper to be tested.
+- Direct persistence tests are appropriate for storage or codec semantics that are not better observed through the owning operation.
 - Use TDD for meaningful behavior/defects/contracts, not as ceremony around generated/config/trivial glue.
 - Bug fixes include regression evidence when practical.
-- Mock external/provider seams, not internal feature/data collaborators merely to shrink a test.
+- Mock external/provider seams, not internal operation collaborators merely to shrink a test.
 - Prefer real framework integrations such as Convex test infrastructure where practical.
 - Cover authorization caller matrices and adversarial/replay/failure cases for sensitive workflows.
 - Control clock/randomness/expiry; do not use real sleeps as test design.
