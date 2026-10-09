@@ -62,8 +62,8 @@ describe("1.0.5 backend convention migration", () => {
       );
       expect(tree.read(lintPath, "utf-8")).toBe(
         lint.replace(
-          '"typescript/promise-function-async": "off",',
-          '"typescript/consistent-type-definitions": "off",\n        "typescript/promise-function-async": "off",'
+          "\n  ],\n  plugins:",
+          '\n    { files: ["packages/backend/**/*.ts", "packages/shared/**/*.ts"], rules: { "typescript/consistent-type-definitions": "off" } },\n  ],\n  plugins:'
         )
       );
       expect(readJson<PackageJson>(tree, "package.json").devDependencies?.oxfmt).toBe(packageVersions.oxfmt);
@@ -96,6 +96,110 @@ describe("1.0.5 backend convention migration", () => {
       expect(tree.listChanges()).toEqual(before);
     })
   );
+
+  for (const [name, lint, unchanged] of [
+    [
+      "common Effect override",
+      releasedLint.replace('["packages/backend/**/*.ts"]', '["packages/backend/**/*.ts", "packages/shared/**/*.ts"]'),
+      false,
+    ],
+    [
+      "common override already off",
+      releasedLint
+        .replace('["packages/backend/**/*.ts"]', '["packages/backend/**/*.ts", "packages/shared/**/*.ts"]')
+        .replace('"no-use-before-define": "off",', '"no-use-before-define": "off", "typescript/consistent-type-definitions": "off",'),
+      true,
+    ],
+    [
+      "separate Effect overrides",
+      releasedLint.replace(
+        "overrides: [",
+        'overrides: [{ files: ["packages/shared/**/*.ts"], rules: { "effect/noThrowStatement": "error", "eslint/no-unused-vars": "off" } },'
+      ),
+      false,
+    ],
+    [
+      "separate overrides already off",
+      releasedLint
+        .replace('"no-use-before-define": "off",', '"no-use-before-define": "off", "typescript/consistent-type-definitions": 0,')
+        .replace(
+          "overrides: [",
+          'overrides: [{ files: ["packages/shared/**/*.ts"], rules: { "typescript/consistent-type-definitions": ["off"] } },'
+        ),
+      true,
+    ],
+    [
+      "published RC backend-only policy",
+      releasedLint.replace(
+        '"no-use-before-define": "off",',
+        '"no-use-before-define": "off", "typescript/consistent-type-definitions": "off",'
+      ),
+      false,
+    ],
+    ...[
+      '["apps/**", "packages/ui/**"]',
+      '["./packages/ui/**", "packages/backend-tools/**"]',
+      '["packages/{ui,docs}/**", "scripts/**/*.ts"]',
+      "[]",
+    ].map(
+      (exclude) =>
+        [
+          `common override with foreign excludeFiles ${exclude}`,
+          releasedLint
+            .replace('["packages/backend/**/*.ts"]', '["packages/backend/**/*.ts", "packages/shared/**/*.ts"]')
+            .replace("rules: {\n        ...effectRules", `excludeFiles: ${exclude}, rules: {\n        ...effectRules`)
+            .replace('"no-use-before-define": "off",', '"no-use-before-define": "off", "typescript/consistent-type-definitions": "off",'),
+          true,
+        ] as const
+    ),
+    [
+      "separate overrides with foreign excludeFiles",
+      releasedLint
+        .replace("rules: {\n        ...effectRules", 'excludeFiles: ["packages/ui/**"], rules: {\n        ...effectRules')
+        .replace('"no-use-before-define": "off",', '"no-use-before-define": "off", "typescript/consistent-type-definitions": "off",')
+        .replace(
+          "overrides: [",
+          'overrides: [{ files: ["packages/shared/**/*.ts"], excludeFiles: ["apps/**"], rules: { "typescript/consistent-type-definitions": "off" } },'
+        ),
+      true,
+    ],
+    [
+      "separate overrides with excludeFiles outside their respective scopes",
+      releasedLint
+        .replace("rules: {\n        ...effectRules", 'excludeFiles: ["packages/shared/**"], rules: {\n        ...effectRules')
+        .replace('"no-use-before-define": "off",', '"no-use-before-define": "off", "typescript/consistent-type-definitions": "off",')
+        .replace(
+          "overrides: [",
+          'overrides: [{ files: ["packages/shared/**/*.ts"], excludeFiles: ["packages/backend/**"], rules: { "typescript/consistent-type-definitions": "off" } },'
+        ),
+      true,
+    ],
+  ] as const)
+    it.live(`preserves ${name} and converges both packages without splitting overrides`, () =>
+      E.gen(function* () {
+        const tree = yield* fixture;
+        tree.write(lintPath, `// Consumer comment\n${lint}`);
+        const before = tree.read(lintPath, "utf-8");
+        yield* run(tree);
+        const after = tree.read(lintPath, "utf-8");
+        if (unchanged) expect(after).toBe(before);
+        else {
+          const insertion = after?.slice(
+            after.indexOf("    { files:", after.lastIndexOf('"unicorn/throw-new-error"')),
+            after.indexOf("\n  ],\n  plugins:")
+          );
+          expect(after?.replace(`\n${insertion}`, "")).toBe(before);
+        }
+        expect(after).toContain("...effectRules");
+        expect(after).toContain("...effectTsgoRecommended.rules");
+        expect(after).toContain('["apps/**/*.{ts,tsx}"]');
+        expect(after).toContain('["packages/shared/src/index.ts"]');
+        if (name.includes("excludeFiles")) expect(after).toContain("excludeFiles:");
+        const changes = tree.listChanges();
+        yield* run(tree);
+        expect(tree.listChanges()).toEqual(changes);
+      })
+    );
 
   for (const [name, configure] of [
     ...[
@@ -134,6 +238,39 @@ describe("1.0.5 backend convention migration", () => {
           },
         ] as const
     ),
+    ...[
+      'files: ["packages/shared/**/*.ts"], rules: { "typescript/consistent-type-definitions": "error" }',
+      'files: ["packages/backend/**/*.ts", "packages/shared/**/*.ts"], rules: { "typescript/consistent-type-definitions": "warn" }',
+      'files: ["packages/shared/src/**/*.ts"], rules: { "typescript/consistent-type-definitions": "error" }',
+      'files: ["packages/shared/**/*.ts"], rules: customRules',
+      'files: ["packages/shared/**/*.ts"], rules: { ...customRules }',
+      ...[
+        '["packages/backend/domain/**/*.ts"]',
+        '["packages/shared/src/nested/**/*.ts"]',
+        '["**/*.test.ts"]',
+        '["*.ts"]',
+        '["packages/{ui,backend}/**"]',
+        '["./packages/shared/**"]',
+        '["packages/ui/../backend/**"]',
+        '["/consumer/packages/backend/**"]',
+        '["!packages/ui/**"]',
+        "consumerExclusions",
+        "[42]",
+      ].map(
+        (exclude) =>
+          `files: ["packages/backend/**/*.ts", "packages/shared/**/*.ts"], excludeFiles: ${exclude}, rules: { "typescript/consistent-type-definitions": "off" }`
+      ),
+      'files: ["packages/backend/**/*.ts"], excludeFiles: ["packages/backend/domain/**/*.ts"], rules: { "typescript/consistent-type-definitions": "off" }',
+      'files: ["packages/shared/**/*.ts"], excludeFiles: ["packages/shared/src/**/*.ts"], rules: { "typescript/consistent-type-definitions": "off" }',
+    ].map(
+      (override) =>
+        [
+          `ambiguous or contradictory shared override ${override}`,
+          (tree: Tree) => {
+            tree.write(lintPath, releasedLint.replace("overrides: [", `overrides: [{ ${override} },`));
+          },
+        ] as const
+    ),
     [
       "customized backend rule",
       (tree: Tree) => {
@@ -153,9 +290,15 @@ describe("1.0.5 backend convention migration", () => {
       },
     ],
     [
-      "duplicate backend overrides",
+      "contradictory duplicate backend overrides",
       (tree: Tree) => {
-        tree.write(lintPath, releasedLint.replace("overrides: [", 'overrides: [{ files: ["packages/backend/**/*.ts"], rules: {} },'));
+        tree.write(
+          lintPath,
+          releasedLint.replace(
+            "overrides: [",
+            'overrides: [{ files: ["packages/backend/**/*.ts"], rules: { "typescript/consistent-type-definitions": "error" } },'
+          )
+        );
       },
     ],
     [
@@ -214,6 +357,7 @@ describe("1.0.5 backend convention migration", () => {
             expect(message).toContain(`${compilerPath}#exclude`);
             expect(message).toContain("may exclude domain/ or errors/");
           }
+          if (name.includes("excludeFiles")) expect(message).toContain(`${lintPath}#excludeFiles`);
         }
         expect(tree.listChanges()).toEqual(before);
       })
