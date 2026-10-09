@@ -870,7 +870,7 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
       lintFile,
       `// Consumer common type override\n${lint.replace(
         "\n  ],\n  plugins:",
-        '\n    { files: ["packages/backend/**/*.ts", "packages/shared/**/*.ts"], rules: { "typescript/consistent-type-definitions": "off" } },\n  ],\n  plugins:'
+        '\n    {\n      excludeFiles: ["packages/ui/**", "apps/**"],\n      files: ["packages/backend/**/*.ts", "packages/shared/**/*.ts"],\n      rules: { "typescript/consistent-type-definitions": "off" },\n    },\n  ],\n  plugins:'
       )}`
     );
     yield* command(workspace, env, "bun", ["x", "nx", "migrate", `keenko@${publishedRcSource}`]);
@@ -890,6 +890,7 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
       );
     yield* Console.log("Published RC migration failure reproduced without factory writes; package/lock preparation already happened.");
   }
+  const lintBeforeMigration = yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"));
   const preparedLock = yield* fs.readFileString(lockPath);
   const preparation = yield* command(workspace, env, "bun", [
     "x",
@@ -926,10 +927,8 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
   yield* verifyTypePolicy(workspace, env);
   if (partial)
     yield* assert(
-      (yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"))).includes(
-        '["packages/backend/**/*.ts", "packages/shared/**/*.ts"]'
-      ),
-      "Recovery split the common override"
+      (yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"))) === lintBeforeMigration,
+      "Recovery changed the compatible common override or its foreign excludeFiles"
     );
   yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
   yield* verifyBackendRepresentationGuidance(workspace);
@@ -962,7 +961,9 @@ const verifyTypePolicy = E.fn("product.verifyTypePolicy")(function* (workspace: 
   const path = yield* Path.Path;
   for (const [relative, allowed] of [
     ["packages/backend/features/keenko-type-policy-probe.ts", true],
+    ["packages/backend/domain/nested/keenko-type-policy-probe.ts", true],
     ["packages/shared/src/keenko-type-policy-probe.ts", true],
+    ["packages/shared/src/nested/keenko-type-policy-probe.ts", true],
     ["packages/ui/src/keenko-type-policy-probe.ts", false],
     ["apps/web/src/keenko-type-policy-probe.ts", false],
   ] as const) {

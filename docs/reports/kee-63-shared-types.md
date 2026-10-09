@@ -14,6 +14,8 @@ No dependency versions or compatibility pins change. The root package remains rc
 
 ## Verification
 
+These results record the initial scope-extension commit 71f9519. Updated finding-specific checks are recorded below.
+
 Use Node 24.15.0 and Bun 1.4.2, within the supported ranges.
 
 - Frozen repository install passes without manifest/lock changes.
@@ -47,3 +49,21 @@ bun install --frozen-lockfile
 Both factories resolve from the newly installed package. A failed previous factory need not be treated as a completed upgrade solely because package.json or bun.lock already changed during planning/install. Replaying the corrected entries preserves application modules and custom Effect overrides. Explicit contradictions must be reconciled manually before a rerun. Verify a second migration/sync/frozen install leaves manifests, configuration, lockfile and helpers unchanged.
 
 Before publication, npm cannot install the new RC. The local product gate qualifies the same native procedure against its isolated packed candidate. Final independent review and authorized publication remain required.
+
+## Blocking review correction: Oxlint excludeFiles
+
+The reviewed commit 71f9519 looked for the wrong property, excludedFiles. Installed Oxlint 1.87.0's schema and [official reference](https://oxc.rs/docs/guide/usage/linter/config-file-reference#overridesnexcludefiles) define excludeFiles: matching files skip that override. The validator now reads this property on every relevant explicit type-policy override before dependency or configuration writes.
+
+Static exclusions whose literal prefix is disjoint from the override’s relevant backend/shared scope are preserved, including foreign brace alternatives and common/separate overrides. Separate overrides may also exclude the other package because that exclusion cannot affect their own coverage. Potentially overlapping patterns, dynamic values, unsupported/ambiguous path syntax and parent paths fail explicitly with the property and offending pattern. The literal-prefix proof avoids assuming that JavaScript minimatch and Oxlint treat wildcard separators identically. Common overrides, Effect rules, consumer text, manifests and application helpers remain intact; no dependency or release-plan changes are needed.
+
+Regression cases use the real property with backend domain, shared nested files, broad globs, common/separate overrides and compatible foreign exclusions. Every refusal snapshots the full virtual tree, including manifests, compiler/lint configuration, lockfile and application customizations; accepted scenarios verify idempotence. The packed partial-recovery fixture now preserves a common override with foreign excludeFiles byte-for-byte. Actual installed Oxlint probes cover backend features, backend domain/nested, shared src, shared src/nested, UI and the application.
+
+Updated verification (Node 24.15.0, Bun 1.4.2):
+
+- Targeted excludeFiles regressions: 19 passed, covering the final scoped validator; 65 migration tests are covered by the full suite.
+- `bun run check`: exit 0, 25 Bun tests and 225 Vitest tests. Formatting, native typecheck, packaging and release-version guard pass. Lint: zero errors, 324 pre-existing unstable-API warnings, unchanged from reviewed 71f9519.
+- Native release-plan check and full release dry run: exit 0, resolves 1.0.5-rc.1 without publication or manifest/version changes.
+- `bun run test:product`: exit 0, verification phases complete in 350.468s. Fresh generation, 1.0.4 → RC.1, RC.0 → RC.1 and failed-RC.0 recovery → RC.1 pass, including real Oxlint nested-file probes, preservation and idempotence. The first run exposed an unsorted fixture object; the seeded fixture now obeys the existing sort-keys rule without changing migration behavior or consumer overrides.
+- Final formatting and `git diff --check`: pass. New-head CI results are tracked on PR #59; final review remains limited to this finding.
+
+Anoulà is untouched; final independent review is limited to this finding. No merge or publication.

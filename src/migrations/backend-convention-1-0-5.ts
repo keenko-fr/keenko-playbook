@@ -1,6 +1,6 @@
 /* oxlint-disable effect/noAsyncFunction, effect/noNewError, effect/noThrowStatement, effect/noNullish -- Native Nx uses a Promise migration and stops on ambiguous configuration before writes. */
 import { joinPathFragments, type Tree } from "@nx/devkit";
-import { minimatch } from "minimatch";
+import { braceExpand, minimatch } from "minimatch";
 import ts from "typescript";
 
 import managedDependencies from "./managed-dependencies-1-0-4.js";
@@ -117,12 +117,10 @@ function checkTypeOverride(override: ts.Expression) {
   const files = property(override, "files", lintPath);
   if (files === undefined || !ts.isArrayLiteralExpression(files.initializer)) return conflict(lintPath);
   const patterns = literals(files.initializer, lintPath);
-  if (
-    !patterns.some((pattern) =>
-      ["packages/backend", "packages/shared"].some((owner) => minimatch(owner, pattern, { dot: true, nocase: true, partial: true }))
-    )
-  )
-    return [];
+  const owners = ["packages/backend", "packages/shared"].filter((owner) =>
+    patterns.some((pattern) => minimatch(owner, pattern, { dot: true, nocase: true, partial: true }))
+  );
+  if (owners.length === 0) return [];
   const rules = property(override, "rules", lintPath);
   if (rules === undefined) return [];
   if (!ts.isObjectLiteralExpression(rules.initializer)) return conflict(lintPath);
@@ -131,10 +129,27 @@ function checkTypeOverride(override: ts.Expression) {
   const value = ts.isArrayLiteralExpression(existing.initializer) ? existing.initializer.elements[0] : existing.initializer;
   if (value === undefined || !((ts.isStringLiteral(value) && value.text === "off") || (ts.isNumericLiteral(value) && value.text === "0")))
     return conflict(`${lintPath}#competing backend/shared ${typeRule}`);
-  const excluded = property(override, "excludedFiles", lintPath);
-  if (excluded !== undefined && (!ts.isArrayLiteralExpression(excluded.initializer) || excluded.initializer.elements.length !== 0))
-    return conflict(`${lintPath}#excluded backend/shared override`);
+  checkTypeExclusions(override, owners);
   return patterns.filter((pattern) => typeOwners.includes(pattern));
+}
+
+function checkTypeExclusions(override: ts.ObjectLiteralExpression, owners: readonly string[]) {
+  const excluded = property(override, "excludeFiles", lintPath);
+  if (excluded === undefined) return;
+  if (!ts.isArrayLiteralExpression(excluded.initializer)) return conflict(`${lintPath}#excludeFiles is ambiguous`);
+  for (const pattern of literals(excluded.initializer, `${lintPath}#excludeFiles`)) {
+    const context = `${lintPath}#excludeFiles "${pattern}" may exclude backend/shared type-policy coverage`;
+    for (const expanded of braceExpand(pattern)) {
+      if (/^(?:\/|[a-z]:)|[\\()!{}]|(?:^|\/)\.\.(?:\/|$)/iu.test(expanded)) return conflict(context);
+      // A literal prefix disjoint from the override's owned trees proves safety regardless of wildcard separator semantics.
+      const [prefix] = expanded
+        .toLowerCase()
+        .replaceAll(/\/{2,}/gu, "/")
+        .replace(/^(?:\.\/)+/u, "")
+        .split(/[*?[\]]/u);
+      if (owners.some((owner) => owner.startsWith(prefix) || prefix.startsWith(`${owner}/`))) return conflict(context);
+    }
+  }
 }
 
 function property(object: ts.ObjectLiteralExpression, name: string, path: string): ts.PropertyAssignment | undefined {

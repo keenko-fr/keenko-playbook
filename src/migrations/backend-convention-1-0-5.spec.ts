@@ -136,6 +136,44 @@ describe("1.0.5 backend convention migration", () => {
       ),
       false,
     ],
+    ...[
+      '["apps/**", "packages/ui/**"]',
+      '["./packages/ui/**", "packages/backend-tools/**"]',
+      '["packages/{ui,docs}/**", "scripts/**/*.ts"]',
+      "[]",
+    ].map(
+      (exclude) =>
+        [
+          `common override with foreign excludeFiles ${exclude}`,
+          releasedLint
+            .replace('["packages/backend/**/*.ts"]', '["packages/backend/**/*.ts", "packages/shared/**/*.ts"]')
+            .replace("rules: {\n        ...effectRules", `excludeFiles: ${exclude}, rules: {\n        ...effectRules`)
+            .replace('"no-use-before-define": "off",', '"no-use-before-define": "off", "typescript/consistent-type-definitions": "off",'),
+          true,
+        ] as const
+    ),
+    [
+      "separate overrides with foreign excludeFiles",
+      releasedLint
+        .replace("rules: {\n        ...effectRules", 'excludeFiles: ["packages/ui/**"], rules: {\n        ...effectRules')
+        .replace('"no-use-before-define": "off",', '"no-use-before-define": "off", "typescript/consistent-type-definitions": "off",')
+        .replace(
+          "overrides: [",
+          'overrides: [{ files: ["packages/shared/**/*.ts"], excludeFiles: ["apps/**"], rules: { "typescript/consistent-type-definitions": "off" } },'
+        ),
+      true,
+    ],
+    [
+      "separate overrides with excludeFiles outside their respective scopes",
+      releasedLint
+        .replace("rules: {\n        ...effectRules", 'excludeFiles: ["packages/shared/**"], rules: {\n        ...effectRules')
+        .replace('"no-use-before-define": "off",', '"no-use-before-define": "off", "typescript/consistent-type-definitions": "off",')
+        .replace(
+          "overrides: [",
+          'overrides: [{ files: ["packages/shared/**/*.ts"], excludeFiles: ["packages/backend/**"], rules: { "typescript/consistent-type-definitions": "off" } },'
+        ),
+      true,
+    ],
   ] as const)
     it.live(`preserves ${name} and converges both packages without splitting overrides`, () =>
       E.gen(function* () {
@@ -156,6 +194,7 @@ describe("1.0.5 backend convention migration", () => {
         expect(after).toContain("...effectTsgoRecommended.rules");
         expect(after).toContain('["apps/**/*.{ts,tsx}"]');
         expect(after).toContain('["packages/shared/src/index.ts"]');
+        if (name.includes("excludeFiles")) expect(after).toContain("excludeFiles:");
         const changes = tree.listChanges();
         yield* run(tree);
         expect(tree.listChanges()).toEqual(changes);
@@ -205,7 +244,24 @@ describe("1.0.5 backend convention migration", () => {
       'files: ["packages/shared/src/**/*.ts"], rules: { "typescript/consistent-type-definitions": "error" }',
       'files: ["packages/shared/**/*.ts"], rules: customRules',
       'files: ["packages/shared/**/*.ts"], rules: { ...customRules }',
-      'files: ["packages/shared/**/*.ts"], excludedFiles: ["**/*.test.ts"], rules: { "typescript/consistent-type-definitions": "off" }',
+      ...[
+        '["packages/backend/domain/**/*.ts"]',
+        '["packages/shared/src/nested/**/*.ts"]',
+        '["**/*.test.ts"]',
+        '["*.ts"]',
+        '["packages/{ui,backend}/**"]',
+        '["./packages/shared/**"]',
+        '["packages/ui/../backend/**"]',
+        '["/consumer/packages/backend/**"]',
+        '["!packages/ui/**"]',
+        "consumerExclusions",
+        "[42]",
+      ].map(
+        (exclude) =>
+          `files: ["packages/backend/**/*.ts", "packages/shared/**/*.ts"], excludeFiles: ${exclude}, rules: { "typescript/consistent-type-definitions": "off" }`
+      ),
+      'files: ["packages/backend/**/*.ts"], excludeFiles: ["packages/backend/domain/**/*.ts"], rules: { "typescript/consistent-type-definitions": "off" }',
+      'files: ["packages/shared/**/*.ts"], excludeFiles: ["packages/shared/src/**/*.ts"], rules: { "typescript/consistent-type-definitions": "off" }',
     ].map(
       (override) =>
         [
@@ -301,6 +357,7 @@ describe("1.0.5 backend convention migration", () => {
             expect(message).toContain(`${compilerPath}#exclude`);
             expect(message).toContain("may exclude domain/ or errors/");
           }
+          if (name.includes("excludeFiles")) expect(message).toContain(`${lintPath}#excludeFiles`);
         }
         expect(tree.listChanges()).toEqual(before);
       })
