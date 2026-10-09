@@ -80,7 +80,14 @@ describe("1.0.5 backend convention migration", () => {
   it.live("leaves current and broadly inclusive compiler configurations unchanged", () =>
     E.gen(function* () {
       const tree = yield* fixture;
-      tree.write(compilerPath, '{ "extends": "../../tsconfig.base.json", "include": ["**/*.ts"] }');
+      tree.write(
+        compilerPath,
+        `{
+          "extends": "../../tsconfig.base.json",
+          "include": ["**/*.ts"],
+          "exclude": ["", "test/**", "node_modules", "convex/_generated/**", "../ui/**", "domain.ts", "errors.json", "!domain/**", "{domain,errors}/**", "[de]omain/**"]
+        }`
+      );
       const compiler = tree.read(compilerPath, "utf-8");
       yield* run(tree);
       expect(tree.read(compilerPath, "utf-8")).toBe(compiler);
@@ -91,6 +98,42 @@ describe("1.0.5 backend convention migration", () => {
   );
 
   for (const [name, configure] of [
+    ...[
+      ["."],
+      [".."],
+      ["../.."],
+      ["../backend"],
+      ["domain/**"],
+      ["errors/**"],
+      ["**/domain/**", "**/errors/**"],
+      ["./**/domain/**"],
+      ["**/domain"],
+      ["**/errors/"],
+      ["d?main/**"],
+      ["*rrors/**/*.ts"],
+      ["**/*.ts"],
+      ["**/*"],
+      ["**"],
+      ["domain/nested/**"],
+      ["**/*.spec.ts"],
+      ["../backend/errors/**"],
+      ["../../packages/backend/domain/**"],
+      [".\\errors\\**"],
+      ["DOMAIN/**"],
+      ["/consumer/packages/backend/domain/**"],
+    ].map(
+      (exclude) =>
+        [
+          `compiler exclusion ${exclude.join(", ")}`,
+          (tree: Tree) => {
+            updateJson<CompilerConfig>(tree, compilerPath, (config) => ({
+              ...config,
+              compilerOptions: { noUnusedParameters: true },
+              exclude,
+            }));
+          },
+        ] as const
+    ),
     [
       "customized backend rule",
       (tree: Tree) => {
@@ -156,11 +199,22 @@ describe("1.0.5 backend convention migration", () => {
       E.gen(function* () {
         const tree = yield* fixture;
         configure(tree);
-        updateJson<PackageJson>(tree, "package.json", (manifest) => ({ ...manifest, devDependencies: {} }));
+        updateJson<PackageJson>(tree, "package.json", (manifest) => ({
+          ...manifest,
+          dependencies: { ...manifest.dependencies, "consumer-owned": "^7.0.0" },
+          devDependencies: {},
+        }));
         const before = tree.listChanges();
         const result = yield* E.exit(run(tree));
         expect(Exit.isFailure(result)).toBe(true);
-        if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toContain("reconcile the backend convention manually");
+        if (Exit.isFailure(result)) {
+          const message = Cause.pretty(result.cause);
+          expect(message).toContain("reconcile the backend convention manually");
+          if (name.startsWith("compiler exclusion")) {
+            expect(message).toContain(`${compilerPath}#exclude`);
+            expect(message).toContain("may exclude domain/ or errors/");
+          }
+        }
         expect(tree.listChanges()).toEqual(before);
       })
     );

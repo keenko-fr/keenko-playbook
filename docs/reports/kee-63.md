@@ -89,9 +89,26 @@ Frozen published compiler/lint fixtures seed focused migration tests. Vitest's s
 
 Lint reports 321 warnings versus the initial 314. Five new unstable-API diagnostics belong to the migration test suite and two to the product compiler probes; the migration implementation introduces none. No warning policy was suppressed to hide the difference.
 
+## Second-review correction: TypeScript exclusions
+
+The owner reported one Major finding against `edc0518`: recursive exclusions such as `["**/domain/**", "**/errors/**"]` escaped prevalidation. Adding includes while keeping those exclusions could leave the new modules unchecked.
+
+The migration now uses the existing minimatch dependency to detect possible overlap with domain/errors directories or their descendants. It normalizes relative paths and Windows separators, reproduces TypeScript's implicit recursive directory globs (including `.` and `..`), and treats unsupported glob syntax as literal. Case-insensitive matching covers portable consumer configuration; absolute paths and possible descendant exclusions require explicit manual reconciliation. The error identifies the offending exclusion. No exclusion is removed.
+
+Compiler/lint prevalidation still finishes before dependency or configuration writes. Regression snapshots compare the complete Tree, including every configuration/manifest, the Bun lockfile, application modules and custom compiler/dependency state. The reported pair, wildcard directory names, broad/file-specific globs, ancestor paths, separators, case and absolute ambiguity are covered. Unrelated exclusions remain byte-identical, and the standard migration/rerun scenarios remain covered. Installed TypeScript's exclusion matcher independently confirms the recursive and ancestor cases.
+
+Verification uses Node 24.15.0 / Bun 1.4.2:
+
+- Both focused migration suites pass: 36 tests.
+- Final `bun run check` passes, exit 0: formatting, lint, native typecheck, 22 Bun tests, 196 Vitest tests, build/pack and release verification. An earlier run failed on a temporary-directory ENOENT in a release fixture; the isolated rerun completed all gates.
+- Final `bun run test:product` passes in 152.401 seconds, exit 0: real published 1.0.4 → locally packed 1.0.5-rc.0 candidate, native Nx migration, managed dependency/customization checks, guidance sync, Confect generation, compilation, lint, tests, build, lock/reinstall stability and second sync/migration idempotence. Existing Verdaccio shutdown noise follows all completed phases.
+- Lint remains at 321 warnings. No dependency, compatibility pin, migration catalog, runtime business module or convention decision changes.
+
+The final targeted review is required before the human merge and authorized release. CI evidence is attached to PR #58's current head; public candidate acceptance remains a post-publication step.
+
 ## Review and consumer adoption
 
-Changes are prepared on branch `kee-63` for renewed review of PR #58. Initial CI/approval predates release preparation. Final-head CI and independent Reviewer acceptance remain pending. Public publication, merge, deployment and Anoulà adaptation are separate steps. The live shadcn smoke and public 1.0.5-rc.0 acceptance are not run before publication.
+Changes are prepared on branch `kee-63` for renewed review of PR #58. CI and approval history are recorded on PR #58. The second review's corrective commit requires final targeted Reviewer acceptance; PR checks track its final-head CI. Public publication, merge, deployment and Anoulà adaptation are separate steps. The live shadcn smoke and public 1.0.5-rc.0 acceptance are not run before publication.
 
 After publication, Anoulà must regenerate package-owned guidance, reconcile project/Linear decisions, then adapt its runtime under Coder Anoulà and Reviewer. ANO-16 product decisions and established authorization, allocation, replay and cross-resource invariants remain authoritative.
 

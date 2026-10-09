@@ -1,5 +1,6 @@
 /* oxlint-disable effect/noAsyncFunction, effect/noNewError, effect/noThrowStatement, effect/noNullish -- Native Nx uses a Promise migration and stops on ambiguous configuration before writes. */
-import type { Tree } from "@nx/devkit";
+import { joinPathFragments, type Tree } from "@nx/devkit";
+import { minimatch } from "minimatch";
 import ts from "typescript";
 
 import managedDependencies from "./managed-dependencies-1-0-4.js";
@@ -37,8 +38,8 @@ function updateCompiler(source: string) {
   const exclude = property(config, "exclude", compilerPath);
   if (exclude !== undefined) {
     if (!ts.isArrayLiteralExpression(exclude.initializer)) return conflict(compilerPath);
-    if (literals(exclude.initializer, compilerPath).some((path) => /^(?:\.\/)?(?:domain|errors)(?:\/|$)/u.test(path)))
-      return conflict(compilerPath);
+    for (const pattern of literals(exclude.initializer, compilerPath))
+      if (excludesBackendOwner(pattern)) return conflict(`${compilerPath}#exclude "${pattern}" may exclude domain/ or errors/`);
   }
   const include = property(config, "include", compilerPath);
   if (include === undefined) {
@@ -56,6 +57,30 @@ function updateCompiler(source: string) {
     include.initializer.elements,
     include.initializer.end - 1,
     missing.map((path) => `"${path}"`)
+  );
+}
+
+function excludesBackendOwner(pattern: string) {
+  const path = pattern.replaceAll("\\", "/");
+  if (path.length === 0) return false;
+  // Absolute paths depend on the consumer's checkout and cannot be qualified here.
+  if (/^(?:\/|[a-z]:)/iu.test(path)) return true;
+  const normalized = joinPathFragments("/packages/backend", path);
+  // TypeScript expands extensionless directory paths to recursive globs, including paths to ancestors.
+  const expanded = /[.*?]/u.test(normalized.split("/").at(-1) ?? "") ? normalized : joinPathFragments(normalized, "**", "*");
+  const glob = expanded.replaceAll("[", "\\[").replaceAll("]", "\\]");
+  return ["domain", "errors"].some((owner) =>
+    minimatch(`/packages/backend/${owner}`, glob, {
+      dot: true,
+      // Use TypeScript's wildcard subset; other glob syntax is literal.
+      nobrace: true,
+      nocase: true,
+      nocomment: true,
+      noext: true,
+      nonegate: true,
+      // Partial matching also rejects exclusions of possible descendants, not just existing files.
+      partial: true,
+    })
   );
 }
 
