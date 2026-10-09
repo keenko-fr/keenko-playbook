@@ -155,6 +155,7 @@ test("workflow keeps the required check unconditional and publication behind ful
   expect(ci).not.toMatch(/^ {2}push:|^ {2}paths(?:-ignore)?:/mu);
   expect(ci).not.toMatch(/^ {4}if:/mu);
   expect(ci).toContain("  check:\n");
+  expect(ci).toContain("      - edited\n");
   const release = readFileSync(path.join(import.meta.dirname, "../.github/workflows/release.yml"), "utf-8");
   for (const step of ["Verify repository", "Verify packed product before publication"])
     expect(release.split(`      - name: ${step}\n`)[1]?.split("      - name:")[0]).toContain("if: steps.evidence.outputs.reuse != 'true'");
