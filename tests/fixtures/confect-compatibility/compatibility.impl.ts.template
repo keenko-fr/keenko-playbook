@@ -2,6 +2,7 @@ import { FunctionImpl, GroupImpl } from "@confect/server";
 import { Effect as E, Layer as L } from "effect";
 
 import * as feature from "../features/compatibility";
+import * as compatibilityAuditFeature from "../features/compatibility-audit";
 import refs from "./_generated/refs";
 import schema from "./_generated/schema";
 import { DatabaseReader, QueryRunner } from "./_generated/services";
@@ -26,5 +27,11 @@ const forward = FunctionImpl.make(schema, spec, "forward", ({ key }) =>
     return yield* runQuery(refs.public.compatibility.find, { key }).pipe(E.orDie);
   })
 );
-const create = FunctionImpl.make(schema, spec, "create", feature.create);
+const create = FunctionImpl.make(schema, spec, "create", (args) =>
+  E.gen(function* () {
+    const id = yield* feature.create(args);
+    yield* compatibilityAuditFeature.checkStored(args.key);
+    return id;
+  })
+);
 export default GroupImpl.make(schema, spec).pipe(L.provide(find), L.provide(forward), L.provide(create), GroupImpl.finalize);

@@ -22,7 +22,11 @@ Do not extract a schema solely to name a one-use endpoint field. Prefer Effect S
 
 Generated Confect services/context are used directly; do not wrap them merely to rename or re-expose them.
 
-Simple operations may remain entirely in `*.impl.ts`, including direct persistence and business checks. Extract effectful responsibilities into features only when complexity, ownership, reuse or caller readability justifies it. Features may directly use DatabaseReader/DatabaseWriter; no data layer or full Entity is required. Internal registered functions serve actual execution boundaries, not ordinary TypeScript reuse. Preserve root mutation atomicity when composing operations. See `backend-architecture.md`.
+Simple operations may remain entirely in `*.impl.ts`, including direct persistence and business checks. Features remain the default owner of meaningful business operations and may directly use generated DatabaseReader/DatabaseWriter. Extract optional resource data modules for persistence reuse, responsibility ownership, avoiding cycles, reducing meaningful duplication or caller readability. A single consumer may justify the boundary; no line threshold or module per resource applies.
+
+Data modules must not import features. Confect implementations may call features or data directly when their responsibility justifies it. Mechanical, demand-driven relationship enrichment may live in data; authorization, eligibility, state transitions and cross-resource business invariants stay with their feature/domain owner. `data/confect.ts` owns focused persistence error/absence adapters. No generic repository, compulsory features → data delegation, full Entity or complete hydration is required.
+
+Internal registered functions serve actual execution boundaries, not ordinary TypeScript reuse. Compose data and feature functions inside one root Convex mutation without another registered mutation or artificial orchestration layer. Errors requiring rollback must escape that root mutation. See `backend-architecture.md`.
 
 Function `args` callbacks return field maps; `returns`, `item`, and `error` callbacks return schemas. Omit `args` for no-argument functions. Table declarations still return object-shaped schemas and import `Table` from `@confect/core` so specs and generated table bindings stay client-safe. Codegen rejects reachable value imports of `@confect/server` from specs.
 

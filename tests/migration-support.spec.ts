@@ -5,11 +5,17 @@ import { readJsonFile } from "@nx/devkit";
 import { Migrator, type ResolvedMigrationConfiguration } from "nx/src/command-line/migrate/migrate";
 
 describe("supported stable, RC and recovery migration planning", () => {
-  const source = readJsonFile<{ version: string; prerelease: string }>("tests/fixtures/upgrade-source.json");
+  const source = readJsonFile<{ version: string; prerelease: string; current: string }>("tests/fixtures/upgrade-source.json");
   const collection = readJsonFile<{ generators: Record<string, { version: string }> }>("migrations.json").generators;
   const nextRc = collection["1.0.5-backend-shared-types"].version;
   const both = ["1.0.5-backend-convention", "1.0.5-backend-shared-types"];
+  const optionalData = "1.0.6-optional-data-coverage";
+  const next = collection[optionalData].version;
   for (const [origin, target, entries, from] of [
+    [source.current, next, [optionalData], {}],
+    [source.current, next.split("-")[0], [optionalData], {}],
+    [source.version, next, [...both, optionalData], {}],
+    [source.prerelease, next, ["1.0.5-backend-shared-types", optionalData], {}],
     [source.version, nextRc, both, {}],
     [source.version, nextRc.split("-")[0], both, {}],
     [source.prerelease, nextRc, ["1.0.5-backend-shared-types"], {}],

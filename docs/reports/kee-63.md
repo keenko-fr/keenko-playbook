@@ -1,6 +1,6 @@
 # KEE-63 backend convention verification
 
-This report records the initial convention through 1.0.5-rc.0. The owner subsequently extended only the type-definition preference to backend and shared; see [the RC correction report](kee-63-shared-types.md) for the superseding scope and recovery evidence.
+This report records the initial convention through 1.0.5-rc.0. [KEE-65](https://linear.app/keenko/issue/KEE-65/allow-optional-persistence-data-modules-in-backend-architecture) supersedes its prohibition of optional data modules and its placement of persistence helpers in features. The current canonical guidance permits optional data extraction and owns those helpers in `data/confect.ts`. The owner subsequently extended only the type-definition preference to backend and shared; see [the RC correction report](kee-63-shared-types.md) for the superseding scope and recovery evidence.
 
 [KEE-63](https://linear.app/keenko/issue/KEE-63/adopt-the-confect-first-backend-convention-vnext) records the Backend Convention vNext supplied and validated by Anoulà's owner. It was created before repository edits after duplicate searches, and is related to KEE-59, KEE-62 and ANO-16.
 

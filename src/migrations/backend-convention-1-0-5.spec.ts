@@ -77,6 +77,24 @@ describe("1.0.5 backend convention migration", () => {
     })
   );
 
+  it.live("adds optional data coverage to the 1.0.5 compiler without moving application helpers", () =>
+    E.gen(function* () {
+      const tree = yield* fixture;
+      const compiler =
+        '{"extends":"../../tsconfig.base.json","include":["confect/**/*.ts","domain/**/*.ts","errors/**/*.ts","features/**/*.ts"]}';
+      tree.write(compilerPath, compiler);
+      tree.delete("packages/backend/data/confect.ts");
+      tree.write("packages/backend/features/confect.ts", "export const consumerHelper = 'owned';\n");
+      yield* run(tree);
+      expect(tree.read(compilerPath, "utf-8")).toBe(compiler.replace('"features/**/*.ts"', '"features/**/*.ts",\n"data/**/*.ts"'));
+      expect(tree.read("packages/backend/features/confect.ts", "utf-8")).toBe("export const consumerHelper = 'owned';\n");
+      expect(tree.exists("packages/backend/data/confect.ts")).toBe(false);
+      const changes = tree.listChanges();
+      yield* run(tree);
+      expect(tree.listChanges()).toEqual(changes);
+    })
+  );
+
   it.live("leaves current and broadly inclusive compiler configurations unchanged", () =>
     E.gen(function* () {
       const tree = yield* fixture;
@@ -207,6 +225,9 @@ describe("1.0.5 backend convention migration", () => {
       [".."],
       ["../.."],
       ["../backend"],
+      ["data/**"],
+      ["data/nested/**"],
+      ["**/data"],
       ["domain/**"],
       ["errors/**"],
       ["**/domain/**", "**/errors/**"],
@@ -355,7 +376,7 @@ describe("1.0.5 backend convention migration", () => {
           expect(message).toContain("reconcile the backend convention manually");
           if (name.startsWith("compiler exclusion")) {
             expect(message).toContain(`${compilerPath}#exclude`);
-            expect(message).toContain("may exclude domain/ or errors/");
+            expect(message).toContain("may exclude data/, domain/ or errors/");
           }
           if (name.includes("excludeFiles")) expect(message).toContain(`${lintPath}#excludeFiles`);
         }

@@ -1,0 +1,12 @@
+import { Effect as E } from "effect";
+
+import * as compatibilityData from "../data/compatibility";
+import { FooFailure } from "../errors/foo";
+
+// CHECK STORED ----------------------------------------------------------------------------------------------------------------------------
+export const checkStored = E.fn("compatibilityAudit.checkStored")(function* (key: string) {
+  const row = yield* compatibilityData.getByKey(key).pipe(
+    E.catchTag("GetByIndexFailure", () => E.fail(new FooFailure({ issue: "not_found" })))
+  );
+  if (row.score === 0) return yield* new FooFailure({ issue: "forbidden" });
+});

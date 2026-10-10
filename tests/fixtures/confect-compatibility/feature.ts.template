@@ -1,6 +1,7 @@
 import { Effect as E } from "effect";
 
 import { DatabaseWriter } from "../confect/_generated/services";
+import * as data from "../data/compatibility";
 import * as fooDomain from "../domain/foo";
 import { FooFailure } from "../errors/foo";
 
@@ -10,6 +11,7 @@ export const create = E.fn("compatibility.create")(function* (args: CreateArgs) 
     return yield* new FooFailure({ issue: "forbidden" });
   const writer = yield* DatabaseWriter;
   const id = yield* writer.table("compatibilityRows").insert({ key: args.key, score: args.score }).pipe(E.orDie);
+  yield* data.getByKey(args.key).pipe(E.catchTag("GetByIndexFailure", E.die));
   yield* checkCommit(args.reject);
   return id;
 });

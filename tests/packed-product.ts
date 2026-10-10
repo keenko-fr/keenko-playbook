@@ -6,7 +6,7 @@ import { parse as parseToml } from "smol-toml";
 
 import { packageVersions } from "../src/generators/versions.js";
 
-const upgradeSources = readJsonFile<{ version: string; prerelease: string }>("tests/fixtures/upgrade-source.json");
+const upgradeSources = readJsonFile<{ version: string; prerelease: string; current: string }>("tests/fixtures/upgrade-source.json");
 const supportedSource = upgradeSources.version;
 const publishedRcSource = upgradeSources.prerelease;
 const migrationCollection = readJsonFile<{ generators: Record<string, { version: string }> }>("migrations.json").generators;
@@ -325,7 +325,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     };
     yield* fs.writeFileString(publicEnv.NPM_CONFIG_USERCONFIG, "registry=https://registry.npmjs.org\n");
     const bootstraps = new Map<string, string>();
-    for (const version of [supportedSource, publishedRcSource]) {
+    for (const version of [supportedSource, publishedRcSource, upgradeSources.current]) {
       const sourceStartedAt = yield* startPhase(`published ${version} source setup`);
       yield* command(temporary, publicEnv, "npm", ["pack", `keenko@${version}`, "--pack-destination", archives, "--ignore-scripts"]);
       yield* command(temporary, npmEnv, "npm", [
@@ -353,6 +353,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     for (const [identity, version, legacyBackend, partial] of [
       ["upgrade-stable", supportedSource, true, false],
       ["upgrade-rc", publishedRcSource, false, false],
+      ["upgrade-current", upgradeSources.current, false, false],
       ["upgrade-partial", supportedSource, true, true],
     ] as const) {
       const bootstrapVersion = yield* S.decodeUnknownEffect(S.String)(bootstraps.get(version));
@@ -527,7 +528,13 @@ const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspa
   const testFile = path.join(backend, "test/keenko-confect.test.ts");
   yield* fs.makeDirectory(path.dirname(testFile), { recursive: true });
   yield* fs.writeFileString(testFile, yield* fs.readFileString(path.join(fixture, "contract.test.ts.template")));
-  const conventionFiles = ["features/compatibility.ts", "domain/foo.ts", "errors/foo.ts"];
+  const conventionFiles = [
+    "features/compatibility.ts",
+    "features/compatibility-audit.ts",
+    "data/compatibility.ts",
+    "domain/foo.ts",
+    "errors/foo.ts",
+  ];
   const docs = path.join(workspace, ".keenko/docs/conventions");
   const validation = yield* fs.readFileString(path.join(docs, "validation.md"));
   const topology = yield* fs.readFileString(path.join(docs, "backend-file-topology.md"));
@@ -536,6 +543,8 @@ const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspa
   yield* assert(errorExample !== "" && domainExample !== "", "Backend convention examples must be present");
   for (const [relative, content] of [
     ["features/compatibility.ts", yield* fs.readFileString(path.join(fixture, "feature.ts.template"))],
+    ["features/compatibility-audit.ts", yield* fs.readFileString(path.join(fixture, "audit.ts.template"))],
+    ["data/compatibility.ts", yield* fs.readFileString(path.join(fixture, "data.ts.template"))],
     ["domain/foo.ts", domainExample],
     ["errors/foo.ts", errorExample],
   ]) {
@@ -543,13 +552,20 @@ const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspa
     yield* fs.makeDirectory(path.dirname(target), { recursive: true });
     yield* fs.writeFileString(target, `${content}\n`);
   }
+  const dataSource = yield* fs.readFileString(path.join(backend, "data/compatibility.ts"));
+  yield* assert(!dataSource.includes("../features/"), "Optional data fixture depends on features");
+  for (const relative of ["features/compatibility.ts", "features/compatibility-audit.ts"])
+    yield* assert(
+      (yield* fs.readFileString(path.join(backend, relative))).includes("../data/compatibility"),
+      `${relative} does not reuse the optional data module`
+    );
   yield* command(workspace, env, "bun", ["run", "codegen"]);
-  const helper = (yield* fs.exists(path.join(backend, "features/confect.ts"))) ? "features/confect.ts" : "data/confect.ts";
-  yield* command(backend, env, "bun", ["x", "oxlint", "features/compatibility.ts", helper, "domain/foo.ts", "errors/foo.ts"]);
+  const helper = (yield* fs.exists(path.join(backend, "data/confect.ts"))) ? "data/confect.ts" : "features/confect.ts";
+  yield* command(backend, env, "bun", ["x", "oxlint", ...conventionFiles, helper]);
   yield* command(workspace, env, "bun", ["x", "nx", "run", "backend:typecheck", "--outputStyle=static"]);
   yield* command(backend, env, "bun", ["x", "vitest", "run", "test/keenko-confect.test.ts"]);
   yield* Console.log(
-    `Stable Confect compatibility passed in ${workspace}: generated containers, codecs, cardinality, canonical error/domain examples, direct feature persistence and root rollback.`
+    `Stable Confect compatibility passed in ${workspace}: generated containers, codecs, cardinality, canonical error/domain examples, direct impl/feature persistence, optional data reuse and root rollback.`
   );
   for (const relative of files) yield* fs.remove(path.join(backend, "confect", relative));
   for (const relative of conventionFiles) yield* fs.remove(path.join(backend, relative));
@@ -706,7 +722,7 @@ const verifyBackendRepresentationGuidance = E.fn("product.verifyBackendRepresent
     yield* assert(packed === canonical, `Packed ${relative} guidance differs from canonical source`);
     yield* assert(generated === canonical, `Sync did not emit canonical ${relative} guidance`);
   }
-  yield* Console.log("KEE-63 canonical, packed and generated conventions, stack guidance and skill match byte-for-byte.");
+  yield* Console.log("Canonical, packed and generated conventions, stack guidance and skill match byte-for-byte.");
 });
 
 const verifyContext7 = E.fn("product.verifyContext7")(function* (workspace: string) {
@@ -909,8 +925,11 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
   const plan = yield* S.decodeEffect(
     S.fromJsonString(S.Struct({ migrations: S.Array(S.Struct({ name: S.String, package: S.String, version: S.String })) }))
   )(yield* fs.readFileString(path.join(workspace, "migrations.json")));
-  const expectedNames =
-    sourceVersion === publishedRcSource ? ["1.0.5-backend-shared-types"] : ["1.0.5-backend-convention", "1.0.5-backend-shared-types"];
+  const expectedNames = ["1.0.6-optional-data-coverage"];
+  if (sourceVersion !== upgradeSources.current) {
+    expectedNames.unshift("1.0.5-backend-shared-types");
+    if (sourceVersion !== publishedRcSource) expectedNames.unshift("1.0.5-backend-convention");
+  }
   yield* assert(
     serializeJson(plan.migrations) ===
       serializeJson(expectedNames.map((name) => ({ name, package: "keenko", version: migrationCollection[name].version }))),
@@ -994,14 +1013,14 @@ const verifyBackendConfiguration = E.fn("product.verifyBackendConfiguration")(fu
   const config = yield* S.decodeEffect(S.fromJsonString(S.Struct({ include: S.Array(S.String) })))(
     yield* fs.readFileString(path.join(backend, "tsconfig.json"))
   );
-  for (const pattern of [...(legacyBackend ? ["data/**/*.ts"] : []), "features/**/*.ts", "domain/**/*.ts", "errors/**/*.ts"])
+  for (const pattern of ["data/**/*.ts", "features/**/*.ts", "domain/**/*.ts", "errors/**/*.ts"])
     yield* assert(config.include.includes(pattern), `Upgraded backend compiler omits ${pattern}`);
   yield* assert((yield* fs.exists(path.join(backend, "data/confect.ts"))) === legacyBackend, "Migration changed the data helper topology");
   yield* assert(
     (yield* fs.exists(path.join(backend, "features/confect.ts"))) !== legacyBackend,
     "Migration changed the feature helper topology"
   );
-  for (const folder of ["domain", "errors"]) {
+  for (const folder of ["data", "domain", "errors"]) {
     const probe = path.join(backend, folder, "keenko-migration-probe.ts");
     yield* fs.makeDirectory(path.dirname(probe), { recursive: true });
     yield* fs.writeFileString(probe, 'export const invalid: number = "not a number";\n');
@@ -1151,13 +1170,10 @@ const product = E.gen(function* () {
   yield* verifyConfectTuple(workspace, env);
   yield* completePhase("fresh compatibility verification", freshCompatibilityStartedAt);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
+  yield* assert(yield* fs.exists(path.join(workspace, "packages/backend/data/confect.ts")), "Fresh backend must use data/confect.ts");
   yield* assert(
-    yield* fs.exists(path.join(workspace, "packages/backend/features/confect.ts")),
-    "Fresh backend must use features/confect.ts"
-  );
-  yield* assert(
-    !(yield* fs.exists(path.join(workspace, "packages/backend/data/confect.ts"))),
-    "Fresh backend must omit the former data layer"
+    !(yield* fs.exists(path.join(workspace, "packages/backend/features/confect.ts"))),
+    "Fresh backend must not put persistence helpers in features"
   );
   yield* verifyContext7(workspace);
   if (source._tag === "local") yield* verifyBackendRepresentationGuidance(workspace);
@@ -1216,13 +1232,13 @@ const product = E.gen(function* () {
       "dist/compatibility/authkit-test.js",
       "dist/compatibility/files/workos-authkit-0.2.10.patch",
       "dist/generators/preset/files/backend/vitest.config.ts.template",
-      "dist/generators/preset/files/backend/features/confect.ts.template",
+      "dist/generators/preset/files/backend/data/confect.ts.template",
       "dist/generators/sync/files/docs/core/migrations.md",
     ])
       yield* assert(yield* fs.exists(path.join(installedRoot, artifact)), `Missing current generator/guidance artifact: ${artifact}`);
     yield* assert(
-      !(yield* fs.exists(path.join(installedRoot, "dist/generators/preset/files/backend/data/confect.ts.template"))),
-      "Packed fresh preset still contains the former data helper"
+      !(yield* fs.exists(path.join(installedRoot, "dist/generators/preset/files/backend/features/confect.ts.template"))),
+      "Packed fresh preset still puts persistence helpers in features"
     );
   }
   const packedLicense = yield* fs.readFileString(

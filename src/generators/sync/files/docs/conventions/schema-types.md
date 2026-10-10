@@ -203,6 +203,8 @@ type Foo = FooDoc & {
 
 This assumes existing decoded `FooDoc` and `BarDoc` contracts. It does not require `sFoo`, a constructor, another resource bundle or enrichment at every read. Put the type with its narrowest semantic owner; use `schemas/` when a real runtime representation is owned there.
 
+Mechanical relationship loading may live in an optional resource data module. Business eligibility, configuration and independent ownership checks remain with their feature/domain owner. Enrich only the relations the caller needs.
+
 Keep persistence normalized. Enrichment does not recursively persist relations or require a graph of complete Entities. Do not introduce generic hydration, Repository or EntityLoader infrastructure.
 
 Loading Bar by `doc.barId` establishes identity. Do not add a redundant FK equality check or an artificial absence/failure path just to assemble the representation.

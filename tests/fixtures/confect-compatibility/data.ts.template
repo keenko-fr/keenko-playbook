@@ -1,0 +1,14 @@
+import { Effect as E, Option as O } from "effect";
+
+import { DatabaseReader } from "../confect/_generated/services";
+
+// GET BY KEY ------------------------------------------------------------------------------------------------------------------------------
+export const getByKey = E.fn("compatibilityData.getByKey")(function* (key: string) {
+  const reader = yield* DatabaseReader;
+  return yield* reader.table("compatibilityRows").get("by_key", key).pipe(E.catchTag("DocumentDecodeError", E.die));
+});
+
+// FIND BY KEY -----------------------------------------------------------------------------------------------------------------------------
+export const findByKey = E.fn("compatibilityData.findByKey")((key: string) =>
+  getByKey(key).pipe(E.asSome, E.catchTag("GetByIndexFailure", () => E.succeed(O.none())))
+);

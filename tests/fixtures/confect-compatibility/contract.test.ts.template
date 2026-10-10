@@ -9,6 +9,7 @@ import refs from "../confect/_generated/refs";
 import schema from "../confect/_generated/schema";
 import { DatabaseReader, DatabaseWriter, MutationCtx } from "../confect/_generated/services";
 import { sChecked } from "../confect/tables/compatibilityRows";
+import * as compatibilityData from "../data/compatibility";
 import { FooDefect, FooFailure, sFooSchemaIssue } from "../errors/foo";
 
 const Test = TestConfect.TestConfect<typeof schema>();
@@ -16,6 +17,22 @@ const layer = TestConfect.layer(schema, convexSchema, {
   "../convex/_generated/api.js": () => import("../convex/_generated/api.js"),
   "../convex/compatibility.ts": () => import("../convex/compatibility"),
 });
+
+it.effect("reuses optional persistence from two features and rolls back business failure at the root", () =>
+  E.gen(function* () {
+    const t = yield* Test;
+    const failure = yield* t.mutation(refs.public.compatibility.create, { key: "audit-rollback", score: 0, reject: false }).pipe(E.flip);
+    expect(failure).toBeInstanceOf(FooFailure);
+    expect(failure.issue).toBe("forbidden");
+    expect(O.isNone(yield* t.query(refs.public.compatibility.find, { key: "audit-rollback" }))).toBe(true);
+    yield* t.run(
+      E.gen(function* () {
+        expect(O.isNone(yield* compatibilityData.findByKey("missing"))).toBe(true);
+        expect((yield* compatibilityData.getByKey("missing").pipe(E.flip))._tag).toBe("GetByIndexFailure");
+      })
+    );
+  }).pipe(E.provide(layer))
+);
 
 it.effect("preserves typed failures and root rollback with direct feature writes", () =>
   E.gen(function* () {
