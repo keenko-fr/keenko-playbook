@@ -1,6 +1,12 @@
 import { Table } from "@confect/core";
 import { Schema as S } from "effect";
 
-export const sFields = S.Struct({ key: S.String, score: S.Number.check(S.isGreaterThanOrEqualTo(0)) });
+export const sFields = S.Struct({
+  key: S.String,
+  score: S.Number.check(S.isGreaterThanOrEqualTo(0)),
+  settingsKey: S.optionalKey(S.String),
+  ownerKey: S.optionalKey(S.String),
+  published: S.optionalKey(S.Boolean),
+});
 export const sChecked = sFields.check(S.makeFilter((row) => row.key !== "outer-invalid"));
 export default Table.make(() => sChecked).index("by_key", ["key"]);

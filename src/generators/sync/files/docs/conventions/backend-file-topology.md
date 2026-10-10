@@ -26,15 +26,15 @@ Respect the effective `no-use-before-define` rule and JavaScript initialization 
 
 Keep modules flat by default. Use level-1 sections per exported operation or coherent group, labelled for the operation, such as `SUBMIT`, `CONCLUDE` or `FIND`. Types and helpers follow the operation they describe.
 
-This complete pure-domain example uses hoisted helpers and one argument:
+This complete pure-domain example exports a self-explanatory function for named imports, with hoisted local helpers and one structural argument:
 
 ```ts
-// CAN SUBMIT ------------------------------------------------------------------------------------------------------------------------------
-export function canSubmit(args: SubmitArgs) {
+// CAN SUBMIT REQUEST ----------------------------------------------------------------------------------------------------------------------
+export function canSubmitRequest(args: SubmitRequestArgs) {
   return args.enabled && hasItems(args.items);
 }
 
-type SubmitArgs = {
+type SubmitRequestArgs = {
   enabled: boolean;
   items: readonly string[];
 };
@@ -62,7 +62,7 @@ DEFECTS
 
 Each section keeps the issue Schema and its derived type together, followed by the Failure/Defect class when used. Schema validation uses native `SchemaError` without a compulsory custom class. Omit unused families.
 
-Contracts imported by specs must be client-safe. Do not import feature/infra implementations, generated server services, `@confect/server` or other server-only values. See `validation.md` for semantic categories and diagnostic causes.
+Contracts imported by specs must be client-safe. Do not import data/feature/infra implementations, generated server services, `@confect/server` or other server-only values. See `validation.md` for semantic categories and diagnostic causes.
 
 ## Confect spec files
 
@@ -122,6 +122,12 @@ Keep structural sections for the capability, such as `CONSTANTS` and `SERVICE`, 
 
 Context issue/Failure/Defect contracts belong in `errors/<concept>.ts`. Foreign DTO Schemas belong in `schemas/<provider>/<resource>.ts`; adapter-local relationship Schemas such as `sFooFromDto` stay beside their consuming adapter. Do not introduce a parallel direct function API beside the service.
 
-## Former data files
+## Optional data files
 
-`data/` is not part of the target architecture and has no target file grammar. Redistribute its operations by responsibility as described in `backend-architecture.md`. Technical Confect adapters use `features/confect.ts`, with coherent helper sections and local type ownership, without growing into a generic CRUD façade.
+Extract persistence modules only under the criteria in `backend-architecture.md`. Keep modules flat by default and name them for their persisted resource in kebab-case, such as `data/accounts.ts`. Do not require a file per table, matching feature/data files or CRUD file families.
+
+Use level-1 sections for exported operations or coherent groups, such as `FIND`, `GET`, `CREATE` or `WITH RELATIONS`. Keep local argument/result types and private helpers below their owning operation, respecting initialization order. Schema-derived types remain immediately below their Schema. Omit empty sections; no final `TYPES` or `INTERNALS` block is required.
+
+An exported operation may retrieve a configured or usable resource, load its required relations, check their consistency and invoke pure domain predicates. Keep shared loading/checking helpers private in the resource module unless independent reuse earns an export. Neither a matching feature file nor separate loading and validation functions are required; sections describe the meaningful operations that actually exist.
+
+`data/confect.ts` is the narrow technical exception for focused Confect persistence adapters. Use coherent sections such as `ERRORS`, `OPTIONS` and `FAILURES` only when they contain real helpers. Keep local types with their owner. This file does not require resource data modules or a generic repository façade.

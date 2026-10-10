@@ -322,7 +322,7 @@ describe("keenko sync", () => {
       expect(architecture).toContain("one root Convex mutation");
       expect(architecture).toContain("KEE-59 and KEE-62");
       expect(architecture).toContain("doc.ownerId === bar.ownerId");
-      expect(architecture).toContain("`features/confect.ts`");
+      expect(architecture).toContain("`data/confect.ts`");
       for (const guidance of [schemaTypes, architecture]) expect(guidance).not.toMatch(/PickupRule|CapacityPool|Establishment/u);
 
       const topology = tree.read(".keenko/docs/conventions/backend-file-topology.md", "utf-8");
@@ -333,7 +333,7 @@ describe("keenko sync", () => {
       expect(codeStyle).toContain("paymentAccountFeature");
       expect(codeStyle).toContain("zero or one argument");
       expect(codeStyle).toContain("`create` is the canonical creation verb");
-      expect(codeStyle).not.toContain("import * as data");
+      expect(codeStyle).toContain("import * as data");
       const validation = tree.read(".keenko/docs/conventions/validation.md", "utf-8");
       expect(validation).toContain("sFooSchemaIssue");
       expect(validation).toContain("sFooFailureIssue");
@@ -437,6 +437,87 @@ describe("keenko sync", () => {
     })
   );
 
+  it.live("generates optional data ownership without eliminating direct persistence or adding resource scaffolding", () =>
+    E.gen(function* () {
+      const tree = createTreeWithEmptyWorkspace();
+      tree.write(".keenko/docs/conventions/backend-architecture.md", "Do not retain data/ in parallel.\n");
+      yield* runSync(tree);
+      const architecture = tree.read(".keenko/docs/conventions/backend-architecture.md", "utf-8");
+      for (const rule of [
+        "  data/",
+        "Persistence may remain in a simple Confect implementation or the feature",
+        "Data modules must not import features",
+        "A single consumer can justify extraction",
+        "Do not impose line-count thresholds or require a data module for every feature or table",
+        "features/orders.ts",
+        "features/billing.ts",
+        "data/accounts.ts",
+        "No additional registered mutation or artificial orchestration layer",
+        "Data operations may perform the checks necessary to guarantee their retrieval or persistence contract",
+        "Extract a feature when an operation has a meaningful independent business responsibility",
+        "Pure domain predicates may be called by data or features",
+        "A reusable retrieval does not authorize an acting User",
+        "No forwarding `features/rules.ts` is required",
+        "A shared `withRelations()` helper stays private",
+        "missing relations or invalid configuration into meaningful resource-specific Failures",
+        "typed Failure, Schema validation errors and Defects",
+      ])
+        expect(architecture).toContain(rule);
+      for (const helper of [
+        "dieOnDecodeError",
+        "dieOnEncodeError",
+        "dieOnGetByIdFailure",
+        "dieOnPatchError",
+        "optionById",
+        "optionByIndex",
+        "failById",
+        "failByIndex",
+      ])
+        expect(architecture).toContain(`\`${helper}\``);
+      const topology = tree.read(".keenko/docs/conventions/backend-file-topology.md", "utf-8");
+      expect(topology).toContain("Optional data files");
+      expect(topology).toContain("WITH RELATIONS");
+      expect(topology).toContain("CRUD file families");
+      const style = tree.read(".keenko/docs/core/code-style.md", "utf-8");
+      for (const rule of [
+        'import * as data from "../data/orders"',
+        'import * as feature from "../features/orders"',
+        "paymentAccountData",
+        'import { isRuleUsable } from "../domain/rules"',
+        "Use named imports for ordinary exported pure domain functions",
+        "Do not mechanically prefix every domain function",
+        "Private helpers need no forced concept qualification",
+        "do not impose a rigid universal list of verb prefixes",
+      ])
+        expect(style).toContain(rule);
+      expect(architecture).toContain("Domain function ownership follows business semantics");
+      expect(architecture).toContain("small structural contract");
+      expect(architecture).toContain("two consumers do not by themselves justify a new module or abstraction");
+      expect(topology).toContain("export function canSubmitRequest(args: SubmitRequestArgs)");
+      for (const guide of [architecture, topology, style]) expect(guide).toContain("data/confect.ts");
+
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* path.fromFileUrl(new URL("files/", import.meta.url));
+      for (const relative of yield* fs.readDirectory(root, { recursive: true })) {
+        if (!relative.endsWith(".md")) continue;
+        const generated = tree.read(`.keenko/${relative}`, "utf-8");
+        expect(generated).toBe(yield* fs.readFileString(path.join(root, relative)));
+        expect(generated).not.toMatch(
+          /features\/confect\.ts|Former data files|Do not retain `data\/`|Redistribute existing `data\/`|`data\/` is not part|Business rules remain outside data|Data modules must not contain business validation|Data may only perform mechanical|Cross-resource business invariants always belong in features|owns usable-configuration and ownership validation|business eligibility, configuration and independent ownership checks remain with their feature/u
+        );
+        expect(generated).not.toMatch(
+          /import \* as \w+ from ["'](?:\.\.\/)+domain\/|domain\.transition\(|domain\.isUsable\(|orderIntents\.effectiveStatus\(|feature\/data\/domain namespace imports/u
+        );
+        expect(generated).not.toMatch(/Anoulà|ANO-16|PickupRule|PickupItem|RepTenure|AdminTenure|CapacityPool|Establishment/u);
+      }
+      expect(tree.exists("packages/backend/data")).toBe(false);
+      const changes = tree.listChanges();
+      yield* runSync(tree);
+      expect(tree.listChanges()).toEqual(changes);
+    }).pipe(E.provide(platformLayer))
+  );
+
   it.live("publishes corrected Confect compatibility and backend persistence guidance", () =>
     E.gen(function* () {
       const tree = createTreeWithEmptyWorkspace();
@@ -452,7 +533,7 @@ describe("keenko sync", () => {
       expect(confect).toContain("The owned `confect` skill");
 
       const backend = tree.read(".keenko/docs/conventions/backend-architecture.md", "utf-8");
-      expect(backend).toContain("`features/confect.ts`");
+      expect(backend).toContain("`data/confect.ts`");
       expect(backend).toContain("normal find absence");
       expect(backend).toContain("preserve expected not-found as a typed get failure");
     })

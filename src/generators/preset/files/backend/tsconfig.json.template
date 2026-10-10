@@ -4,6 +4,7 @@
     "vitest.config.ts",
     "confect/**/*.ts",
     "convex/**/*.ts",
+    "data/**/*.ts",
     "domain/**/*.ts",
     "errors/**/*.ts",
     "features/**/*.ts",

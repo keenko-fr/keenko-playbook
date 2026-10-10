@@ -1,6 +1,7 @@
 import { FunctionSpec, GroupSpec } from "@confect/core";
 import { Schema as S } from "effect";
 
+import { CompatibilityFailure } from "../errors/compatibility";
 import { FooFailure } from "../errors/foo";
 import compatibilityRows from "./_generated/tables/compatibilityRows";
 
@@ -17,6 +18,22 @@ export default GroupSpec.make()
       name: "forward",
       args: () => ({ key: S.String }),
       returns: () => S.OptionFromNullOr(compatibilityRows.Doc),
+    })
+  )
+  .addFunction(
+    FunctionSpec.publicQuery({
+      name: "getUsable",
+      args: () => ({ key: S.String }),
+      returns: () => S.Struct({ key: S.String, score: S.Number, enabled: S.Boolean }),
+      error: () => CompatibilityFailure,
+    })
+  )
+  .addFunction(
+    FunctionSpec.publicMutation({
+      name: "publish",
+      args: () => ({ key: S.String }),
+      returns: () => S.String,
+      error: () => CompatibilityFailure,
     })
   )
   .addFunction(

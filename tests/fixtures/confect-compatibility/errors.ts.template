@@ -1,0 +1,9 @@
+import { Schema as S } from "effect";
+
+// FAILURES --------------------------------------------------------------------------------------------------------------------------------
+export const sCompatibilityFailureIssue = S.Literals(["not_found", "missing_configuration", "invalid_configuration", "unusable"]);
+export type CompatibilityFailureIssue = typeof sCompatibilityFailureIssue.Type;
+
+export class CompatibilityFailure extends S.TaggedError<CompatibilityFailure>()("CompatibilityFailure", {
+  issue: sCompatibilityFailureIssue,
+}) {}
