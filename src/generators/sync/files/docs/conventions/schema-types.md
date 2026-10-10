@@ -173,7 +173,7 @@ Do not create transforms for symmetry or require an enrichment helper. A schema 
 
 Ownership follows the target/boundary semantics:
 
-- enrichment that reads relations belongs in its impl or extracted feature; deterministic business computation belongs in domain only when extraction is useful;
+- enrichment that reads relations belongs in its impl or extracted data/feature operation; reusable deterministic business computation belongs in domain when extraction is useful and may be called by either;
 - foreign `Dto -> Foo` schema composition lives in the adapter/infra boundary that knows both representations unless a narrower genuine boundary owner exists;
 - persistence representation codecs stay with their runtime contract;
 - workflow/business transition stays in its impl or extracted feature.
@@ -203,13 +203,13 @@ type Foo = FooDoc & {
 
 This assumes existing decoded `FooDoc` and `BarDoc` contracts. It does not require `sFoo`, a constructor, another resource bundle or enrichment at every read. Put the type with its narrowest semantic owner; use `schemas/` when a real runtime representation is owned there.
 
-Mechanical relationship loading may live in an optional resource data module. Business eligibility, configuration and independent ownership checks remain with their feature/domain owner. Enrich only the relations the caller needs.
+Relationship loading, configuration validation and independent ownership checks may live together in an optional resource data operation when they guarantee its retrieval contract. A data operation may invoke pure domain predicates to return a configured or usable resource; no forwarding feature is required. Keep shared loading/checking helpers private unless independent reuse justifies export. Enrich only the relations the contract needs.
 
 Keep persistence normalized. Enrichment does not recursively persist relations or require a graph of complete Entities. Do not introduce generic hydration, Repository or EntityLoader infrastructure.
 
 Loading Bar by `doc.barId` establishes identity. Do not add a redundant FK equality check or an artificial absence/failure path just to assemble the representation.
 
-When a Foo and its Bar must have the same owner, identity does not establish `doc.ownerId === bar.ownerId`. Check that independent business invariant when both resources are available and correctness requires it. Reusable pure predicates belong in domain and receive independent facts; structural constraints stay local to their Schema. Avoid schema/domain cycles.
+When a Foo and its Bar must have the same owner, identity does not establish `doc.ownerId === bar.ownerId`. Check that independent business invariant when both resources are available and correctness requires it, including in data when it is intrinsic to the retrieval contract. Reusable pure predicates belong in domain and receive independent facts; structural constraints stay local to their Schema. Avoid schema/domain cycles.
 
 Do not require an additional runtime schema decode merely to assemble trusted documents. This does not bypass meaningful business checks or Schema checks at actual validation boundaries. A caller-facing projection may omit metadata without redefining the persisted resource.
 

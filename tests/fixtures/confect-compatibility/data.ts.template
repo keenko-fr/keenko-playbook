@@ -1,14 +1,60 @@
 import { Effect as E, Option as O } from "effect";
 
 import { DatabaseReader } from "../confect/_generated/services";
+import type compatibilityRows from "../confect/_generated/tables/compatibilityRows";
+import * as fooDomain from "../domain/foo";
+import { CompatibilityFailure } from "../errors/compatibility";
 
-// GET BY KEY ------------------------------------------------------------------------------------------------------------------------------
-export const getByKey = E.fn("compatibilityData.getByKey")(function* (key: string) {
-  const reader = yield* DatabaseReader;
-  return yield* reader.table("compatibilityRows").get("by_key", key).pipe(E.catchTag("DocumentDecodeError", E.die));
+// GET CONFIGURED BY KEY -------------------------------------------------------------------------------------------------------------------
+export const getConfiguredByKey = E.fn("compatibilityData.getConfiguredByKey")(function* (key: string) {
+  const row = yield* getByKey(key).pipe(E.catchTag("GetByIndexFailure", () => E.fail(new CompatibilityFailure({ issue: "not_found" }))));
+  return yield* withRelations(row);
+});
+
+function getByKey(key: string) {
+  return E.gen(function* () {
+    const reader = yield* DatabaseReader;
+    return yield* reader.table("compatibilityRows").get("by_key", key).pipe(E.catchTag("DocumentDecodeError", E.die));
+  });
+}
+
+function withRelations(row: typeof compatibilityRows.Doc.Type) {
+  return E.gen(function* () {
+    const settingsKey = yield* E.fromOption(
+      O.fromUndefinedOr(row.settingsKey),
+      () => new CompatibilityFailure({ issue: "invalid_configuration" })
+    );
+    const ownerKey = yield* E.fromOption(
+      O.fromUndefinedOr(row.ownerKey),
+      () => new CompatibilityFailure({ issue: "invalid_configuration" })
+    );
+    const reader = yield* DatabaseReader;
+    const settings = yield* reader
+      .table("compatibilitySettings")
+      .get("by_key", settingsKey)
+      .pipe(
+        E.catchTags({
+          DocumentDecodeError: E.die,
+          GetByIndexFailure: () => E.fail(new CompatibilityFailure({ issue: "missing_configuration" })),
+        })
+      );
+    if (ownerKey !== settings.ownerKey) return yield* new CompatibilityFailure({ issue: "invalid_configuration" });
+    return { ...row, ownerKey, settings, settingsKey };
+  });
+}
+
+// GET USABLE BY KEY -----------------------------------------------------------------------------------------------------------------------
+export const getUsableByKey = E.fn("compatibilityData.getUsableByKey")(function* (key: string) {
+  const row = yield* getConfiguredByKey(key);
+  if (!fooDomain.canSubmit({ enabled: row.settings.enabled && row.score > 0, items: [row.key] }))
+    return yield* new CompatibilityFailure({ issue: "unusable" });
+  return row;
 });
 
 // FIND BY KEY -----------------------------------------------------------------------------------------------------------------------------
 export const findByKey = E.fn("compatibilityData.findByKey")((key: string) =>
-  getByKey(key).pipe(E.asSome, E.catchTag("GetByIndexFailure", () => E.succeed(O.none())))
+  getByKey(key).pipe(
+    E.asSome,
+    E.catchTag("GetByIndexFailure", () => E.succeedNone)
+  )
 );

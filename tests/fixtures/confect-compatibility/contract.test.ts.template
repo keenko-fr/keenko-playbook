@@ -10,6 +10,7 @@ import schema from "../confect/_generated/schema";
 import { DatabaseReader, DatabaseWriter, MutationCtx } from "../confect/_generated/services";
 import { sChecked } from "../confect/tables/compatibilityRows";
 import * as compatibilityData from "../data/compatibility";
+import { CompatibilityFailure } from "../errors/compatibility";
 import { FooDefect, FooFailure, sFooSchemaIssue } from "../errors/foo";
 
 const Test = TestConfect.TestConfect<typeof schema>();
@@ -18,19 +19,60 @@ const layer = TestConfect.layer(schema, convexSchema, {
   "../convex/compatibility.ts": () => import("../convex/compatibility"),
 });
 
-it.effect("reuses optional persistence from two features and rolls back business failure at the root", () =>
+it.effect("returns a configured and domain-qualified resource directly from data without a feature wrapper", () =>
   E.gen(function* () {
     const t = yield* Test;
-    const failure = yield* t.mutation(refs.public.compatibility.create, { key: "audit-rollback", score: 0, reject: false }).pipe(E.flip);
-    expect(failure).toBeInstanceOf(FooFailure);
-    expect(failure.issue).toBe("forbidden");
-    expect(O.isNone(yield* t.query(refs.public.compatibility.find, { key: "audit-rollback" }))).toBe(true);
     yield* t.run(
       E.gen(function* () {
+        const writer = yield* DatabaseWriter;
+        yield* writer.table("compatibilitySettings").insert({ key: "shared", ownerKey: "owner", enabled: true });
+        yield* writer.table("compatibilityRows").insert({ key: "usable", score: 1, settingsKey: "shared", ownerKey: "owner" });
+        const configured = yield* compatibilityData.getConfiguredByKey("usable");
+        expect(configured.settings.ownerKey).toBe(configured.ownerKey);
+        expect((yield* compatibilityData.getUsableByKey("usable"))._id).toBe(configured._id);
         expect(O.isNone(yield* compatibilityData.findByKey("missing"))).toBe(true);
-        expect((yield* compatibilityData.getByKey("missing").pipe(E.flip))._tag).toBe("GetByIndexFailure");
       })
     );
+    expect(yield* t.query(refs.public.compatibility.getUsable, { key: "usable" })).toEqual({ key: "usable", score: 1, enabled: true });
+    yield* t.mutation(refs.public.compatibility.publish, { key: "usable" });
+    expect(O.getOrThrow(yield* t.query(refs.public.compatibility.find, { key: "usable" })).published).toBe(true);
+  }).pipe(E.provide(layer))
+);
+
+it.effect("data owns expected missing-relation, inconsistent-configuration and domain-qualification failures", () =>
+  E.gen(function* () {
+    const t = yield* Test;
+    yield* t.run(
+      E.gen(function* () {
+        const writer = yield* DatabaseWriter;
+        yield* writer.table("compatibilitySettings").insert({ key: "shared", ownerKey: "owner", enabled: true });
+        yield* writer.table("compatibilitySettings").insert({ key: "disabled", ownerKey: "owner", enabled: false });
+        for (const row of [
+          { key: "missing-relation", score: 1, settingsKey: "absent", ownerKey: "owner" },
+          { key: "wrong-owner", score: 1, settingsKey: "shared", ownerKey: "other-owner" },
+          { key: "unusable", score: 1, settingsKey: "disabled", ownerKey: "owner" },
+          { key: "incomplete", score: 1 },
+        ])
+          yield* writer.table("compatibilityRows").insert(row);
+        expect((yield* compatibilityData.getConfiguredByKey("unusable")).settings.enabled).toBe(false);
+        for (const [key, issue] of [
+          ["missing", "not_found"],
+          ["missing-relation", "missing_configuration"],
+          ["wrong-owner", "invalid_configuration"],
+          ["incomplete", "invalid_configuration"],
+          ["unusable", "unusable"],
+        ]) {
+          const failure = yield* compatibilityData.getUsableByKey(key).pipe(E.flip);
+          expect(failure).toBeInstanceOf(CompatibilityFailure);
+          expect(failure.issue).toBe(issue);
+        }
+      })
+    );
+    const failure = yield* t.query(refs.public.compatibility.getUsable, { key: "wrong-owner" }).pipe(E.flip);
+    expect(failure.issue).toBe("invalid_configuration");
+    const publishFailure = yield* t.mutation(refs.public.compatibility.publish, { key: "unusable" }).pipe(E.flip);
+    expect(publishFailure.issue).toBe("unusable");
+    expect(O.getOrThrow(yield* t.query(refs.public.compatibility.find, { key: "unusable" })).published).toBeUndefined();
   }).pipe(E.provide(layer))
 );
 
@@ -42,6 +84,8 @@ it.effect("preserves typed failures and root rollback with direct feature writes
     expect(failure.issue).toBe("forbidden");
     expect(O.isNone(yield* t.query(refs.public.compatibility.find, { key: "rollback" }))).toBe(true);
     yield* t.mutation(refs.public.compatibility.create, { key: "committed", score: 1, reject: false });
+    const duplicate = yield* t.mutation(refs.public.compatibility.create, { key: "committed", score: 5, reject: false }).pipe(E.flip);
+    expect(duplicate.issue).toBe("forbidden");
     expect(O.getOrThrow(yield* t.query(refs.public.compatibility.find, { key: "committed" })).score).toBe(1);
   }).pipe(E.provide(layer))
 );
@@ -93,6 +137,9 @@ it.effect("qualifies stable Confect codegen, named runners, codecs and cardinali
         const ctx = yield* MutationCtx;
         yield* E.promise(() => ctx.db.insert("compatibilityRows", { key: "invalid-field", score: -1 }));
         expect((yield* rows.get("by_key", "invalid-field").pipe(E.flip))._tag).toBe("DocumentDecodeError");
+        const invalidPersistedState = yield* compatibilityData.getUsableByKey("invalid-field").pipe(E.exit);
+        expect(invalidPersistedState._tag).toBe("Failure");
+        if (invalidPersistedState._tag === "Failure") expect(Cause.hasDies(invalidPersistedState.cause)).toBe(true);
         // The qualified system-field derivation preserves outer checks in the registered reader.
         expect(S.is(sChecked)({ key: "outer-invalid", score: 1 })).toBe(false);
         yield* E.promise(() => ctx.db.insert("compatibilityRows", { key: "outer-invalid", score: 1 }));

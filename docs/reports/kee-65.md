@@ -6,13 +6,19 @@ The authority is [Anoulà PR #14](https://github.com/keenko-fr/anoula/pull/14), 
 
 ## Guidance changes
 
-Optional data extraction is supported. Mandatory features/data separation is not restored. Direct Confect persistence remains allowed in simple implementations and owning features. Data cannot depend on features. `data/confect.ts` is the canonical persistence-helper owner. Business rules remain outside data. Shared guidance contains no Anoulà-specific product policy.
+Optional data extraction is supported. Mandatory features/data separation is not restored. Direct Confect persistence remains allowed in simple implementations and owning features. Data cannot depend on features. `data/confect.ts` is the canonical persistence-helper owner. Data may enforce checks intrinsic to its retrieval or persistence contract; independent business operations remain in features. Shared guidance contains no Anoulà-specific product policy.
 
-Extract persistence when reuse, responsibility ownership, avoiding cycles, reducing meaningful duplication or readability gives a concrete benefit. A single consumer can justify the boundary. No line threshold, module per table, generic repository, CRUD factory, canonical Entity loader, complete hydration, forwarding wrapper or compulsory delegation path applies.
+Extract persistence when reuse, responsibility ownership, avoiding cycles, reducing meaningful duplication, readability or reduced architectural complexity gives a concrete benefit. A single consumer can justify the boundary. No line threshold, module per table, generic repository, CRUD factory, canonical Entity loader, complete hydration, forwarding wrapper or compulsory delegation path applies.
 
-Data owns persistence retrieval, indexed lookup, writes, meaningful defaults, mechanical relation enrichment and persistence-specific absence/result adaptation. Features remain the default owner of meaningful operations, authorization, eligibility, validation, transitions, cross-resource business invariants and coordination. Domain remains pure, infra owns technical/provider capabilities, and Confect owns registered contracts and execution boundaries.
+Data operations may perform the checks necessary to guarantee their retrieval or persistence contract, including invoking domain predicates and validating relationships between persisted resources.
 
-Mechanical enrichment loads only demanded relations. Relationship identity does not prove independent ownership. Preserve independent owner checks and the existing find/get, expected absence, typed Failure, SchemaError and Defect distinctions. An owning feature may translate persistence failure into its operation-specific business failure. Compose data and feature functions inside one root Convex mutation; rollback failures escape that mutation.
+Extract a feature when an operation has a meaningful independent business responsibility, not merely because a persistence function contains a validation condition.
+
+The complete operation owns its checks and error contract. Data may return a configured or usable resource, load demanded relations, preserve independent owner consistency, call pure domain predicates and translate expected missing relations or invalid configuration into resource-specific Failures. Features own workflows, acting-User authorization, lifecycle actions and coordination beyond that persistence contract. Domain remains pure, infra owns independent technical/provider capabilities, and Confect owns registered contracts and execution boundaries. Reusable retrieval never grants authorization.
+
+The initial strict separation of mechanical persistence from all business checks was rejected because it reintroduced unnecessary layering. This is a refinement of KEE-65, delivered as an additional commit on the existing branch and PR. Anoulà's PickupRule six-function split is evidence for cohesive retrieval in data with a private relation/checking helper; the independent Establishment owner checks must remain enforced. Shared guidance uses resource-neutral examples rather than copying that product policy.
+
+Errors follow the owning operation's public contract. Preserve find/get, expected absence, typed Failure, SchemaError and impossible persisted-state Defect distinctions. Compose data and feature functions inside one root Convex mutation; rollback failures escape that mutation. Do not turn impossible invariant violations into expected retrieval failures.
 
 ## Canonical sources
 
@@ -22,7 +28,9 @@ Under `src/generators/sync/files/docs/`:
 - `conventions/backend-file-topology.md` replaces Former data files with optional resource naming and operation-section grammar, adjacent local/schema types and the technical helper exception.
 - `core/code-style.md` recognizes resource data namespaces, canonical helper imports, resource operation arguments and local persistence type ownership.
 - `stacks/confect/README.md` aligns extraction, direct generated services and root transaction composition.
-- `conventions/schema-types.md` clarifies mechanical enrichment versus business checks.
+- `conventions/schema-types.md` permits cohesive enrichment, configuration and independent owner checks in the owning data operation.
+- `conventions/validation.md` recognizes data-owned error contracts and retrieval failure translation without a feature wrapper.
+- `core/verification.md` recognizes qualified retrieval as a stable data test seam without duplicating workflow coverage.
 - `core/tooling.md` and `core/migrations.md` explain compiler coverage and application-owned source preservation.
 
 The generated Confect skill's boundary list also recognizes data. README records the current stable upgrade source alongside retained correction/recovery coverage. The historical KEE-63 report explicitly marks the data prohibition and helper placement as superseded.
@@ -35,7 +43,9 @@ The fresh preset moves the existing helper template unchanged from `features/con
 
 Sync regression tests compare every generated Markdown document/skill to its canonical source, reject obsolete helper/prohibition wording and consumer product nouns, and verify idempotence and absence of source scaffolding. Preset tests verify helper ownership, compiler coverage and no resource module requirement. Migration tests cover 1.0.5 compiler repair, helper preservation, conflicts without writes and reruns. Native Nx planning tests cover RC/stable targets and retained supported origins.
 
-The compiled Confect fixture retains direct impl and feature persistence while two features reuse one data module. The data module imports no feature, retains normal find absence and typed get failure, and leaves business failure translation/checks in features. Real root-mutation tests verify rollback after a downstream feature failure. Packed-product checks compare canonical, packed and synchronized guidance byte-for-byte, typecheck and lint the fixture, and prove data compiler coverage with an invalid-file probe. Existing snapshot ownership, stale-file removal and other checks remain active; no separate snapshot files are required.
+The compiled Confect fixture retains direct impl and feature persistence while two meaningful features reuse one data module. Data loads a configuration relation, checks independent owner consistency, applies the canonical pure domain predicate and returns resource-specific retrieval Failures. Its shared relation helper is private, it imports no feature, and a registered query calls qualified retrieval directly. A separate publishing feature performs a state change rather than forwarding validation. Runtime tests distinguish incomplete/missing configuration, mismatched owners and domain rejection, preserve find/get semantics, and verify root rollback after an independent workflow failure.
+
+Packed-product checks compare canonical, packed and synchronized guidance byte-for-byte, typecheck and lint the fixture, and prove data compiler coverage with an invalid-file probe. Existing snapshot ownership, stale-file removal and other checks remain active; no separate snapshot files are required.
 
 ## Release and downstream action
 
@@ -54,24 +64,24 @@ bun run codegen
 bun run check
 ```
 
-Skip the migration execution command if Nx produces no plan. Confirm synchronized guidance expresses the accepted optional-data boundary, then remove only the temporary Optional persistence data modules override. Anoulà's existing data helpers and resource modules already use the accepted owner. No Anoulà source was changed here.
+Skip the migration execution command if Nx produces no plan. Confirm synchronized guidance expresses the accepted optional-data boundary, then remove only the temporary Optional persistence data modules override. No Anoulà source was changed here.
 
 ## Verification
 
-Checks used supported Node `24.21.0` and Bun `1.4.2`.
+Corrected guidance checks used supported Node `24.21.0` and Bun `1.4.2`.
 
 | Check | Result |
 | --- | --- |
-| Frozen repository install | Passed; dependencies and bun.lock unchanged |
-| Full `bun run check` | Passed: formatting, lint, native typecheck, 29 Bun tests, 230 Vitest tests, build/pack and release verification |
-| Focused generated-doc sync suite | Passed: 61 tests, including whole generated Markdown/skill comparison and contradiction checks |
-| Native Nx migration planning suite | Passed: 11 tests, including current stable to RC/stable targets |
-| Uncached `keenko:pack:check` | Passed; relocated helper asset is packaged, old asset absent |
-| Full `bun run test:product` | Passed in 534.312 seconds: fresh creation, real published 1.0.4, 1.0.5-rc.0 and 1.0.5 upgrades, partial recovery, compiled/runtime fixtures, compiler probes, canonical checks, frozen reinstalls and migration/sync idempotence |
-| Native version-plan check | Passed with the prepatch plan |
-| Native version and full release dry runs | Passed; both resolve 1.0.6-rc.0, with no version/publication writes |
+| Full `bun run check` | Passed: formatting, lint, native typecheck, 29 Bun tests, 230 Vitest tests including preset/sync/migration suites, build/pack and release verification |
+| Final generated-doc sync suite | Passed: 61 tests, including all generated Markdown/skill comparison, final ownership rules, contradiction guards and absence of resource scaffolding |
+| Full `bun run test:product` | Passed in 484.713 seconds: fresh creation, real published 1.0.4, 1.0.5-rc.0 and 1.0.5 upgrades, partial recovery, compiler probes, canonical checks, frozen reinstalls and migration/sync idempotence |
+| Qualified retrieval fixture | Passed consumer lint/typecheck and six runtime tests in the fresh workspace and all four upgrade/recovery workspaces; relations, domain predicates, meaningful data failures, impossible persisted-state defects, duplicate-creation business policy, publishing and root rollback are exercised |
+| Generated documentation inspection | All seven corrected guides in a real generated consumer matched canonical bytes; packed/generated equality also passed across every supported product path |
+| Release checks | Existing native prepatch plan retained; version/release dry-run contracts passed; package version, dependencies and lockfile unchanged |
 | Final formatting and diff checks | Passed |
 
-The repository retains non-failing Effect unstable-API diagnostics. Product bootstrap encountered transient npm uplink timeouts before completing every phase successfully. These did not require weakening checks or changing the harness timeout policy.
+Initial fixture lint violations were corrected before the successful product run. A temporary-directory error in the first repository aggregate and a transient local-registry 404 during a product retry were resolved by rerunning the unchanged gates. No checks, lint rules or timeout policies were weakened. The repository retains its existing non-failing Effect unstable-API diagnostics.
 
-Public publication, public post-publication acceptance, live shadcn smoke and downstream Anoulà synchronization were not run. The deterministic shadcn fixture remains part of the successful product gate. A dependency refresh belongs to the release qualification cycle; no unrelated package tuple changes were made here.
+The correction is delivered on the existing `kee-65` branch and [PR #62](https://github.com/keenko-fr/keenko-playbook/pull/62) as an additional commit. Linear acceptance criteria and the PR description now record the responsibility-based ownership rule and rejection of mandatory validation wrappers.
+
+Nothing has been merged or published. Public post-publication acceptance, live shadcn smoke and downstream Anoulà synchronization were not run. The deterministic shadcn fixture passed in the product gate. No Anoulà source was changed and no project-specific policy was added to shared guidance.

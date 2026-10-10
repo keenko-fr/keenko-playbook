@@ -1,4 +1,4 @@
-import { Effect as E } from "effect";
+import { Effect as E, Option as O } from "effect";
 
 import { DatabaseWriter } from "../confect/_generated/services";
 import * as data from "../data/compatibility";
@@ -7,11 +7,10 @@ import { FooFailure } from "../errors/foo";
 
 // CREATE ----------------------------------------------------------------------------------------------------------------------------------
 export const create = E.fn("compatibility.create")(function* (args: CreateArgs) {
-  if (!fooDomain.canSubmit({ enabled: args.score >= 0, items: [args.key] }))
-    return yield* new FooFailure({ issue: "forbidden" });
+  if (!fooDomain.canSubmit({ enabled: args.score >= 0, items: [args.key] })) return yield* new FooFailure({ issue: "forbidden" });
+  if (O.isSome(yield* data.findByKey(args.key))) return yield* new FooFailure({ issue: "forbidden" });
   const writer = yield* DatabaseWriter;
   const id = yield* writer.table("compatibilityRows").insert({ key: args.key, score: args.score }).pipe(E.orDie);
-  yield* data.getByKey(args.key).pipe(E.catchTag("GetByIndexFailure", E.die));
   yield* checkCommit(args.reject);
   return id;
 });

@@ -22,9 +22,11 @@ Do not extract a schema solely to name a one-use endpoint field. Prefer Effect S
 
 Generated Confect services/context are used directly; do not wrap them merely to rename or re-expose them.
 
-Simple operations may remain entirely in `*.impl.ts`, including direct persistence and business checks. Features remain the default owner of meaningful business operations and may directly use generated DatabaseReader/DatabaseWriter. Extract optional resource data modules for persistence reuse, responsibility ownership, avoiding cycles, reducing meaningful duplication or caller readability. A single consumer may justify the boundary; no line threshold or module per resource applies.
+Simple operations may remain entirely in `*.impl.ts`, including direct persistence and business checks. Features remain the default owner of meaningful business operations and may directly use generated DatabaseReader/DatabaseWriter. Extract optional resource data modules based on the complete operation's responsibility, useful reuse, dependency direction, meaningful duplication, caller readability and reduced complexity. A single consumer may justify the boundary; no line threshold or module per resource applies.
 
-Data modules must not import features. Confect implementations may call features or data directly when their responsibility justifies it. Mechanical, demand-driven relationship enrichment may live in data; authorization, eligibility, state transitions and cross-resource business invariants stay with their feature/domain owner. `data/confect.ts` owns focused persistence error/absence adapters. No generic repository, compulsory features → data delegation, full Entity or complete hydration is required.
+Data operations may load relations, enforce consistency, validate configuration, call pure domain predicates and translate resource-specific failures intrinsic to their retrieval or persistence contract. A configured or usable resource retrieval does not require a forwarding feature. Extract a feature for an independent workflow, business action, lifecycle transition, authorization or coordination responsibility. A reusable retrieval does not grant authorization to an acting User.
+
+Data modules must not import features. Confect implementations may call features or data directly when their responsibility justifies it. Enrichment remains demand-driven and required cross-resource invariants remain enforced by their owning operation. `data/confect.ts` owns focused persistence error/absence adapters. No generic repository, compulsory features → data delegation, full Entity or complete hydration is required.
 
 Internal registered functions serve actual execution boundaries, not ordinary TypeScript reuse. Compose data and feature functions inside one root Convex mutation without another registered mutation or artificial orchestration layer. Errors requiring rollback must escape that root mutation. See `backend-architecture.md`.
 
@@ -197,13 +199,13 @@ Use ordered `merge`, key-prefix deduplication through `distinct`, key-range `nar
 
 QueryStream is experimental in Confect `10.1.0`; its API may change between releases. Reverify installed source/types before adopting syntax on another baseline. See first-party [reading](https://confect.dev/server/database/reading) and [streams](https://confect.dev/server/database/streams) documentation for API details. Stream pagination also has its own reactive-client integration requirements; verify those before exposing a paginated contract.
 
-Boolean persistence predicates such as `hasCurrentByFooId` may remain local to an impl or an extracted feature responsibility. Extracted operations use operation/coherent-group sections with local details below their owner. [Backend file topology](../../conventions/backend-file-topology.md) remains the grammar owner.
+Boolean persistence predicates such as `hasCurrentByFooId` may remain local to an impl or an extracted data or feature responsibility. Extracted operations use operation/coherent-group sections with local details below their owner. [Backend file topology](../../conventions/backend-file-topology.md) remains the grammar owner.
 
 ## Persistence patches
 
 Preserve the semantic difference between `S.optionalKey` and `S.optional`; explicit `undefined` may be meaningful for clearing an optional Convex field. Prefer focused patch contracts when invariants exist; use broad partial patches only when every field is independently patchable.
 
-Operation-local patch args stay with their impl/feature owner. Runtime Patch representations belong in the resource schema module only when a real boundary/shared contract justifies them.
+Operation-local patch args stay with their impl/data/feature owner. Runtime Patch representations belong in the resource schema module only when a real boundary/shared contract justifies them.
 
 ## Versions and generated code
 

@@ -453,7 +453,13 @@ describe("keenko sync", () => {
         "features/billing.ts",
         "data/accounts.ts",
         "No additional registered mutation or artificial orchestration layer",
-        "Mechanical relation loading may live in data",
+        "Data operations may perform the checks necessary to guarantee their retrieval or persistence contract",
+        "Extract a feature when an operation has a meaningful independent business responsibility",
+        "Pure domain predicates may be called by data or features",
+        "A reusable retrieval does not authorize an acting User",
+        "No forwarding `features/rules.ts` is required",
+        "A shared `withRelations()` helper stays private",
+        "missing relations or invalid configuration into meaningful resource-specific Failures",
         "typed Failure, Schema validation errors and Defects",
       ])
         expect(architecture).toContain(rule);
@@ -484,7 +490,7 @@ describe("keenko sync", () => {
         const generated = tree.read(`.keenko/${relative}`, "utf-8");
         expect(generated).toBe(yield* fs.readFileString(path.join(root, relative)));
         expect(generated).not.toMatch(
-          /features\/confect\.ts|Former data files|Do not retain `data\/`|Redistribute existing `data\/`|`data\/` is not part/u
+          /features\/confect\.ts|Former data files|Do not retain `data\/`|Redistribute existing `data\/`|`data\/` is not part|Business rules remain outside data|Data modules must not contain business validation|Data may only perform mechanical|Cross-resource business invariants always belong in features|owns usable-configuration and ownership validation|business eligibility, configuration and independent ownership checks remain with their feature/u
         );
         expect(generated).not.toMatch(/Anoulà|ANO-16|PickupRule|PickupItem|RepTenure|AdminTenure|CapacityPool|Establishment/u);
       }

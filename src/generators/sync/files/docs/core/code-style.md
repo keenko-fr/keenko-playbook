@@ -30,7 +30,7 @@ import * as paymentAccountDomain from "../domain/payment-accounts";
 import * as paymentAccountFeature from "../features/payment-accounts";
 ```
 
-This preserves natural variable names such as paymentAccount or orders. Use data aliases only for persistence operations; business behavior retains its feature/domain owner. Data modules must not import features.
+This preserves natural variable names such as paymentAccount or orders. A resource data namespace may expose complete persistence-oriented operations, including the validation and domain predicates needed to guarantee its retrieval contract. Choose the owner from the complete responsibility; features are not mandatory validation wrappers around data. Data modules must not import features.
 
 Infra, schemas, Confect services and ordinary modules keep responsibility-appropriate imports, normally named imports. The narrow technical `data/confect.ts` helper file uses named imports for persistence adapters rather than a resource namespace.
 

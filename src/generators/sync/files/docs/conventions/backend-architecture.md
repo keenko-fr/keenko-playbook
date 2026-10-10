@@ -27,23 +27,29 @@ Internal Confect functions required by scheduling, actions or other execution bo
 
 ## Features and extraction
 
-`features/` is the default owner of meaningful effectful business operations: workflows, authorization, eligibility and business validation, state transitions, cross-resource business invariants and coordination. A module may contain reads, writes and calls to infra. It may use generated `DatabaseReader`, `DatabaseWriter` and other Confect services directly. No intermediate persistence layer is required.
+`features/` is the default owner of meaningful effectful business operations: workflows, authorization of acting Users, business actions, lifecycle state transitions and coordination across capabilities. Features enforce business decisions whose responsibility goes beyond a resource retrieval or persistence contract. A module may contain reads, writes and calls to infra. It may use generated `DatabaseReader`, `DatabaseWriter` and other Confect services directly. No intermediate persistence layer is required.
 
 Extract from an implementation for an autonomous responsibility, significant business/technical complexity, useful reuse or a real improvement in caller readability. One consumer can justify an important operation. Line count may reveal a readability problem but is not an architectural threshold.
 
 Keep modules flat by default, such as `features/orders.ts`. Remove wrappers that only rename or delegate an operation without adding responsibility.
 
-A feature may call another feature for real business behavior. For example, orders may call a payment-account readiness check. Keep imports acyclic and retain a single root transaction when the composed operation must be atomic.
+A feature may call another feature for real business behavior. For example, orders may call payments to charge an account. Keep imports acyclic and retain a single root transaction when the composed operation must be atomic.
 
 ## Optional persistence data modules
 
-`data/` owns extracted persistence behavior: reusable resource retrieval, indexed lookups, writes, meaningful initialization defaults, mechanical relationship loading/enrichment and persistence-specific result or absence adaptation. Persistence may remain in a simple Confect implementation or the feature that owns the operation.
+`data/` owns optional, cohesive persistence-oriented operations: resource retrieval, indexed lookups, writes, meaningful initialization defaults, relationship loading/enrichment and persistence-specific result or absence adaptation. Persistence may remain in a simple Confect implementation or the feature that owns the operation.
 
-Extract into data when reuse, responsibility ownership, avoiding dependency cycles, reducing meaningful duplication or caller readability provides a concrete benefit. A single consumer can justify extraction when the responsibility or dependency boundary warrants it. Do not impose line-count thresholds or require a data module for every feature or table.
+Data operations may perform the checks necessary to guarantee their retrieval or persistence contract, including invoking domain predicates and validating relationships between persisted resources.
 
-Keep authorization, eligibility, business validation, state transitions, cross-resource business invariants and business coordination with their semantic feature/domain owner. Data modules must not import features. Features may import data modules or use generated DatabaseReader/DatabaseWriter directly. Confect implementations may use features or data when their responsibility justifies it.
+Extract a feature when an operation has a meaningful independent business responsibility, not merely because a persistence function contains a validation condition.
 
-For example, `features/orders.ts` and `features/billing.ts` may both import `data/accounts.ts` for `getById()` without depending on each other's lifecycle operations. The data module uses Confect persistence services and never calls those features. Each feature owns its business checks and may translate persistence failures for its operation.
+Judge the responsibility of the complete operation, not individual queries, conditions or predicate calls. Getting a configured or usable resource, validating its retrieved configuration and relations, or finding a current temporal relationship can be ordinary data operations. Pure domain predicates may be called by data or features. A reusable retrieval does not authorize an acting User or grant permission to perform a business action.
+
+Extract into data when the complete operation's responsibility, useful reuse, dependency direction, reducing meaningful duplication, caller readability or reduced architectural complexity provides a concrete benefit. A single consumer can justify extraction when the responsibility or dependency boundary warrants it. Do not impose line-count thresholds or require a data module for every feature or table. Do not extract merely because a function contains a query, or introduce a feature merely because it contains a condition or calls domain logic. Prefer one cohesive operation over several layers of delegation.
+
+Data modules must not import features. Keep resource module imports acyclic. Features may import data modules or use generated DatabaseReader/DatabaseWriter directly. Confect implementations may use features or data when their responsibility justifies it. Keep authorization at the appropriate trusted business/execution boundary, domain deterministic and infra responsible for independent technical capabilities.
+
+For example, `features/orders.ts` and `features/billing.ts` may both import `data/accounts.ts` for `getById()` without depending on each other's lifecycle operations. The data module uses Confect persistence services and never calls those features. It owns the checks and failures intrinsic to its retrieval contract; each feature owns its independent business responsibility and may translate failures when its caller contract differs.
 
 Do not introduce generic repositories, CRUD factories, canonical Entity loaders, mandatory hydration, mechanical forwarding wrappers or a compulsory `features → data` delegation path. Compose data and feature functions directly within the single root Convex transaction. No additional registered mutation or artificial orchestration layer is required for reuse.
 
@@ -53,7 +59,7 @@ Do not introduce generic repositories, CRUD factories, canonical Entity loaders,
 
 This is a narrow technical exception for persistence-specific helpers, not a standalone business feature, general infra service or generic repository around DatabaseReader/DatabaseWriter. Its existence does not require data modules for application resources. Include only the adapters the application needs.
 
-Translate codec errors to defects only for an owned invariant; preserve expected not-found as a typed get failure or normal find absence. Absence becomes a defect only when a concrete invariant proves it impossible. A fail adapter accepts the caller's explicit persistence-failure translation; it must not choose operation-specific business failure policy.
+Translate codec errors to defects only for an owned invariant; preserve expected not-found as a typed get failure or normal find absence. Absence becomes a defect only when a concrete invariant proves it impossible. A generic fail adapter applies an explicit translation supplied by its caller. A resource data operation may own that translation when it is part of its retrieval contract.
 
 ## Pure domain
 
@@ -95,7 +101,9 @@ Use an existing document when it suffices. Enrich that resource when a relation 
 
 Neither full Entities nor hydration are mandatory. Keep persistence Schemas and codecs. Internal enrichment may be a plain type, and does not require another runtime Schema or a constructor. Do not introduce generic Repository, EntityLoader, Loader or hydration infrastructure.
 
-Mechanical relation loading may live in data, for example `data/items.ts` with `withOffer()` or `data/rules.ts` with `withRelations()`. These operations assemble only the related documents the caller needs. `features/items.ts` owns `checkSellable()`; `features/rules.ts` owns usable-configuration and ownership validation. Do not require complete relation hydration.
+Relation loading and the consistency checks needed to return a valid resource may live together in data. For example, `data/rules.ts` can expose `getConfiguredById()` and `getUsableByAccountId()`: retrieve the rule, load required relations, check that their owners agree, validate configuration and apply `domain.isUsable()` for the usable retrieval. No forwarding `features/rules.ts` is required. A shared `withRelations()` helper stays private unless real independent reuse justifies export. Do not split loading and checking into separate modules solely to preserve a conceptual distinction.
+
+Enrichment is demand-driven; load only the relations the contract needs. Do not require complete relation hydration. A feature remains appropriate for an independent workflow, acting-User authorization or business action using the retrieved resource.
 
 Loading Bar through a Foo's persisted foreign key proves identity, not independent ownership. If their owners must agree, enforce `doc.ownerId === bar.ownerId` when both resources are available and validity is needed. Preserve meaningful schema and business checks without repeatedly decoding trusted internal values. See `schema-types.md`.
 
@@ -103,7 +111,7 @@ Loading Bar through a Foo's persisted foreign key proves identity, not independe
 
 `find` / `findByX` treats absence as normal, usually with `Option` in Effect code. `get` / `getByX` treats absence as a typed failure. A corresponding pair normally returns the same success representation; different projections are not a find/get pair.
 
-Data operations expose clear persistence semantics. An operation-specific feature may translate a persistence failure into its own business failure. Preserve the distinction between expected absence, typed Failure, Schema validation errors and Defects for impossible persisted states. Generic data helpers do not own business failure policy. See `validation.md`.
+Errors follow the owning operation's public contract. A data retrieval may translate missing relations or invalid configuration into meaningful resource-specific Failures when these are expected retrieval outcomes. An operation-specific feature may translate those failures when its business contract differs. Preserve the distinction between expected absence, typed Failure, Schema validation errors and Defects for impossible persisted states; qualification does not turn an impossible invariant violation into an expected failure. Generic persistence adapters accept explicit caller policy rather than inventing business failure semantics. See `validation.md`.
 
 Use the naming, zero-or-one-argument signatures and feature/data/domain namespace imports in `docs/core/code-style.md`. `create` is the canonical authored creation verb; `insert` belongs to native persistence calls. Preserve business transition verbs.
 

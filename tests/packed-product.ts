@@ -519,7 +519,7 @@ const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspa
   const path = yield* Path.Path;
   const backend = path.join(workspace, "packages/backend");
   const fixture = yield* path.fromFileUrl(new URL("fixtures/confect-compatibility", import.meta.url));
-  const files = ["tables/compatibilityRows.ts", "compatibility.spec.ts", "compatibility.impl.ts"];
+  const files = ["tables/compatibilityRows.ts", "tables/compatibilitySettings.ts", "compatibility.spec.ts", "compatibility.impl.ts"];
   for (const relative of files) {
     const target = path.join(backend, "confect", relative);
     yield* fs.makeDirectory(path.dirname(target), { recursive: true });
@@ -530,10 +530,11 @@ const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspa
   yield* fs.writeFileString(testFile, yield* fs.readFileString(path.join(fixture, "contract.test.ts.template")));
   const conventionFiles = [
     "features/compatibility.ts",
-    "features/compatibility-audit.ts",
+    "features/compatibility-publishing.ts",
     "data/compatibility.ts",
     "domain/foo.ts",
     "errors/foo.ts",
+    "errors/compatibility.ts",
   ];
   const docs = path.join(workspace, ".keenko/docs/conventions");
   const validation = yield* fs.readFileString(path.join(docs, "validation.md"));
@@ -543,10 +544,11 @@ const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspa
   yield* assert(errorExample !== "" && domainExample !== "", "Backend convention examples must be present");
   for (const [relative, content] of [
     ["features/compatibility.ts", yield* fs.readFileString(path.join(fixture, "feature.ts.template"))],
-    ["features/compatibility-audit.ts", yield* fs.readFileString(path.join(fixture, "audit.ts.template"))],
+    ["features/compatibility-publishing.ts", yield* fs.readFileString(path.join(fixture, "publish.ts.template"))],
     ["data/compatibility.ts", yield* fs.readFileString(path.join(fixture, "data.ts.template"))],
     ["domain/foo.ts", domainExample],
     ["errors/foo.ts", errorExample],
+    ["errors/compatibility.ts", yield* fs.readFileString(path.join(fixture, "errors.ts.template"))],
   ]) {
     const target = path.join(backend, relative);
     yield* fs.makeDirectory(path.dirname(target), { recursive: true });
@@ -554,7 +556,7 @@ const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspa
   }
   const dataSource = yield* fs.readFileString(path.join(backend, "data/compatibility.ts"));
   yield* assert(!dataSource.includes("../features/"), "Optional data fixture depends on features");
-  for (const relative of ["features/compatibility.ts", "features/compatibility-audit.ts"])
+  for (const relative of ["features/compatibility.ts", "features/compatibility-publishing.ts"])
     yield* assert(
       (yield* fs.readFileString(path.join(backend, relative))).includes("../data/compatibility"),
       `${relative} does not reuse the optional data module`
@@ -565,7 +567,7 @@ const verifyConfectTuple = E.fn("product.verifyConfectTuple")(function* (workspa
   yield* command(workspace, env, "bun", ["x", "nx", "run", "backend:typecheck", "--outputStyle=static"]);
   yield* command(backend, env, "bun", ["x", "vitest", "run", "test/keenko-confect.test.ts"]);
   yield* Console.log(
-    `Stable Confect compatibility passed in ${workspace}: generated containers, codecs, cardinality, canonical error/domain examples, direct impl/feature persistence, optional data reuse and root rollback.`
+    `Stable Confect compatibility passed in ${workspace}: generated containers, codecs, cardinality, canonical error/domain examples, direct impl/feature persistence, optional data reuse, qualified relation retrieval/domain checks/resource failures without forwarding features, a meaningful publishing action and root rollback.`
   );
   for (const relative of files) yield* fs.remove(path.join(backend, "confect", relative));
   for (const relative of conventionFiles) yield* fs.remove(path.join(backend, relative));
@@ -711,6 +713,7 @@ const verifyBackendRepresentationGuidance = E.fn("product.verifyBackendRepresent
     "docs/core/code-style.md",
     "docs/core/migrations.md",
     "docs/core/tooling.md",
+    "docs/core/verification.md",
     "docs/stacks/confect/README.md",
     "docs/stacks/effect/README.md",
     "docs/stacks/testing/README.md",

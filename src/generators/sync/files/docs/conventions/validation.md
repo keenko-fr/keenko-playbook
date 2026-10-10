@@ -47,17 +47,19 @@ export class FooDefect extends S.TaggedError<FooDefect>()("FooDefect", {
 
 A one-off defect may retain its original cause without a custom class/vocabulary. Invalid data does not automatically imply Failure or Defect: provenance and the owning trust boundary determine the category. Translation between categories must be explicit. A SchemaIssue vocabulary does not replace or wrap the native SchemaError.
 
+Errors follow the owning operation's public contract. A resource data retrieval may translate expected missing relations or invalid configuration into resource-specific Failures without a forwarding feature. Pure predicates and cross-resource checks do not determine the category by themselves: retain SchemaError at schema boundaries and Defects for impossible persisted states. A workflow may translate a data Failure when it adds a materially different caller contract.
+
 ## Issue vocabulary and ownership
 
 Issues are stable, short `snake_case` programmatic values. User messages stay separate. Prefer context-local values and no enum-like object merely to name literals.
 
 Create a vocabulary for meaningful contract/business conditions or actual consumer handling, not to enumerate every implementation error. Use the category-qualified names `sFooSchemaIssue`, `sFooFailureIssue`, `sFooDefectIssue` and their derived types. Do not merge their distinct meanings into a generic FooIssue.
 
-Context families stay together in `errors/<concept>.ts`, including feature/infra-owned contexts, declaring only used families. Do not create files for contexts with no custom errors. A real cross-workspace consumer can earn shared contract ownership.
+Context families stay together in `errors/<concept>.ts`, including data/feature/infra-owned contexts, declaring only used families. Do not create files for contexts with no custom errors. A real cross-workspace consumer can earn shared contract ownership.
 
 Failure classes use the property `issue`; do not introduce competing reason/code fields for the same semantics. TaggedError classes already own their type identity and need no companion alias.
 
-A contract imported by Confect specs remains client-safe. It may import safe Schema/contracts but must not import feature/infra implementations, generated server services, `@confect/server` or other server-only modules. The owning capability can retain internal diagnostic causes while the public boundary exposes only deliberate payload.
+A contract imported by Confect specs remains client-safe. It may import safe Schema/contracts but must not import data/feature/infra implementations, generated server services, `@confect/server` or other server-only modules. The owning capability can retain internal diagnostic causes while the public boundary exposes only deliberate payload.
 
 ## One Failure or several
 
