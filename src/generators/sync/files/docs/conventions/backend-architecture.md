@@ -65,7 +65,9 @@ Translate codec errors to defects only for an owned invariant; preserve expected
 
 `domain/` is optional and owns deterministic business calculations, predicates, decisions, state transitions, eligibility rules and reusable invariants. It never reads the database or performs mutations.
 
-Pass the facts the behavior needs rather than an imposed complete Entity. Do not extract a trivial expression merely to satisfy theoretical separation.
+Domain function ownership follows business semantics, not mechanically the consuming resource or most frequent caller. A concept that establishes contractual facts may own their calculation even when another concept inherits and uses those facts. Import that function directly; two consumers do not by themselves justify a new module or abstraction. Use natural, self-explanatory names that remain understandable without a module namespace.
+
+Pass the facts the behavior needs through a small structural contract rather than an imposed complete Entity. Do not extract a trivial expression merely to satisfy theoretical separation.
 
 Reusable pure predicates may also serve a Schema. Define independent fact types at their semantic owner so `schemas/` and `domain/` do not form import cycles. Keep a predicate schema-local if sharing it requires disproportionate structure.
 
@@ -101,7 +103,7 @@ Use an existing document when it suffices. Enrich that resource when a relation 
 
 Neither full Entities nor hydration are mandatory. Keep persistence Schemas and codecs. Internal enrichment may be a plain type, and does not require another runtime Schema or a constructor. Do not introduce generic Repository, EntityLoader, Loader or hydration infrastructure.
 
-Relation loading and the consistency checks needed to return a valid resource may live together in data. For example, `data/rules.ts` can expose `getConfiguredById()` and `getUsableByAccountId()`: retrieve the rule, load required relations, check that their owners agree, validate configuration and apply `domain.isUsable()` for the usable retrieval. No forwarding `features/rules.ts` is required. A shared `withRelations()` helper stays private unless real independent reuse justifies export. Do not split loading and checking into separate modules solely to preserve a conceptual distinction.
+Relation loading and the consistency checks needed to return a valid resource may live together in data. For example, `data/rules.ts` can expose `getConfiguredById()` and `getUsableByAccountId()`: retrieve the rule, load required relations, check that their owners agree, validate configuration and apply the named-imported pure `isRuleUsable()` predicate for the usable retrieval. No forwarding `features/rules.ts` is required. A shared `withRelations()` helper stays private unless real independent reuse justifies export. Do not split loading and checking into separate modules solely to preserve a conceptual distinction.
 
 Enrichment is demand-driven; load only the relations the contract needs. Do not require complete relation hydration. A feature remains appropriate for an independent workflow, acting-User authorization or business action using the retrieved resource.
 
@@ -113,7 +115,7 @@ Loading Bar through a Foo's persisted foreign key proves identity, not independe
 
 Errors follow the owning operation's public contract. A data retrieval may translate missing relations or invalid configuration into meaningful resource-specific Failures when these are expected retrieval outcomes. An operation-specific feature may translate those failures when its business contract differs. Preserve the distinction between expected absence, typed Failure, Schema validation errors and Defects for impossible persisted states; qualification does not turn an impossible invariant violation into an expected failure. Generic persistence adapters accept explicit caller policy rather than inventing business failure semantics. See `validation.md`.
 
-Use the naming, zero-or-one-argument signatures and feature/data/domain namespace imports in `docs/core/code-style.md`. `create` is the canonical authored creation verb; `insert` belongs to native persistence calls. Preserve business transition verbs.
+Use the naming, zero-or-one-argument signatures and feature/data namespace imports and named domain imports in `docs/core/code-style.md`. `create` is the canonical authored creation verb; `insert` belongs to native persistence calls. Preserve business transition verbs.
 
 ## Execution guarantees
 

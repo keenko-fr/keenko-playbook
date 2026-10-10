@@ -26,15 +26,15 @@ Respect the effective `no-use-before-define` rule and JavaScript initialization 
 
 Keep modules flat by default. Use level-1 sections per exported operation or coherent group, labelled for the operation, such as `SUBMIT`, `CONCLUDE` or `FIND`. Types and helpers follow the operation they describe.
 
-This complete pure-domain example uses hoisted helpers and one argument:
+This complete pure-domain example exports a self-explanatory function for named imports, with hoisted local helpers and one structural argument:
 
 ```ts
-// CAN SUBMIT ------------------------------------------------------------------------------------------------------------------------------
-export function canSubmit(args: SubmitArgs) {
+// CAN SUBMIT REQUEST ----------------------------------------------------------------------------------------------------------------------
+export function canSubmitRequest(args: SubmitRequestArgs) {
   return args.enabled && hasItems(args.items);
 }
 
-type SubmitArgs = {
+type SubmitRequestArgs = {
   enabled: boolean;
   items: readonly string[];
 };

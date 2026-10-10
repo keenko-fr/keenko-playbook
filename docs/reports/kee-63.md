@@ -14,7 +14,7 @@ The six requested sources now describe one Confect-first architecture:
 - [Backend file topology](../../src/generators/sync/files/docs/conventions/backend-file-topology.md) preserves 140-character separators, puts local details below their operation and retains final Confect GROUP assembly.
 - [Schema types](../../src/generators/sync/files/docs/conventions/schema-types.md) makes representations/enrichment optional and preserves meaningful cross-resource and trust-boundary checks.
 - [Validation](../../src/generators/sync/files/docs/conventions/validation.md) distinguishes SchemaIssue/native SchemaError, typed Failure and Defect through Effect.die.
-- [Code style](../../src/generators/sync/files/docs/core/code-style.md) owns contextual names, CRUD/check verbs, feature/domain namespaces, zero-or-one-argument exports and narrow type ownership.
+- [Code style](../../src/generators/sync/files/docs/core/code-style.md) owns contextual names, CRUD/check verbs, feature/data namespaces and named domain imports (refined by KEE-65), zero-or-one-argument exports and narrow type ownership.
 - [Tooling](../../src/generators/sync/files/docs/core/tooling.md) explains the backend-scoped type-definition override and existing-consumer adoption.
 
 Confect/Effect stack guidance and the generated Confect skill use the same rules. The incompatible KEE-59/KEE-62 prescriptions are explicitly superseded, including in the historical KEE-62 report.

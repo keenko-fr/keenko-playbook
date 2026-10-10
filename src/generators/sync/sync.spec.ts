@@ -479,7 +479,21 @@ describe("keenko sync", () => {
       expect(topology).toContain("WITH RELATIONS");
       expect(topology).toContain("CRUD file families");
       const style = tree.read(".keenko/docs/core/code-style.md", "utf-8");
-      expect(style).toContain("paymentAccountData");
+      for (const rule of [
+        'import * as data from "../data/orders"',
+        'import * as feature from "../features/orders"',
+        "paymentAccountData",
+        'import { isRuleUsable } from "../domain/rules"',
+        "Use named imports for ordinary exported pure domain functions",
+        "Do not mechanically prefix every domain function",
+        "Private helpers need no forced concept qualification",
+        "do not impose a rigid universal list of verb prefixes",
+      ])
+        expect(style).toContain(rule);
+      expect(architecture).toContain("Domain function ownership follows business semantics");
+      expect(architecture).toContain("small structural contract");
+      expect(architecture).toContain("two consumers do not by themselves justify a new module or abstraction");
+      expect(topology).toContain("export function canSubmitRequest(args: SubmitRequestArgs)");
       for (const guide of [architecture, topology, style]) expect(guide).toContain("data/confect.ts");
 
       const fs = yield* FileSystem.FileSystem;
@@ -491,6 +505,9 @@ describe("keenko sync", () => {
         expect(generated).toBe(yield* fs.readFileString(path.join(root, relative)));
         expect(generated).not.toMatch(
           /features\/confect\.ts|Former data files|Do not retain `data\/`|Redistribute existing `data\/`|`data\/` is not part|Business rules remain outside data|Data modules must not contain business validation|Data may only perform mechanical|Cross-resource business invariants always belong in features|owns usable-configuration and ownership validation|business eligibility, configuration and independent ownership checks remain with their feature/u
+        );
+        expect(generated).not.toMatch(
+          /import \* as \w+ from ["'](?:\.\.\/)+domain\/|domain\.transition\(|domain\.isUsable\(|orderIntents\.effectiveStatus\(|feature\/data\/domain namespace imports/u
         );
         expect(generated).not.toMatch(/Anoulà|ANO-16|PickupRule|PickupItem|RepTenure|AdminTenure|CapacityPool|Establishment/u);
       }

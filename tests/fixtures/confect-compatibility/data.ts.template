@@ -2,7 +2,7 @@ import { Effect as E, Option as O } from "effect";
 
 import { DatabaseReader } from "../confect/_generated/services";
 import type compatibilityRows from "../confect/_generated/tables/compatibilityRows";
-import * as fooDomain from "../domain/foo";
+import { canSubmitRequest } from "../domain/foo";
 import { CompatibilityFailure } from "../errors/compatibility";
 
 // GET CONFIGURED BY KEY -------------------------------------------------------------------------------------------------------------------
@@ -46,7 +46,7 @@ function withRelations(row: typeof compatibilityRows.Doc.Type) {
 // GET USABLE BY KEY -----------------------------------------------------------------------------------------------------------------------
 export const getUsableByKey = E.fn("compatibilityData.getUsableByKey")(function* (key: string) {
   const row = yield* getConfiguredByKey(key);
-  if (!fooDomain.canSubmit({ enabled: row.settings.enabled && row.score > 0, items: [row.key] }))
+  if (!canSubmitRequest({ enabled: row.settings.enabled && row.score > 0, items: [row.key] }))
     return yield* new CompatibilityFailure({ issue: "unusable" });
   return row;
 });

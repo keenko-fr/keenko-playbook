@@ -20,6 +20,16 @@ The initial strict separation of mechanical persistence from all business checks
 
 Errors follow the owning operation's public contract. Preserve find/get, expected absence, typed Failure, SchemaError and impossible persisted-state Defect distinctions. Compose data and feature functions inside one root Convex mutation; rollback failures escape that mutation. Do not turn impossible invariant violations into expected retrieval failures.
 
+## Final domain import and naming refinement
+
+Domain functions use named imports and natural, self-explanatory names. Feature and data operations retain namespace imports. Domain function ownership follows business semantics, not mechanically the consuming resource. No additional module or abstraction is required.
+
+The previous namespace-import rule for domain functions is superseded. Exported pure functions must convey their meaning without the original module namespace; constants, tagged unions and types also remain suitable for named imports. Do not mechanically prefix every function with its complete resource name or impose a universal verb list. Private helpers keep locally clear names.
+
+A calculation belongs with the concept that establishes its meaning, even when another concept inherits its facts. Pass only the required facts through a small structural contract. Shared consumption alone does not justify a new module. These naming rules preserve every accepted optional-data responsibility and dependency boundary.
+
+The canonical pure-domain example now exports `canSubmitRequest` with a small structural argument and a locally named private `hasItems` helper. Both the data qualification operation and creation feature named-import that function in the compiled product fixture; feature/data namespace imports remain intact. Generated-doc assertions require the distinct import conventions, natural naming, semantic ownership and no forced prefix/module, and reject the old namespace examples across all published Markdown.
+
 ## Canonical sources
 
 Under `src/generators/sync/files/docs/`:
@@ -68,20 +78,20 @@ Skip the migration execution command if Nx produces no plan. Confirm synchronize
 
 ## Verification
 
-Corrected guidance checks used supported Node `24.21.0` and Bun `1.4.2`.
+Final domain import/naming refinement checks used supported Node `24.21.0` and Bun `1.4.2`.
 
 | Check | Result |
 | --- | --- |
 | Full `bun run check` | Passed: formatting, lint, native typecheck, 29 Bun tests, 230 Vitest tests including preset/sync/migration suites, build/pack and release verification |
-| Final generated-doc sync suite | Passed: 61 tests, including all generated Markdown/skill comparison, final ownership rules, contradiction guards and absence of resource scaffolding |
-| Full `bun run test:product` | Passed in 484.713 seconds: fresh creation, real published 1.0.4, 1.0.5-rc.0 and 1.0.5 upgrades, partial recovery, compiler probes, canonical checks, frozen reinstalls and migration/sync idempotence |
+| Final generated-doc sync suite | Passed: 61 tests, including all generated Markdown/skill comparison, final ownership and domain import/naming rules, contradiction guards and absence of resource scaffolding |
+| Full `bun run test:product` | Passed in 374.462 seconds: fresh creation, real published 1.0.4, 1.0.5-rc.0 and 1.0.5 upgrades, partial recovery, compiler probes, canonical checks, frozen reinstalls and migration/sync idempotence |
 | Qualified retrieval fixture | Passed consumer lint/typecheck and six runtime tests in the fresh workspace and all four upgrade/recovery workspaces; relations, domain predicates, meaningful data failures, impossible persisted-state defects, duplicate-creation business policy, publishing and root rollback are exercised |
-| Generated documentation inspection | All seven corrected guides in a real generated consumer matched canonical bytes; packed/generated equality also passed across every supported product path |
+| Generated documentation inspection | The three naming-refined guides were inspected in a real generated consumer and matched canonical bytes; all seven KEE-65 guides remained covered; packed/generated equality also passed across every supported product path |
 | Release checks | Existing native prepatch plan retained; version/release dry-run contracts passed; package version, dependencies and lockfile unchanged |
 | Final formatting and diff checks | Passed |
 
-Initial fixture lint violations were corrected before the successful product run. A temporary-directory error in the first repository aggregate and a transient local-registry 404 during a product retry were resolved by rerunning the unchanged gates. No checks, lint rules or timeout policies were weakened. The repository retains its existing non-failing Effect unstable-API diagnostics.
+The final naming refinement passed repository and packed-product gates on the first run. Earlier ownership work had fixed fixture lint violations and resolved transient temporary-directory/registry errors by rerunning unchanged gates. No checks, lint rules or timeout policies were weakened. The repository retains its existing non-failing Effect unstable-API diagnostics.
 
-The correction is delivered on the existing `kee-65` branch and [PR #62](https://github.com/keenko-fr/keenko-playbook/pull/62) as an additional commit. Linear acceptance criteria and the PR description now record the responsibility-based ownership rule and rejection of mandatory validation wrappers.
+The correction is delivered on the existing `kee-65` branch and [PR #62](https://github.com/keenko-fr/keenko-playbook/pull/62) as an additional commit. Linear acceptance criteria and the PR description record the responsibility-based ownership rule, rejection of mandatory validation wrappers and final domain import/naming refinement.
 
 Nothing has been merged or published. Public post-publication acceptance, live shadcn smoke and downstream Anoulà synchronization were not run. The deterministic shadcn fixture passed in the product gate. No Anoulà source was changed and no project-specific policy was added to shared guidance.

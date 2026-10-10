@@ -14,29 +14,38 @@ Oxfmt is the canonical owner of arbitrary source formatting. Follow its output i
 
 ### Backend feature, data and domain imports
 
-Namespace-import resource modules in `features/`, `data/` and `domain/`. For the same concept as the consuming file:
+Namespace-import resource modules in `features/` and `data/`. For the same concept as the consuming file:
 
 ```ts
 import * as data from "../data/orders";
-import * as domain from "../domain/orders";
 import * as feature from "../features/orders";
 ```
 
-For another concept, use its singular name followed by Feature, Data or Domain:
+For another concept, use its singular name followed by Feature or Data:
 
 ```ts
 import * as paymentAccountData from "../data/payment-accounts";
-import * as paymentAccountDomain from "../domain/payment-accounts";
 import * as paymentAccountFeature from "../features/payment-accounts";
 ```
 
 This preserves natural variable names such as paymentAccount or orders. A resource data namespace may expose complete persistence-oriented operations, including the validation and domain predicates needed to guarantee its retrieval contract. Choose the owner from the complete responsibility; features are not mandatory validation wrappers around data. Data modules must not import features.
 
+Use named imports for ordinary exported pure domain functions, with names understandable without their original module namespace:
+
+```ts
+import { calculateContractualTotal } from "../domain/contracts";
+import { isRuleUsable } from "../domain/rules";
+```
+
+Do not namespace-import domain functions. Named imports of domain constants, tagged unions and types remain appropriate.
+
 Infra, schemas, Confect services and ordinary modules keep responsibility-appropriate imports, normally named imports. The narrow technical `data/confect.ts` helper file uses named imports for persistence adapters rather than a resource namespace.
 
 ## Naming
 
-- Choose the shortest name retaining necessary meaning in its module. Prefer orderIntents.convert, orders.markReady and orderIntents.effectiveStatus over repeating the resource noun. No arbitrary name-length limit applies.
+- Feature and data operations can use the shortest name retaining necessary meaning in their namespace, such as orderFeature.markReady or accountData.getById. No arbitrary name-length limit applies.
+- Domain functions use natural, self-explanatory names such as calculateContractualTotal, calculatePreparationStart, getEffectiveOrderStatus, isRuleUsable and transitionOrder. Avoid generic calculate, getState or transition exports that rely on a module namespace to explain them.
+- Do not mechanically prefix every domain function with its complete module or resource name. For a calculation shared by several concepts, calculatePreparationStart may express the responsibility better than calculateOrderPreparationStart. Prefer meaningful names over artificial uniformity; do not impose a rigid universal list of verb prefixes. Private helpers need no forced concept qualification when their local scope makes the meaning clear.
 - Avoid cryptic abbreviations. Conventional short forms such as `id`, `url`, `api`, `ctx`, and genuine `dto` usage are fine.
 - Name booleans as readable predicates when useful (`isActive`, `hasAccess`, `canPublish`, `shouldRetry`) without mechanically forcing a prefix when the domain word is already boolean (`enabled`, `verified`).
 - Preserve business verbs such as submit, convert, decline, cancel, conclude, transition, markReady, publish and archive. Do not mechanically rename a transition to create because it also writes a document.
@@ -57,11 +66,11 @@ Infra, schemas, Confect services and ordinary modules keep responsibility-approp
 | `remove`          | Deletion                                     |
 | `ensure`          | Guarantee existence, creating when necessary |
 
-`create` is the canonical creation verb in features and authored resource data operations. Reserve insert for native persistence calls. Do not expose insert/add/save/open synonyms for the same simple creation semantics. Use is/has/can for boolean predicates and check for fallible validation, with the specific exceptions in `validation.md`.
+`create` is the canonical creation verb in features and authored resource data operations. Reserve insert for native persistence calls. Do not expose insert/add/save/open synonyms for the same simple creation semantics. Prefer readable predicate names and check for fallible validation, with the specific exceptions in `validation.md`; these are conventions, not a rigid universal list of verb prefixes.
 
 ## Functions and types
 
-Every exported operation in features/data/domain takes zero or one argument. Use zero parameters when nothing is needed, a direct parameter for one natural value, and one args object for several values. For example, feature.getById(id), feature.convert({ intentId, now }) and domain.transition({ order, command }). Private helpers and framework callbacks follow the signature that serves their actual contract.
+Every exported operation in features/data/domain takes zero or one argument. Use zero parameters when nothing is needed, a direct parameter for one natural value, and one args object for several values. For example, feature.getById(id), feature.convert({ intentId, now }) and transitionOrder({ order, command }). Private helpers and framework callbacks follow the signature that serves their actual contract.
 
 Use ConvertArgs or FoobarArgs for function parameters. Input denotes an independently reusable business input. Simple signatures need no named type, and coincidentally identical shapes do not justify sharing an alias.
 
