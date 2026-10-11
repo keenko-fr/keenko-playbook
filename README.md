@@ -33,7 +33,7 @@ From the created project, bun run check is the canonical merge-ready verificatio
 
 ## Project compatibility
 
-Default direct forward support is immediately preceding stable → current stable. The next `1.0.5` release line supports the real published `1.0.4` source, owned by `tests/fixtures/upgrade-source.json`. New projects start current. Prereleases are not permanent supported origins; older stable releases are outside the default direct-support window. There is no default guarantee of recovery through sequential historical releases. A release may explicitly widen the source window.
+Default direct forward support is immediately preceding stable → current stable. The next release supports published stable `1.0.5`. This corrective cycle also retains the explicit `1.0.4`, `1.0.5-rc.0` and partial-recovery paths, owned by `tests/fixtures/upgrade-source.json`. New projects start current. Prereleases are not permanent supported origins; older stable releases are outside the default direct-support window. There is no default guarantee of recovery through sequential historical releases. A release may explicitly widen the source window.
 
 Nx remains migration authority and Bun remains lockfile owner. Migration code and assets are retained only while a supported path or current behavior requires them. Add migrations only when persisted project state needs transformation, then follow the native migration and synchronization lifecycle:
 

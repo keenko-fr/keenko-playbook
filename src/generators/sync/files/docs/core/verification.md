@@ -4,7 +4,7 @@
 
 Prefer observable behavior through the same stable interfaces applications use. Tests should survive persistence/provider refactors.
 
-- Direct data-layer tests are exceptional: index/query semantics, patch encoding, persistence-only invariants, serialization, or defects isolated specifically to persistence.
+- Test a data operation through its stable retrieval/persistence contract when that is the meaningful public seam, including relation consistency, domain qualification and resource failures. Prefer business/execution-boundary tests for workflows and authorization; do not duplicate invariant coverage merely by layer. Direct persistence tests remain appropriate for index/query semantics, patch encoding, serialization and defects isolated to persistence.
 - Use TDD when behavior can be meaningfully exercised: defects, state transitions, algorithms, contracts, and regressions. Do not force red-green-refactor around generated code, formatting, trivial wiring, or declarative configuration where it adds no value.
 - A reproducible bug fix should include regression evidence when practical.
 - Test outcomes, persisted state, authorization, rendered behavior, provider requests, and observable side effects rather than internal call counts unless the interaction itself is the contract.

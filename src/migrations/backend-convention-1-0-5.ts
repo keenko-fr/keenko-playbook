@@ -26,7 +26,9 @@ function read(tree: Tree, path: string) {
 }
 
 function conflict(path: string): never {
-  throw new Error(`Keenko 1.0.5 migration cannot safely update ${path}; reconcile the backend convention manually, then rerun Nx.`);
+  throw new Error(
+    `Keenko backend convention migration cannot safely update ${path}; reconcile the backend convention manually, then rerun Nx.`
+  );
 }
 
 function updateCompiler(source: string) {
@@ -40,7 +42,7 @@ function updateCompiler(source: string) {
   if (exclude !== undefined) {
     if (!ts.isArrayLiteralExpression(exclude.initializer)) return conflict(compilerPath);
     for (const pattern of literals(exclude.initializer, compilerPath))
-      if (excludesBackendOwner(pattern)) return conflict(`${compilerPath}#exclude "${pattern}" may exclude domain/ or errors/`);
+      if (excludesBackendOwner(pattern)) return conflict(`${compilerPath}#exclude "${pattern}" may exclude data/, domain/ or errors/`);
   }
   const include = property(config, "include", compilerPath);
   if (include === undefined) {
@@ -50,7 +52,7 @@ function updateCompiler(source: string) {
   }
   if (!ts.isArrayLiteralExpression(include.initializer)) return conflict(compilerPath);
   const paths = literals(include.initializer, compilerPath);
-  const missing = ["domain/**/*.ts", "errors/**/*.ts"].filter(
+  const missing = ["data/**/*.ts", "domain/**/*.ts", "errors/**/*.ts"].filter(
     (path) => !paths.includes(path) && !paths.some((pattern) => ["**/*.ts", "**/*", "**"].includes(pattern))
   );
   return append(
@@ -70,7 +72,7 @@ function excludesBackendOwner(pattern: string) {
   // TypeScript expands extensionless directory paths to recursive globs, including paths to ancestors.
   const expanded = /[.*?]/u.test(normalized.split("/").at(-1) ?? "") ? normalized : joinPathFragments(normalized, "**", "*");
   const glob = expanded.replaceAll("[", "\\[").replaceAll("]", "\\]");
-  return ["domain", "errors"].some((owner) =>
+  return ["data", "domain", "errors"].some((owner) =>
     minimatch(`/packages/backend/${owner}`, glob, {
       dot: true,
       // Use TypeScript's wildcard subset; other glob syntax is literal.

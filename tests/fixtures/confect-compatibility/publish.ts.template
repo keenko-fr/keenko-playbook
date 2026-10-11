@@ -1,0 +1,12 @@
+import { Effect as E } from "effect";
+
+import { DatabaseWriter } from "../confect/_generated/services";
+import * as compatibilityData from "../data/compatibility";
+
+// PUBLISH ---------------------------------------------------------------------------------------------------------------------------------
+export const publish = E.fn("compatibilityPublishing.publish")(function* (key: string) {
+  const row = yield* compatibilityData.getUsableByKey(key);
+  const writer = yield* DatabaseWriter;
+  yield* writer.table("compatibilityRows").patch(row._id, { published: true }).pipe(E.orDie);
+  return row._id;
+});

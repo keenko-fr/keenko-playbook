@@ -1,7 +1,9 @@
 import { FunctionImpl, GroupImpl } from "@confect/server";
 import { Effect as E, Layer as L } from "effect";
 
+import * as compatibilityData from "../data/compatibility";
 import * as feature from "../features/compatibility";
+import * as compatibilityPublishingFeature from "../features/compatibility-publishing";
 import refs from "./_generated/refs";
 import schema from "./_generated/schema";
 import { DatabaseReader, QueryRunner } from "./_generated/services";
@@ -26,5 +28,16 @@ const forward = FunctionImpl.make(schema, spec, "forward", ({ key }) =>
     return yield* runQuery(refs.public.compatibility.find, { key }).pipe(E.orDie);
   })
 );
+const getUsable = FunctionImpl.make(schema, spec, "getUsable", ({ key }) =>
+  compatibilityData.getUsableByKey(key).pipe(E.map((row) => ({ key: row.key, score: row.score, enabled: row.settings.enabled })))
+);
 const create = FunctionImpl.make(schema, spec, "create", feature.create);
-export default GroupImpl.make(schema, spec).pipe(L.provide(find), L.provide(forward), L.provide(create), GroupImpl.finalize);
+const publish = FunctionImpl.make(schema, spec, "publish", ({ key }) => compatibilityPublishingFeature.publish(key));
+export default GroupImpl.make(schema, spec).pipe(
+  L.provide(find),
+  L.provide(forward),
+  L.provide(getUsable),
+  L.provide(create),
+  L.provide(publish),
+  GroupImpl.finalize
+);

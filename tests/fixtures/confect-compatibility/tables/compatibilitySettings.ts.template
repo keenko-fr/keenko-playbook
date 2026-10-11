@@ -1,0 +1,4 @@
+import { Table } from "@confect/core";
+import { Schema as S } from "effect";
+
+export default Table.make(() => S.Struct({ key: S.String, ownerKey: S.String, enabled: S.Boolean })).index("by_key", ["key"]);

@@ -514,7 +514,7 @@ describe("keenko preset", () => {
       expect(backend.include).toContain("test/**/*.ts");
       expect(backend.include).toContain("domain/**/*.ts");
       expect(backend.include).toContain("errors/**/*.ts");
-      expect(backend.include).not.toContain("data/**/*.ts");
+      expect(backend.include).toContain("data/**/*.ts");
       expect(shared.include).toContain("vitest.config.ts");
       expect(ui.include).toContain("vitest.config.ts");
       expect(web.include).toContain("**/*.ts");
@@ -662,12 +662,16 @@ describe("keenko preset", () => {
 
       expect(tree.exists("packages/backend/confect/.gitkeep")).toBe(true);
       expect(tree.exists("packages/backend/convex/convex.config.ts")).toBe(true);
-      expect(tree.exists("packages/backend/features/confect.ts")).toBe(true);
-      expect(tree.exists("packages/backend/data/confect.ts")).toBe(false);
+      expect(tree.exists("packages/backend/features/confect.ts")).toBe(false);
+      expect(tree.exists("packages/backend/data/confect.ts")).toBe(true);
       expect(tree.exists("packages/shared/data/confect.ts")).toBe(false);
       expect(tree.exists("packages/backend/confect/data.ts")).toBe(false);
 
-      const confectHelpers = tree.read("packages/backend/features/confect.ts", "utf-8");
+      expect(tree.children("packages/backend/data")).toEqual(["confect.ts"]);
+      expect(tree.exists("packages/backend/data/workos.ts")).toBe(false);
+      const confectHelpers = tree.read("packages/backend/data/confect.ts", "utf-8");
+      expect(confectHelpers).not.toContain("../features/");
+      expect(tree.read(".keenko/docs/conventions/backend-architecture.md", "utf-8")).toContain("Data modules must not import features");
       for (const helper of [
         "dieOnCodecError",
         "dieOnDecodeError",
