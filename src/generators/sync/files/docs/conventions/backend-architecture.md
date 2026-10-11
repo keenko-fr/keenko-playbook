@@ -115,7 +115,7 @@ Loading Bar through a Foo's persisted foreign key proves identity, not independe
 
 Errors follow the owning operation's public contract. A data retrieval may translate missing relations or invalid configuration into meaningful resource-specific Failures when these are expected retrieval outcomes. An operation-specific feature may translate those failures when its business contract differs. Preserve the distinction between expected absence, typed Failure, Schema validation errors and Defects for impossible persisted states; qualification does not turn an impossible invariant violation into an expected failure. Generic persistence adapters accept explicit caller policy rather than inventing business failure semantics. See `validation.md`.
 
-Use the naming, zero-or-one-argument signatures and feature/data namespace imports and named domain imports in `docs/core/code-style.md`. `create` is the canonical authored creation verb; `insert` belongs to native persistence calls. Preserve business transition verbs.
+Use the naming, business-operation signatures and feature/data namespace imports and named domain imports in `docs/core/code-style.md`. `create` is the canonical authored creation verb; `insert` belongs to native persistence calls. Preserve business transition verbs.
 
 ## Execution guarantees
 

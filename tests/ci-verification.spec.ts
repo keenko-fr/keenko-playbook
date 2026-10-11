@@ -235,7 +235,8 @@ test("release CLI accepts a squash with the same tree, rejects changed workflows
         name: step.name
           .replace(tree, testedTree)
           .replace(run.head_sha, tested)
-          .replace("v24.21.0", spawnSync("node", ["--version"], { encoding: "utf-8" }).stdout.trim()),
+          .replace("v24.21.0", spawnSync("node", ["--version"], { encoding: "utf-8" }).stdout.trim())
+          .replace("bun 1.4.2", `bun ${Bun.version}`),
       })),
     }));
     write(

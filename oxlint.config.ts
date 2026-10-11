@@ -54,6 +54,7 @@ export default defineConfig({
     "consistent-return": "off",
     curly: ["error", "multi"],
     "eslint/no-plusplus": "off",
+    "eslint/sort-keys": "off",
     "eslint/no-unused-vars": [
       "error",
       {

@@ -32,9 +32,9 @@ For the current TanStack Router rule, inference-sensitive ordering applies to ob
 
 Prefer TanStack's published `@tanstack/router/create-route-property-order` rule through Oxlint's JS-plugin support when the pinned Oxlint and TanStack plugin pairing has executable evidence in the consuming repository. Do not add ESLint solely to run this rule.
 
-The Playbook does not currently pin or install a TanStack Router lint package, so its own CI cannot prove that pairing. Until the Oxlint plugin integration is verified under the pinned versions, Keenko disables generic `eslint/sort-keys` across `apps/web/**/*.{ts,tsx}`.
+The Playbook does not currently pin or install a TanStack Router lint package, so its own CI cannot prove that pairing. Keenko disables generic `eslint/sort-keys` at the root because alphabetical ordering is a reading preference. The existing application override also keeps that rule off for `apps/**/*.{ts,tsx}`.
 
-This exemption is intentionally web-wide rather than limited to route-definition files. TanStack Start and its surrounding generated/tooling configuration can contain property-order-sensitive objects outside route files, and Keenko does not require those files to be rewritten merely to satisfy generic alphabetical ordering.
+TanStack Start and its surrounding generated/tooling configuration can contain property-order-sensitive objects outside route files. Preserve their required order throughout the application.
 
 Where TanStack defines semantic property order, follow TanStack's required order. Do not manually alphabetize those objects. Treat automatic TanStack-specific route-order enforcement as unavailable until the Oxlint plugin integration is verified.
 

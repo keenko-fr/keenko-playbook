@@ -571,6 +571,8 @@ describe("keenko preset", () => {
       expect(oxlintConfig).toContain("depConstraints: [");
       expect(tree.exists("tools/dependency-boundaries.ts")).toBe(false);
       expect(oxlintConfig).toContain('"eslint/sort-keys": "off"');
+      const lintSource = O.getOrElse(O.fromNullishOr(oxlintConfig), () => "");
+      expect(lintSource.slice(lintSource.lastIndexOf("\n  rules: {"))).toContain('"eslint/sort-keys": "off"');
     })
   );
 

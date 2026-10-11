@@ -31,10 +31,15 @@ it.effect("returns a configured and domain-qualified resource directly from data
         expect(configured.settings.ownerKey).toBe(configured.ownerKey);
         expect((yield* compatibilityData.getUsableByKey("usable"))._id).toBe(configured._id);
         expect(O.isNone(yield* compatibilityData.findByKey("missing"))).toBe(true);
+        yield* compatibilityData.patch("usable", { score: 2 });
+        expect((yield* compatibilityData.getConfiguredByKey("usable")).score).toBe(2);
       })
     );
-    expect(yield* t.query(refs.public.compatibility.getUsable, { key: "usable" })).toEqual({ key: "usable", score: 1, enabled: true });
-    yield* t.mutation(refs.public.compatibility.publish, { key: "usable" });
+    expect(yield* t.query(refs.public.compatibility.getUsable, { key: "usable" })).toEqual({ key: "usable", score: 2, enabled: true });
+    const forbidden = yield* t.mutation(refs.public.compatibility.publish, { key: "usable", ownerKey: "other" }).pipe(E.flip);
+    expect(forbidden.issue).toBe("forbidden");
+    expect(O.getOrThrow(yield* t.query(refs.public.compatibility.find, { key: "usable" })).published).toBeUndefined();
+    yield* t.mutation(refs.public.compatibility.publish, { key: "usable", ownerKey: "owner" });
     expect(O.getOrThrow(yield* t.query(refs.public.compatibility.find, { key: "usable" })).published).toBe(true);
   }).pipe(E.provide(layer))
 );
@@ -70,7 +75,7 @@ it.effect("data owns expected missing-relation, inconsistent-configuration and d
     );
     const failure = yield* t.query(refs.public.compatibility.getUsable, { key: "wrong-owner" }).pipe(E.flip);
     expect(failure.issue).toBe("invalid_configuration");
-    const publishFailure = yield* t.mutation(refs.public.compatibility.publish, { key: "unusable" }).pipe(E.flip);
+    const publishFailure = yield* t.mutation(refs.public.compatibility.publish, { key: "unusable", ownerKey: "owner" }).pipe(E.flip);
     expect(publishFailure.issue).toBe("unusable");
     expect(O.getOrThrow(yield* t.query(refs.public.compatibility.find, { key: "unusable" })).published).toBeUndefined();
   }).pipe(E.provide(layer))

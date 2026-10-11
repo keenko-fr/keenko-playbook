@@ -1182,7 +1182,26 @@ const product = E.gen(function* () {
   yield* verifyInstalledSlots(workspace, target, yield* fs.readFileString(path.join(workspace, "bun.lock")));
   yield* verifyBackendTestOwnership(workspace, env);
   yield* verifyTestingTuple(workspace, env, ["web"]);
-  yield* verifyConfectTuple(workspace, env);
+  // Deliberately unordered properties must pass the actual fresh consumer policy.
+  const orderProbe = path.join(workspace, "packages/backend/domain/keenko-order-probe.ts");
+  yield* fs.makeDirectory(path.dirname(orderProbe), { recursive: true });
+  yield* fs.writeFileString(
+    orderProbe,
+    [
+      'import { Schema as S } from "effect";',
+      "",
+      'export const sIssue = S.Literals(["zeta", "alpha"]);',
+      "export type Issue = typeof sIssue.Type;",
+      "export const defaults = { zeta: 1, alpha: 2 };",
+      "export function patch(resource: Resource, { zeta, alpha }: PatchArgs) { return { ...resource, zeta, alpha }; }",
+      "type PatchArgs = { zeta: number; alpha: number };",
+      `// TYPES ${"-".repeat(131)}`,
+      "type Resource = { zeta: number; alpha: number };",
+      "",
+    ].join("\n")
+  );
+  yield* command(workspace, env, "bun", ["x", "oxlint", "packages/backend/domain/keenko-order-probe.ts"]);
+  yield* verifyConfectTuple(workspace, env).pipe(E.ensuring(fs.remove(orderProbe, { force: true }).pipe(E.orDie)));
   yield* completePhase("fresh compatibility verification", freshCompatibilityStartedAt);
   const assertionsStartedAt = yield* startPhase("distribution assertions");
   yield* assert(yield* fs.exists(path.join(workspace, "packages/backend/data/confect.ts")), "Fresh backend must use data/confect.ts");

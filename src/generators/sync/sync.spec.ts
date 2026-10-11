@@ -348,6 +348,66 @@ describe("keenko sync", () => {
     })
   );
 
+  it.live("syncs resource-first signatures and final helper/type sections while preserving consumer source and lint policy", () =>
+    E.gen(function* () {
+      const tree = createTreeWithEmptyWorkspace();
+      const owned = {
+        "oxlint.config.ts": 'export default { rules: { "sort-keys": "error" } };\n',
+        "packages/backend/domain/orders.ts": "export function transitionOrder(order: object, args: object) { return { order, args }; }\n",
+        "packages/backend/features/orders.ts": "export const patch = (orderId: string, payload: object) => ({ orderId, payload });\n",
+      };
+      for (const [path, content] of Object.entries(owned)) tree.write(path, content);
+      tree.write(".keenko/docs/core/code-style.md", "Every operation takes one args object.\n");
+      tree.write(".keenko/docs/conventions/backend-file-topology.md", "Put helpers directly after their caller.\n");
+      yield* runSync(tree);
+      const style = tree.read(".keenko/docs/core/code-style.md", "utf-8");
+      for (const text of [
+        "Prefer zero or one argument",
+        "put its identifier or instance first",
+        "second argument",
+        "orders.patch(orderId, payload)",
+        "small structural contracts",
+        "not a universal two-parameter limit",
+        "Alphabetical order is a reading preference",
+        "not a requirement or a blocking lint rule",
+        "Evaluation order of destructuring defaults",
+      ])
+        expect(style).toContain(text);
+      const topology = tree.read(".keenko/docs/conventions/backend-file-topology.md", "utf-8");
+      for (const text of [
+        "then `INTERNALS` for private helpers, then `TYPES`",
+        "Function argument types stay immediately after",
+        "Schema-derived types stay immediately below",
+        "Types directly associated with an enum, vocabulary",
+        "Do not export a helper merely",
+        "configured `Effect.fn` values",
+        "retain a technically correct arrangement",
+        "INTERNAL ACTIONS\nINTERNALS\nTYPES\nGROUP",
+        "Registered Confect internal queries, mutations and actions",
+        "is always last",
+      ])
+        expect(topology).toContain(text);
+      const example =
+        O.getOrElse(O.fromNullishOr(topology), () => "")
+          .split("This complete pure-domain example")[1]
+          ?.split("```ts\n")[1]
+          ?.split("\n```")[0] ?? "";
+      expect(example.indexOf("// INTERNALS ")).toBeGreaterThan(example.indexOf("type SubmitRequestArgs"));
+      for (const separator of example.split("\n").filter((entry) => entry.startsWith("// "))) expect(separator).toHaveLength(140);
+      for (const guide of [style, topology])
+        expect(guide).not.toMatch(
+          /Every exported operation.*takes zero or one|Do not collect every helper at the end|private helpers below their owning operation/u
+        );
+      yield* runSync(tree);
+      for (const [path, content] of Object.entries(owned)) expect(tree.read(path, "utf-8")).toBe(content);
+      for (const [path, content] of [
+        ["core/code-style", style],
+        ["conventions/backend-file-topology", topology],
+      ])
+        expect(tree.read(`.keenko/docs/${path}.md`, "utf-8")).toBe(content);
+    })
+  );
+
   it("preserves source document checks and meaningful cross-Entity ownership checks", () => {
     const sFooDoc = S.Struct({
       _creationTime: S.Number,
@@ -565,7 +625,7 @@ describe("keenko sync", () => {
         'QueryStream.filter((account) => account.externalId.startsWith("customer:"))',
         "`QueryStream.filterEffect` also retains the QueryStream for a later `unique`",
         "Do not introduce QueryStream merely for stylistic consistency",
-        "QueryStream is experimental in Confect `10.1.0`",
+        "QueryStream is experimental in Confect `10.2.0`",
         "Extracted operations use operation/coherent-group sections",
       ])
         expect(guide).toContain(semantics);

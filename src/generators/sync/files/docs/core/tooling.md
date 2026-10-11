@@ -72,6 +72,8 @@ Existing consumers own their root lint configuration. Guidance sync does not ove
 
 Read the effective `no-use-before-define` policy too. Root options permit hoisted functions and type declarations, while the current backend Effect override disables that rule. Examples still use initialization-safe declarations and work with the stricter root options. This override is not permission to reference an uninitialized value.
 
+The fresh preset disables Ultracite's inherited `eslint/sort-keys` rule at the root. Alphabetical ordering follows the reading preference in `code-style.md`; it is not a blocking check. Oxfmt still owns formatting and import sorting. Existing consumers own their lint configuration: sync and the optional-data migration preserve it. If an older configuration still enforces `sort-keys`, reconcile that consumer-owned policy explicitly by setting `"eslint/sort-keys": "off"` in its root rules and checking any local overrides. Guidance sync does not reorder application code.
+
 ## Compatibility ownership
 
 Current tooling package specifications are implementation data.

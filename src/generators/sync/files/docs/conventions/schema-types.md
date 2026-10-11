@@ -39,7 +39,7 @@ export type FooEncoded = typeof sFoo.Encoded;
 
 Do not routinely export encoded aliases. Private schemas do not need artificial exported companion types.
 
-Local argument/helper types follow their owning operation as described in `backend-file-topology.md`. Do not collect Schema-derived aliases in a trailing generic `TYPES` section.
+Argument types stay immediately after their owning function. Other types follow the adjacency and final `TYPES` rules in `backend-file-topology.md`. Do not collect Schema-derived aliases in a trailing generic `TYPES` section.
 
 A class declared with `S.TaggedError` already provides its TypeScript type identity. Do not add a redundant alias for it.
 
@@ -92,7 +92,7 @@ INSERT
 PATCH
 ```
 
-Omit unused sections. `CONSTANTS` contains real semantic primitives/constants. `FIELDS` contains application-controlled table fields and any useful complete document Schema. `ENTITY`, `INSERT` and `PATCH` exist only for meaningful runtime contracts. No identity Entity or symmetric insert/patch family is required. Local helpers stay with their contract rather than in a compulsory final `INTERNALS` block.
+Omit unused sections. `CONSTANTS` contains real semantic primitives/constants. `FIELDS` contains application-controlled table fields and any useful complete document Schema. `ENTITY`, `INSERT` and `PATCH` exist only for meaningful runtime contracts. No identity Entity or symmetric insert/patch family is required. Private helper placement follows `backend-file-topology.md`, preserving Schema construction dependencies.
 
 Use the 140-character separator mechanics in `backend-file-topology.md`. A minimal persistence module can stop here:
 
@@ -105,7 +105,7 @@ export const sFooDoc = SystemFields.extendWithSystemFields("foos", sFooFields);
 export type FooDoc = typeof sFooDoc.Type;
 ```
 
-Here `S` is Effect Schema and `SystemFields` comes from `@confect/core`. With qualified Confect `10.1.0`, `extendWithSystemFields(tableName, schema)` takes the table name first. Do not manually recreate Convex `_id` or `_creationTime`. A table may use its fields Schema directly without exporting every shown type or a separate Doc Schema.
+Here `S` is Effect Schema and `SystemFields` comes from `@confect/core`. With qualified Confect `10.2.0`, `extendWithSystemFields(tableName, schema)` takes the table name first. Do not manually recreate Convex `_id` or `_creationTime`. A table may use its fields Schema directly without exporting every shown type or a separate Doc Schema.
 
 Non-persisted/provider schemas follow their own semantics, with Schema/type adjacency and narrow ownership.
 
@@ -126,7 +126,7 @@ Inspect installed equivalents of `Struct.assign`, `S.toEncoded`, `S.toType`, `S.
 
 Composition can drop outer checks. In particular, `mapFields` drops them by default; `unsafePreserveChecks: true` is valid only when the existing predicate remains sound for the resulting shape. Reapply or rewrite checks when changing their required facts.
 
-Confect's registered table reader builds the complete document decoder from the declared table Schema. In qualified Confect `10.1.0`, the Struct and Union system-field paths preserve outer checks with `unsafePreserveChecks: true`; the plain Struct path in `10.0.0` dropped them. The original predicate must remain sound after adding system fields. Verify required checks through the registered persistence path, not only a separately checked `sFooDoc`. Preserve independent interresource and business invariants in their owning operation.
+Confect's registered table reader builds the complete document decoder from the declared table Schema. In qualified Confect `10.2.0`, the Struct and Union system-field paths preserve outer checks with `unsafePreserveChecks: true`; the plain Struct path in `10.0.0` dropped them. The original predicate must remain sound after adding system fields. Verify required checks through the registered persistence path, not only a separately checked `sFooDoc`. Preserve independent interresource and business invariants in their owning operation.
 
 ## Creation and patch contracts
 

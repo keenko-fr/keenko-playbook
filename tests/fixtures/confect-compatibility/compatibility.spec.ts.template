@@ -31,7 +31,7 @@ export default GroupSpec.make()
   .addFunction(
     FunctionSpec.publicMutation({
       name: "publish",
-      args: () => ({ key: S.String }),
+      args: () => ({ key: S.String, ownerKey: S.String }),
       returns: () => S.String,
       error: () => CompatibilityFailure,
     })
