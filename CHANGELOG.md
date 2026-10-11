@@ -1,3 +1,21 @@
+## 1.0.6 (2026-10-11)
+
+### Changes
+
+- Refine TypeScript conventions and prepare 1.0.6-rc.0 ([#64](https://github.com/keenko-fr/keenko-playbook/pull/64))
+
+### Changes
+
+- Allow optional persistence data modules in backend architecture ([#62](https://github.com/keenko-fr/keenko-playbook/pull/62))
+
+### Changes
+
+- Simplify CI and eliminate redundant verification ([#61](https://github.com/keenko-fr/keenko-playbook/pull/61))
+
+### ❤️ Thank You
+
+- Gregory Bouteiller
+
 ## 1.0.5 (2026-10-09)
 
 ### Changes
