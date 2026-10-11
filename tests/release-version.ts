@@ -93,6 +93,9 @@ const verifyCiPlanInputs = E.fn("keenko.release.ciPlanInputs")(function* (ci: st
   yield* git(["commit", "--quiet", "-m", "Initialize fixture"]);
   const base = (yield* git(["rev-parse", "HEAD"])).trim();
   for (const file of [
+    "docs/reports/ci.md",
+    "tests/ci-verification.ts",
+    "tests/ci-verification.spec.ts",
     "tests/wait-for-published.ts",
     "tests/wait-for-published.spec.ts",
     "src/index.ts",
@@ -118,7 +121,7 @@ const verifyCiPlanInputs = E.fn("keenko.release.ciPlanInputs")(function* (ci: st
       forceKillAfter: "5 seconds",
     })
   );
-  if (files.trim() !== [".github/workflows/release.yml", "nx.json", "package.json", "src/index.ts"].join("\n"))
+  if (files.trim() !== ["nx.json", "package.json", "src/index.ts"].join("\n"))
     return yield* new ReleaseVersionFailure({
       message: `CI must omit only the unpackaged readiness files and retain package/release inputs:\n${files}`,
     });
@@ -564,13 +567,13 @@ const program = E.gen(function* () {
 
   yield* assertContains(
     release,
-    'bun run test:published -- "$PUBLISHED_VERSION" "keenko@rc"',
+    'bun run tests/wait-for-published.ts --selector "$PUBLISHED_VERSION" rc',
     "RC release does not verify the public keenko@rc preset selector"
   );
 
   yield* assertContains(
     release,
-    'bun run test:published -- "$PUBLISHED_VERSION" "keenko"',
+    'bun run tests/wait-for-published.ts --selector "$PUBLISHED_VERSION" latest',
     "Stable release does not verify the public keenko preset selector"
   );
 

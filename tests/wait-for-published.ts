@@ -201,6 +201,16 @@ export const waitForPublishedVersion = (
     policy
   );
 
+export const waitForPublishedSelector = (
+  version: string,
+  selector: "latest" | "rc",
+  lookup: RegistryLookup = resolvePublicRegistryVersion,
+  policy: PublishedVersionWaitPolicy = publishedVersionWaitPolicy
+) =>
+  waitForPublishedVersion(version, (name) => lookup(name, selector), policy).pipe(
+    E.tap(() => Console.log(`Public ${packageName}@${selector} installs the expected ${version}.`))
+  );
+
 const sDistTags = S.fromJsonString(S.Record(S.String, S.String));
 export type DistTagLookup = E.Effect<Readonly<Record<string, string>>, RegistryLookupFailure, NodeServices.NodeServices>;
 
@@ -300,8 +310,16 @@ export const waitForPublication = (
 if (import.meta.main)
   NodeRuntime.runMain(
     // oxlint-disable-next-line effect/noGlobals -- process arguments are the release-wait command boundary.
-    readPublicationArguments(process.argv.slice(2)).pipe(
-      E.flatMap(({ version, tags }) => waitForPublication(version, tags)),
-      E.provide(NodeServices.layer)
-    )
+    E.gen(function* () {
+      // oxlint-disable-next-line effect/noGlobals -- Release CLI arguments.
+      const args = process.argv.slice(2);
+      if (args[0] === "--selector") {
+        const parsed = yield* S.decodeUnknownEffect(S.Tuple([S.Literal("--selector"), S.String, S.Literals(["latest", "rc"])]))(args);
+        const [, version, selector] = parsed;
+        if (!exactSemver.test(version)) return yield* invalidVersionArgument;
+        return yield* waitForPublishedSelector(version, selector);
+      }
+      const { version, tags } = yield* readPublicationArguments(args);
+      return yield* waitForPublication(version, tags);
+    }).pipe(E.provide(NodeServices.layer))
   );

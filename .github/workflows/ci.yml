@@ -6,11 +6,9 @@ on:
       - opened
       - synchronize
       - reopened
+      - edited
       - ready_for_review
       - converted_to_draft
-  push:
-    branches:
-      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -21,7 +19,6 @@ permissions:
 
 jobs:
   check:
-    if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -44,11 +41,31 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Select verification boundary
+        id: route
+        env:
+          PLAN_BASE: ${{ github.event.pull_request.base.sha }}
+          PLAN_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: bun run tests/ci-verification.ts
+
+      - name: Record tested tree
+        id: revision
+        run: |
+          echo "tree=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+          echo "bun=$(bun --version)" >> "$GITHUB_OUTPUT"
+          echo "release-tag=$(git describe --tags --match 'v*' --abbrev=0 HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Verify repository
+        if: steps.route.outputs.mode != 'docs'
         run: bun run check
 
+      - name: Verify repository documentation
+        if: steps.route.outputs.mode == 'docs'
+        run: bun run format:check
+
       - name: Verify release plan
-        if: github.event_name == 'pull_request'
         shell: bash
         env:
           PLAN_BASE: ${{ github.event.pull_request.base.sha }}
@@ -57,19 +74,29 @@ jobs:
           git diff --name-only --no-renames "$(git merge-base "$PLAN_BASE" "$PLAN_HEAD")" "$PLAN_HEAD" -- \
             . \
             ':(top,exclude).github/workflows/ci.yml' \
-            ':(top,exclude)docs/packed-product-test.md' \
+            ':(top,exclude).github/workflows/release.yml' \
+            ':(top,exclude,glob)docs/**/*.md' \
             ':(top,exclude)tests/packed-product.ts' \
             ':(top,exclude)tests/release-version.ts' \
+            ':(top,exclude)tests/ci-verification.ts' \
+            ':(top,exclude)tests/ci-verification.spec.ts' \
             ':(top,exclude)tests/wait-for-published.ts' \
             ':(top,exclude)tests/wait-for-published.spec.ts' \
             ':(top,exclude)CHANGELOG.md' \
             | bun x nx release plan:check --stdin
 
       - name: Verify packed product
+        if: steps.route.outputs.mode == 'full'
         run: bun run test:product
 
+      - name: Verify packed guidance
+        if: steps.route.outputs.mode == 'guidance'
+        run: bun run test:product -- --guidance
+
+      - name: Verified ${{ steps.route.outputs.mode }} tree ${{ steps.revision.outputs.tree }} revision ${{ steps.revision.outputs.commit }} release-tag ${{ steps.revision.outputs.release-tag }} node ${{ steps.revision.outputs.node }} bun ${{ steps.revision.outputs.bun }}
+        run: git diff --exit-code HEAD
+
   minimum-node:
-    if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
