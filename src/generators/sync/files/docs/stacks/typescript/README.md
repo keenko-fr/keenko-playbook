@@ -8,7 +8,7 @@ Keenko's TypeScript tooling has two deliberate roles: the direct `typescript` pa
 - Named caught errors must be used. If the error value is irrelevant, omit the binding with `catch {}`.
 - Prefer `satisfies` over widening assertions.
 - Treat casts/non-null assertions as narrow interop escape hatches; validate/narrow/fix ownership instead where possible.
-- Keep types close to their owner and avoid duplicate aliases without semantic value.
+- Follow `code-style.md` and the owning file topology for signatures, reading order and type placement. Avoid duplicate aliases without semantic value.
 - Prefer schema-derived literal unions over enums/enum-like constant objects when no runtime object is needed.
 - Use concise contextual naming without cryptic abbreviation.
 - Prefer named exports and kebab-case filenames except framework-special files.

@@ -21,6 +21,7 @@ type CreateArgs = {
   score: number;
 };
 
+// INTERNALS -------------------------------------------------------------------------------------------------------------------------------
 function checkCommit(reject: boolean) {
   return reject ? E.fail(new FooFailure({ issue: "forbidden" })) : E.void;
 }

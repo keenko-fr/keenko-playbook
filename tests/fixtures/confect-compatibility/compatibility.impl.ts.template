@@ -32,7 +32,7 @@ const getUsable = FunctionImpl.make(schema, spec, "getUsable", ({ key }) =>
   compatibilityData.getUsableByKey(key).pipe(E.map((row) => ({ key: row.key, score: row.score, enabled: row.settings.enabled })))
 );
 const create = FunctionImpl.make(schema, spec, "create", feature.create);
-const publish = FunctionImpl.make(schema, spec, "publish", ({ key }) => compatibilityPublishingFeature.publish(key));
+const publish = FunctionImpl.make(schema, spec, "publish", ({ key, ownerKey }) => compatibilityPublishingFeature.publish(key, { ownerKey }));
 export default GroupImpl.make(schema, spec).pipe(
   L.provide(find),
   L.provide(forward),

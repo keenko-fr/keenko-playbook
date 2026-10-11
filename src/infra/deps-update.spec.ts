@@ -66,7 +66,7 @@ describe("dependency updater", () => {
         const resolver: RegistryResolver = (packageName, selector) =>
           E.sync(() => {
             calls.push([packageName, selector]);
-            return packageName === "@confect/core" ? "10.0.0" : "4.0.0";
+            return packageName === "@confect/core" ? "10.0.0" : "4.0.2";
           });
 
         const updates = yield* updateDependencySources(
@@ -99,11 +99,11 @@ describe("dependency updater", () => {
         ]);
         expect(selectedVersions(updates)).toEqual({
           "@confect/core": "10.0.0",
-          "@effect/platform-node": "4.0.0",
+          "@effect/platform-node": "4.0.2",
           "@nx/devkit": "23.3.0",
           "@nx/js": "23.3.0",
           "@nx/oxlint": "23.3.0",
-          effect: "4.0.0",
+          effect: "4.0.2",
           nx: "23.3.0",
         });
         expect(
@@ -111,13 +111,13 @@ describe("dependency updater", () => {
             ({ stableCandidate, selected }) => isExactPackageVersion(stableCandidate) && isExactPackageVersion(selected)
           )
         ).toBe(true);
-        expect(versions).toContain('"@effect/platform-node": "4.0.0"');
-        expect(versions).toContain('effect: "4.0.0"');
+        expect(versions).toContain('"@effect/platform-node": "4.0.2"');
+        expect(versions).toContain('effect: "4.0.2"');
         expect(versions).toContain('"@nx/devkit": "23.3.0"');
         expect(versions).toContain('"@nx/oxlint": "23.3.0"');
         expect(versions).toContain('nx: "23.3.0"');
-        expect(manifest.dependencies["@effect/platform-node"]).toBe("4.0.0");
-        expect(manifest.dependencies.effect).toBe("4.0.0");
+        expect(manifest.dependencies["@effect/platform-node"]).toBe("4.0.2");
+        expect(manifest.dependencies.effect).toBe("4.0.2");
         expect(manifest.dependencies["@nx/devkit"]).toBe("23.3.0");
         expect(manifest.devDependencies["@nx/oxlint"]).toBe("23.3.0");
         expect(manifest.devDependencies.nx).toBe("23.3.0");
@@ -139,12 +139,16 @@ describe("dependency updater", () => {
   test("keeps coupled and registry-incompatible members on qualified exact versions", () => {
     expect(prereleaseChannels).toEqual({ nx: "next" });
     expect(compatibilityVersionOverrides).toEqual({
+      "@effect/platform-node": "4.0.2",
+      "@effect/vitest": "4.0.2",
       "@nx/devkit": "23.3.0",
       "@nx/oxlint": "23.3.0",
       "@nx/vitest": "23.3.0",
       "@workos-inc/node": "10.14.0",
       nx: "23.3.0",
       oxlint: "1.87.0",
+      "oxlint-plugin-effect": "0.27.1",
+      "oxlint-tsgolint": "7.0.2003",
       typescript: "6.0.3",
     });
     expect(Object.values(compatibilityVersionOverrides).every(isExactPackageVersion)).toBe(true);
@@ -169,6 +173,8 @@ describe("dependency updater", () => {
         const updates = yield* updateDependencySources(root, compatibilityVersionOverrides, resolver);
         expect(selectedVersions(updates)).toEqual(compatibilityVersionOverrides);
         expect(calls).toEqual([
+          "@effect/platform-node",
+          "@effect/vitest",
           "@nx/devkit",
           "@nx/devkit",
           "@nx/oxlint",
@@ -179,6 +185,8 @@ describe("dependency updater", () => {
           "nx",
           "nx",
           "oxlint",
+          "oxlint-plugin-effect",
+          "oxlint-tsgolint",
           "typescript",
         ]);
         for (const [name, selected] of Object.entries(compatibilityVersionOverrides)) {
@@ -187,7 +195,7 @@ describe("dependency updater", () => {
             expect(updates[name]).toMatchObject({ prereleaseCandidate: "99.0.0", prereleaseChannel: "next" });
           else expect(O.fromNullishOr(updates[name].prereleaseCandidate)).toEqual(O.none());
           expect(yield* fs.readFileString(path.join(root, "src/generators/versions.ts"))).toContain(
-            `${name.includes("@") ? encodeJsonString(name) : name}: ${encodeJsonString(selected)}`
+            `${name.includes("@") || name.includes("-") ? encodeJsonString(name) : name}: ${encodeJsonString(selected)}`
           );
         }
         const manifest = yield* S.decodeEffect(sTestManifest)(yield* fs.readFileString(path.join(root, "package.json")));

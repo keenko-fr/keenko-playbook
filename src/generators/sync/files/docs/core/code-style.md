@@ -70,7 +70,29 @@ Infra, schemas, Confect services and ordinary modules keep responsibility-approp
 
 ## Functions and types
 
-Every exported operation in features/data/domain takes zero or one argument. Use zero parameters when nothing is needed, a direct parameter for one natural value, and one args object for several values. For example, feature.getById(id), feature.convert({ intentId, now }) and transitionOrder({ order, command }). Private helpers and framework callbacks follow the signature that serves their actual contract.
+Prefer zero or one argument for exported business operations in `features/`, `data/` and `domain/`. Use no argument when nothing is needed, a direct argument for one natural value, and an args object for several facts with no clearly identifiable main resource.
+
+When an operation targets a clearly identifiable business resource, put its identifier or instance first. Group any complementary parameters in a second argument:
+
+```ts
+orders.list();
+orders.getById(orderId);
+orders.patch(orderId, payload);
+orders.transition(order, {
+  command,
+  now,
+});
+orders.create({
+  customerId,
+  items,
+});
+```
+
+Prefer `orders.patch(orderId, payload)` over artificially wrapping the targeted identifier in `orders.patch({ orderId, payload })`. Creation has no pre-existing resource to put first.
+
+Domain functions still receive small structural contracts containing only the facts they need. For example, `transitionOrder(order, { command, now })` need not receive a complete Entity. Do not invent a main resource where none exists.
+
+Framework callbacks, external APIs, library-imposed signatures and technical functions retain their natural contracts. Private helpers use the signature appropriate to their responsibility. This is a business readability convention, not a universal two-parameter limit.
 
 Use ConvertArgs or FoobarArgs for function parameters. Input denotes an independently reusable business input. Simple signatures need no named type, and coincidentally identical shapes do not justify sharing an alias.
 
@@ -86,7 +108,7 @@ In `packages/backend/**/*.ts` and `packages/shared/**/*.ts`, prefer type for ord
 | Context issues and errors           | errors/<concept>.ts      |
 | Truly cross-workspace contracts     | packages/shared          |
 
-No global types directory or runtime Schema for each internal interface is required. Local types/helpers follow their owner; Schema-derived types remain immediately adjacent.
+No global types directory or runtime Schema for each internal interface is required. `backend-file-topology.md` owns declaration placement, including argument/Schema type adjacency and the final `INTERNALS` / `TYPES` sections.
 
 - Use `const` for values and configured functions returned by APIs.
 - Use function declarations for ordinary authored functions when hoisting improves main-first reading order. Do not impose arrows everywhere.
@@ -94,6 +116,33 @@ No global types directory or runtime Schema for each internal interface is requi
 - Prefer `satisfies` when checking a value without widening its inferred shape.
 - Treat casts, double casts, and non-null assertions as narrow boundary escape hatches. Prefer decoding, narrowing, or fixing upstream types; explain non-obvious interop casts.
 - Prefer literal unions/schema-derived types over enum-like runtime objects when no runtime object is needed.
+
+## Alphabetical reading order
+
+Prefer alphabetical order when declarations or entries are independent and reordering does not change their meaning:
+
+- exported functions within one semantic group;
+- private functions within one semantic group;
+- destructured arguments and independent properties in declarative objects, types and Schemas;
+- independent programmatic text vocabularies, especially Issue values.
+
+```ts
+function create({ customerId, items, now }: CreateArgs) {
+  // ...
+}
+
+type CreateArgs = {
+  customerId: string;
+  items: readonly Item[];
+  now: Date;
+};
+
+const sOrderFailureIssue = S.Literals(["forbidden", "invalid_state", "not_found"]);
+```
+
+Alphabetical order is a reading preference, not a requirement or a blocking lint rule. Semantic sections and framework categories take priority; do not mix distinct groups for a global sort. Preserve declaration dependencies, JavaScript initialization, readable business sequences, justified semantic conventions, framework contracts and structures whose order carries meaning. Evaluation order of destructuring defaults, getters or spreads may also matter.
+
+Follow Oxfmt when its formatting constraints apply; it still owns mechanical formatting and import sorting. Do not add a sorter or automatic reordering infrastructure. See `tooling.md` for the effective lint configuration, including existing consumer-owned policies.
 
 ## Constants
 

@@ -10,6 +10,9 @@ export const prereleaseChannels = { nx: "next" } satisfies Readonly<Record<strin
 
 // Holds reflect current upstream contracts; requalify the whole tuple before changing them.
 export const compatibilityVersionOverrides = {
+  // The 4.0.3 integrations require effect ^4.0.3, which is not available on npm.
+  "@effect/platform-node": "4.0.2",
+  "@effect/vitest": "4.0.2",
   // Qualify the Nx family together; stable 23.3 supports Vitest 5.
   "@nx/devkit": "23.3.0",
   "@nx/oxlint": "23.3.0",
@@ -19,6 +22,10 @@ export const compatibilityVersionOverrides = {
   nx: "23.3.0",
   // Qualify Oxlint native patching with the selected @effect/tsgo tuple.
   oxlint: "1.87.0",
+  // 0.28 adds preferTaggedConstructors, requiring an unrelated tagged-state rewrite.
+  "oxlint-plugin-effect": "0.27.1",
+  // @effect/tsgo 0.51.1 cannot patch the 7.0.2004 native binary.
+  "oxlint-tsgolint": "7.0.2003",
   // Nx and Keenko migrations require the JavaScript compiler API absent from TypeScript 7.
   typescript: "6.0.3",
 };

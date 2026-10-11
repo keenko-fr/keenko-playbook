@@ -2,11 +2,17 @@ import { Effect as E } from "effect";
 
 import { DatabaseWriter } from "../confect/_generated/services";
 import * as compatibilityData from "../data/compatibility";
+import { CompatibilityFailure } from "../errors/compatibility";
 
 // PUBLISH ---------------------------------------------------------------------------------------------------------------------------------
-export const publish = E.fn("compatibilityPublishing.publish")(function* (key: string) {
+export const publish = E.fn("compatibilityPublishing.publish")(function* (key: string, { ownerKey }: PublishArgs) {
   const row = yield* compatibilityData.getUsableByKey(key);
+  if (row.ownerKey !== ownerKey) return yield* new CompatibilityFailure({ issue: "forbidden" });
   const writer = yield* DatabaseWriter;
   yield* writer.table("compatibilityRows").patch(row._id, { published: true }).pipe(E.orDie);
   return row._id;
 });
+
+type PublishArgs = {
+  ownerKey: string;
+};

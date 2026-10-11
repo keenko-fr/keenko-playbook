@@ -571,6 +571,8 @@ describe("keenko preset", () => {
       expect(oxlintConfig).toContain("depConstraints: [");
       expect(tree.exists("tools/dependency-boundaries.ts")).toBe(false);
       expect(oxlintConfig).toContain('"eslint/sort-keys": "off"');
+      const lintSource = O.getOrElse(O.fromNullishOr(oxlintConfig), () => "");
+      expect(lintSource.slice(lintSource.lastIndexOf("\n  rules: {"))).toContain('"eslint/sort-keys": "off"');
     })
   );
 
@@ -801,6 +803,21 @@ describe("keenko preset", () => {
       expect(identityImpl).toContain(
         "// GROUP -----------------------------------------------------------------------------------------------------------------------------------"
       );
+      const internalsAt = identityImpl.indexOf("// INTERNALS ");
+      const groupAt = identityImpl.indexOf("// GROUP ");
+      const helperAt = identityImpl.indexOf("function toCurrentIdentity(");
+      expect(internalsAt).toBeGreaterThan(0);
+      expect(groupAt).toBeGreaterThan(internalsAt);
+      expect(helperAt).toBeGreaterThan(internalsAt);
+      expect(helperAt).toBeLessThan(groupAt);
+      for (const functionName of ["findCurrent", "getCurrent", "findSynchronized"])
+        expect(identityImpl.slice(0, internalsAt)).toContain(`const ${functionName} = FunctionImpl.make(`);
+      expect(
+        identityImpl
+          .slice(groupAt)
+          .split("\n")
+          .filter((line) => /^\/\/ [A-Z ]+ -+$/u.test(line))
+      ).toHaveLength(1);
       expect(oxlintConfig).toContain('files: ["packages/backend/**/*.ts"]');
       expect(oxlintConfig).not.toContain("effect/noEffectRunInTests");
       expect(rootPackageJson.devDependencies?.["oxlint-plugin-effect"]).toBe(packageVersions["oxlint-plugin-effect"]);
