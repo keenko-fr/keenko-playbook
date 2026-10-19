@@ -1,6 +1,7 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect as E, FileSystem, Option as O, Path, type PlatformError, Schema as S, type Scope, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { format } from "oxfmt";
 
 import { packageVersions, runtimeVersions } from "../generators/versions.js";
 
@@ -10,24 +11,11 @@ export const prereleaseChannels = { nx: "next" } satisfies Readonly<Record<strin
 
 // Holds reflect current upstream contracts; requalify the whole tuple before changing them.
 export const compatibilityVersionOverrides = {
-  // Keep the qualified Effect 4.0.2 runtime and test integrations together.
-  "@effect/platform-node": "4.0.2",
-  "@effect/platform-node-shared": "4.0.2",
-  "@effect/vitest": "4.0.2",
-  // Qualify the Nx family together; stable 23.3 supports Vitest 5.
-  "@nx/devkit": "23.3.0",
-  "@nx/oxlint": "23.3.0",
-  "@nx/vitest": "23.3.0",
-  // Both AuthKit integrations exclude Node SDK 11; use the newest shared SDK 10 release.
+  // Both AuthKit integrations still require SDK 10.
   "@workos-inc/node": "10.14.0",
-  nx: "23.3.0",
-  // Qualify Oxlint native patching with the selected @effect/tsgo tuple.
-  oxlint: "1.87.0",
-  // 0.28 adds preferTaggedConstructors, requiring an unrelated tagged-state rewrite.
+  // 0.29 enforces tagged constructors, requiring a separate convention/source change.
   "oxlint-plugin-effect": "0.27.1",
-  // @effect/tsgo 0.51.1 cannot patch the 7.0.2004 native binary.
-  "oxlint-tsgolint": "7.0.2003",
-  // Nx requires the JavaScript compiler API absent from TypeScript 7.
+  // Nx uses the JavaScript compiler API absent from TypeScript 7.
   typescript: "6.0.3",
 };
 
@@ -155,6 +143,8 @@ export interface DependencyUpdate {
   readonly held: boolean;
 }
 
+const sCurrentDependencies = S.fromJsonString(S.Record(S.String, S.Record(S.String, S.Record(S.String, S.String))));
+
 const discoverDependency = E.fn("keenko.deps.discoverDependency")(function* (
   packageName: string,
   current: string,
@@ -241,8 +231,27 @@ export const updateDependencySources = E.fn("keenko.deps.updateSources")(functio
   );
   const nextManifestSource = yield* alignManifest(manifestSource, manifest, updates);
 
+  const fixturePath = path.join(workspace, "tests/fixtures/current-dependencies.json");
+  const fixture = yield* S.decodeEffect(sCurrentDependencies)(yield* fs.readFileString(fixturePath));
+  const nextFixture = Object.fromEntries(
+    Object.entries(fixture).map(([role, sections]) => [
+      role,
+      Object.fromEntries(
+        Object.entries(sections).map(([section, dependencies]) => [
+          section,
+          Object.fromEntries(
+            Object.entries(dependencies).map(([name, version]) => [name, O.getOrElse(O.fromNullishOr(updates[name]), () => version)])
+          ),
+        ])
+      ),
+    ])
+  );
+
+  const nextFixtureJson = yield* S.encodeEffect(sCurrentDependencies)(nextFixture);
+  const { code: nextFixtureSource } = yield* E.promise(() => format(fixturePath, nextFixtureJson, { printWidth: 140 }));
   yield* fs.writeFileString(versionsPath, nextVersionsSource);
   yield* fs.writeFileString(manifestPath, nextManifestSource);
+  yield* fs.writeFileString(fixturePath, nextFixtureSource);
 
   return discovery;
 });
@@ -370,6 +379,7 @@ export const updateDependencies = E.fn("keenko.deps.update")(function* (
     path.join(root, "src/generators/versions.ts"),
     path.join(root, "package.json"),
     path.join(root, "bun.lock"),
+    path.join(root, "tests/fixtures/current-dependencies.json"),
   ]);
   const updates = yield* updateDependencySources(root, currentVersions, resolveVersion, currentRuntimeVersions);
   const result = yield* E.scoped(refresh(root)).pipe(E.catch((error) => rollbackInstallFailure(snapshots, normalizeInstallFailure(error))));

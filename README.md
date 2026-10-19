@@ -35,7 +35,9 @@ From the created project, bun run check is the canonical merge-ready verificatio
 
 Default direct forward support is immediately preceding stable → current stable. The next candidate supports published stable `1.0.6`, owned by `tests/fixtures/upgrade-source.json`. New projects start current. Prereleases are not permanent supported origins; older stable releases are outside the default direct-support window. There is no default guarantee of recovery through sequential historical releases. A release may explicitly widen the source window for a concrete product requirement.
 
-The cleanup candidate retains the `1.0.6` generated dependency and configuration baseline, so it ships no migration. The plugin directly pins its compatible shared Effect runtime to prevent transitive drift during a clean installation. Managed dependencies and consumer customizations are checked on the real upgrade path. Repair of deliberately changed managed slots applies when a future release requires a migration.
+The `1.0.7-rc.1` candidate updates the qualified managed dependency tuple and supplies one native Nx migration to reconcile consumer manifests. The current corrective RC also qualifies `1.0.7-rc.0` as a temporary source. This exception does not extend the permanent N-1 window. See the [qualification report](docs/reports/1.0.7-rc.1.md) for all versions and retained constraints.
+
+Before planning an upgrade, inspect any existing `migrations.json`. Finish its pending work using its published owner, or verify every entry is already satisfied and archive the reviewed plan. Nx does not infer completion from the installed Keenko version. Never overwrite pending work or replace it with an empty plan. See [residual-plan recovery](src/generators/sync/files/docs/core/migrations.md#residual-plan-recovery).
 
 Nx remains migration authority and Bun remains lockfile owner. Migration code and assets are retained only while a supported path or current behavior requires them. Add migrations only when persisted project state needs transformation, then follow the native migration and synchronization lifecycle:
 
@@ -52,7 +54,7 @@ bun run codegen
 bun run check
 ```
 
-Run applicable native migrations when Nx produces a plan. An upgrade with no applicable migration may create no `migrations.json`; do not manufacture a no-op plan. The second `bun install` is unconditional because migrations can change dependency manifests. Bun reconciles installed packages and regenerates `bun.lock`; migrations never text-edit or merge the lockfile.
+For `1.0.6` or `1.0.7-rc.0` → `1.0.7-rc.1`, require the `1.0.7-managed-dependencies` entry and execute it. Verify manifest sections and installed versions against the target tuple, then archive the completed plan after codegen and check pass. Run applicable native migrations when Nx produces a plan. An upgrade with no applicable migration may create no `migrations.json`; do not manufacture a no-op plan. The second `bun install` is unconditional because migrations can change dependency manifests. Bun reconciles installed packages and regenerates `bun.lock`; migrations never text-edit or merge the lockfile.
 
 ## Runtime support
 
@@ -78,6 +80,8 @@ bun run deps:update
 ## Release
 
 Each Keenko release cycle requires a full dependency compatibility sweep before candidate dogfood. Select the newest compatible versions and qualify coupled packages together. `packageVersions` is the canonical current-version source. If a release-blocking corrective pass explicitly reopens qualification before publication, establish a new qualification cutoff and requalify the candidates available at that cutoff. Freeze the tuple after the final successful pre-RC qualification. Versions published after that cutoff belong to the next release cycle unless a human explicitly reopens qualification again. During actual RC dogfood, corrective RCs receive only changes needed to correct the candidate, with no unrelated dependency refresh. Promote the accepted RC to stable without refreshing dependencies.
+
+For this correction only, the human decision reopens qualification during the RC cycle because rc.0 omitted the explicitly requested dependency refresh. The cutoff is `2026-10-19T08:11:01Z`; later publications are outside this correction. This is an exception to the freeze, not a policy change. The continuation plan uses `__default__: prerelease`; Nx must resolve exactly `1.0.7-rc.1`.
 
 User-visible and project-visible changes require an Nx version plan. Releases are manually initiated through the repository's [Release workflow](.github/workflows/release.yml); Nx Release owns versioning, changelog generation, tagging, and npm publication.
 

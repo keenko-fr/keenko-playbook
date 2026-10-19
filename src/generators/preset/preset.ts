@@ -24,7 +24,7 @@ import { generateShadcnFiles } from "./helpers/shadcn.js";
 import { sPresetGeneratorSchema, type PresetGeneratorSchema } from "./schema.js";
 
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
-const devDependencies = Struct.pick(packageVersions, [
+export const devDependencies = Struct.pick(packageVersions, [
   "@effect/tsgo",
   "@effect/vitest",
   "@nx/oxlint",

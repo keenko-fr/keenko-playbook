@@ -9,9 +9,9 @@ bun install --frozen-lockfile
 bun run test:product
 ```
 
-The gate proves fresh candidate creation and one direct upgrade from published stable `keenko@1.0.6`. `tests/fixtures/upgrade-source.json` owns that source. Direct support defaults to immediately preceding stable → current stable. Prereleases and older stable releases are outside this window; sequential historical recovery has no default guarantee. A wider window requires an explicit product decision. No exception is active for the next candidate.
+The gate proves fresh candidate creation and one direct upgrade from published stable `keenko@1.0.6`. `tests/fixtures/upgrade-source.json` owns that source. Direct support defaults to immediately preceding stable → current stable. Prereleases and older stable releases are outside this window; sequential historical recovery has no default guarantee. A wider window requires an explicit product decision. A temporary corrective exception additionally qualifies published `1.0.7-rc.0` for `1.0.7-rc.1`; it is not a permanent supported origin.
 
-The harness starts the repository's `keenko:local-registry` Nx target with disposable storage at `http://127.0.0.1:4873`. It downloads the source archive from public npm, serves it unchanged through that registry and creates one source consumer. Its Nx bootstrap cohort comes from the published manifest's exact `@nx/devkit` dependency. Fresh candidate creation uses `create-nx-workspace@23.3.0`. Source and candidate bootstraps have isolated Bun caches. To reproduce the supported source runtime, the registry serves the unchanged `@effect/platform-node-shared@4.0.2` archive recorded in the `v1.0.6` lockfile, excluding later shared versions that require a newer Effect core. The fixture owns this source runtime pin. Other packages use the public npm uplink. Neither published archive is modified, and no dependency override is added.
+The harness starts the repository's `keenko:local-registry` Nx target with disposable storage at `http://127.0.0.1:4873`. It downloads the source archive from public npm, serves it unchanged through that registry and creates an authentic stable source consumer and controlled copies for the current corrective RC cases. Its Nx bootstrap cohort comes from the published manifest's exact `@nx/devkit` dependency. Fresh candidate creation uses `create-nx-workspace@23.3.0`. Source and candidate bootstraps have isolated Bun caches. To reproduce the supported source runtime, the registry serves the unchanged `@effect/platform-node-shared@4.0.2` archive recorded in the `v1.0.6` lockfile, excluding later shared versions that require a newer Effect core. The fixture owns this source runtime pin. After all source/recovery preparations, the registry also receives the candidate shared runtime 4.0.5. Other packages use the public npm uplink. Neither published archive is modified, and no dependency override is added.
 
 Keenko is built and packed. Before candidate relabeling, a separate cold isolated install of that archive resolves dependencies directly from public npm with a new Bun cache. It imports the real plugin and checks that the Node adapter resolves Keenko's exact shared runtime and a compatible Effect peer. This check bypasses the source registry restrictions, so those restrictions cannot hide a candidate resolution defect.
 
@@ -24,22 +24,24 @@ The authentic `1.0.6` consumer follows native Nx's lifecycle:
 ```sh
 bun x nx migrate keenko@<packed-candidate-version>
 bun install
-if [ -f migrations.json ]; then
-  bun x nx migrate --run-migrations
-fi
+bun x nx migrate --run-migrations
 bun install
 bun x nx sync
 bun run codegen
 bun run check
 ```
 
-Run applicable native migrations only when Nx produces a plan. The harness accepts an absent plan. The second install is unconditional. Bun alone reconciles installed packages and `bun.lock`.
+This transition must produce its current dependency migration; an absent or empty plan fails acceptance. Other releases may have no applicable persisted-state transformation. The second install is unconditional. Bun alone reconciles installed packages and `bun.lock`.
 
-The candidate has the same generated dependency tuple and persisted configuration baseline as `1.0.6`. Its own runtime now directly pins `@effect/platform-node-shared@4.0.2`, preventing the Node adapter's `^4.0.2` range from resolving a newer shared implementation against core `effect@4.0.2`. This internal dependency correction adds no generated consumer slot. It ships no migration collection, factory or `nx-migrations` package metadata. The source already has the current backend compiler/lint configuration. A repair-only migration for deliberately changed managed slots is not required; managed-slot repair belongs to a future release that actually needs a migration.
+The candidate publishes a new managed tuple and one native `1.0.7-managed-dependencies` migration. The source identity, original manifests and actual installed versions are checked before upgrade. Consumer-owned `is-number@7.0.0` is added; a shared Effect slot is moved and a backend test slot removed. Native Nx must discover exactly the current dependency migration. After both Bun installations, every target slot, opposite-section absence, lock workspace entry and installed version is verified. The run prints each changed slot as an explicit before/after version pair.
 
-The source package identity and actual resolution are verified before upgrade. The fixture adds consumer-owned `is-number@7.0.0` and installs it, leaving managed dependencies unchanged. Native Nx plans and installs the candidate. The harness runs any applicable plan if present, then always performs the second Bun install. It checks all 76 target managed slots, absence of opposite-section duplicates, preservation of dependencies outside the tuple, lock workspace entries and installed versions.
+The migration preserves consumer helper, compiler and lint configuration bytes. Sync installs canonical guidance, followed by codegen and the complete consumer check. Backend discovery, orchestration and AuthKit run on the upgraded installation. Frozen/ordinary reinstalls, sync and migration reruns prove byte stability. The completed current plan is archived only after final verification.
 
-The upgrade preserves the consumer helper, compiler and lint configuration byte-for-byte. Sync installs current canonical guidance, followed by codegen and the complete consumer check. Backend discovery, real test orchestration and AuthKit still run on the upgraded installation. Frozen and ordinary reinstalls preserve the lockfile and resolution. Sync reruns prove byte stability. There is no migration-rerun test without an active migration.
+### Corrective RC and residual plans
+
+The same genuine stable consumer seeds three published rc.0 cases: clean plan, previously executed `1.0.6-optional-data-coverage` plan retained, and unapplied plan with missing data compiler coverage. The exact residual entry is test-owned in `tests/fixtures/residual-1.0.6-migrations.json`. It is never shipped.
+
+Both residual cases reproduce rc.0's native `ERR_INVALID_ARG_TYPE` / `readMigrationCollection` failure and assert no mutation. The unapplied case must fail postcondition review and keep its plan. It restores the published `1.0.6` owner, executes the original factory through Nx and verifies the compiler/lint postconditions before archiving. The applied case verifies the same postconditions before archiving its retained plan. Neither recovery manufactures an empty plan. All three then upgrade from installed rc.0 to the packed candidate using the same dependency convergence and complete consumer checks as N-1. This tests the documented explicit recovery; no recovery engine is shipped.
 
 ### Fresh product
 
@@ -47,11 +49,11 @@ Fresh creation owns the current generated shape and package behavior. It verifie
 
 The Node resolution probe runs from Nx's real TypeScript plugin context. It must resolve the root direct JavaScript API and expose `readConfigFile`. The independent `@typescript/native` compiler must resolve and execute. Required peers, Nx packages and installed Effect versions must agree with manifests. Fresh root Nx specifications align with the bootstrap cohort. The supported source may retain bootstrap-owned scaffolds outside the managed tuple; upgrades preserve those specifications.
 
-Fresh and upgraded consumers run real backend Node/Edge, application jsdom, UI jsdom and shared Node targets. Discovery probes require authored fixtures to run once and dependency-owned/generated Convex tests to remain excluded. Probes are removed before canonical verification.
+Fresh and upgraded consumers run real backend Node/Edge, application jsdom, UI jsdom and shared Node targets. Discovery probes require authored fixtures to run once and dependency-owned/generated Convex tests to remain excluded. Root Nx orchestration is verified from per-project Vitest JSON reports, so ANSI presentation never determines success. Resolution comparisons use asserted JSON written separately from diagnostics, including color-environment warnings. Probes are removed before canonical verification.
 
 Fresh owns the Confect API/codegen/runtime fixture, compiler coverage probes for `data/`, `domain/` and `errors/`, and actual backend/shared type-policy probes. The Confect fixture verifies current generated containers, decoding, cardinality, streams, pagination, canonical domain/error examples, direct persistence and root rollback. Removing it and rerunning codegen restores canonical state. The upgrade runs the complete consumer check without duplicating these current-API fixtures.
 
-Packed assertions reject migration metadata and factories and require current preset, guidance, skills, licenses and AuthKit assets. Test-only fixtures are not shipped. Deterministic shadcn acceptance, reinstall and synchronization remain in the fresh gate. CI and release invoke the same full gate for product changes.
+Packed assertions require the single current migration entry, `nx-migrations` metadata and its compiled factory, and reject historical factories. They also require current preset, guidance, skills, licenses and AuthKit assets. Test-only fixtures are not shipped. Deterministic shadcn acceptance, reinstall and synchronization remain in the fresh gate. CI and release invoke the same full gate for product changes.
 
 ### Verification ownership
 
@@ -59,14 +61,14 @@ Historical packages, tags, changelogs and release reports remain the record of p
 
 | Guarantee | Verification owner |
 | --- | --- |
-| Managed dependency baseline | Preset tests compare every role with current expected slots. Fresh and published-source products verify manifests, dependency sections, lock entries and installed versions. Deliberate managed-slot repair has no active migration in this unchanged-baseline release; its old factory and tests retire. Future migrations must cover the repair contract when needed. |
+| Managed dependency baseline | Preset tests compare every role with current expected slots. Fresh and published-source products verify manifests, dependency sections, lock entries and installed versions. The focused migration tests cover changed, moved, deleted and duplicate slots, all roles and classified sibling applications. Installed upgrades verify convergence to the changed tuple. |
 | Consumer customization and atomic conflicts | Sync and AuthKit tests own routing, MCP, project files and patch preservation/conflicts. Packed fresh acceptance exercises installed Context7 ownership. The supported upgrade checks consumer helper/configuration bytes and foreign dependency specifications. |
-| Bun lockfile ownership | Product planning and sync preserve lockfile bytes; real Bun installs reconcile it. Repository lockfile tests protect installation stability. No factory writes a lockfile because no factory remains. |
+| Bun lockfile ownership | Product planning and sync preserve lockfile bytes; real Bun installs reconcile it. Repository lockfile tests protect installation stability. The dependency factory preserves lock bytes; only Bun installs update them. |
 | Installation and resolution | A cold public-registry archive install verifies the plugin runtime independently of the source registry. Fresh and N-1 products check manifests, lock entries, actual versions, TypeScript APIs, peers, Effect and the isolated linker, then frozen/ordinary reinstalls. |
 | Generation, sync and idempotence | Preset/sync tests own field and file policy. Packed fresh generation and supported upgrade both run codegen/check, canonical guidance checks and byte-stable sync. |
 | Compilation and product tests | Fresh owns compiler/type-policy and current Confect probes. Both products run complete consumer checks, discovery, target orchestration and AuthKit compatibility. |
 | Renamed/multiple applications and boundaries | `tests/module-boundaries.spec.ts` and preset/generated-drift tests; no additional published-source bootstrap. |
-| Migration planning | Real installed Nx in the supported product. Historical selection/order/forced-RC recovery tests retire with their unsupported origins and factories. No duplicate planner matrix remains. |
+| Migration planning | Real installed Nx in the supported product. Focused native selection checks cover 1.0.6 and this corrective rc.0 origin. Installed products cover the real plan and residual recovery. No historical 1.0.4/1.0.5 matrix returns. |
 
 ### Retained compatibility assets
 
@@ -74,7 +76,7 @@ The AuthKit installer and native Bun patch remain current preset dependencies. F
 
 Context7 provisioning remains sync-owned. Focused sync tests and fresh packed ownership checks cover equivalent entries, unrelated configuration and atomic conflicts. Both fresh and upgraded consumers verify hosted entries and synchronized guidance. No credentials or subprocess are generated.
 
-Phase logs record source/package preparation, the cold public-registry runtime check, fresh acceptance and the single supported upgrade. Timings describe the run and impose no threshold.
+Phase logs record source/package preparation, the cold public-registry runtime check, fresh acceptance and the stable plus targeted corrective RC upgrades. Timings describe the run and impose no threshold.
 
 ## Repository CI boundaries
 

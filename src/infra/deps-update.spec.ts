@@ -41,6 +41,19 @@ const fixture = E.fn("test.deps.fixture")(function* () {
 
   yield* fs.makeDirectory(versionsDirectory, { recursive: true });
   yield* fs.makeDirectory(path.join(root, "docs"), { recursive: true });
+  yield* fs.makeDirectory(path.join(root, "tests/fixtures"), { recursive: true });
+
+  yield* fs.writeFileString(
+    path.join(root, "tests/fixtures/current-dependencies.json"),
+    serializeJson({
+      root: { dependencies: {}, devDependencies: { nx: "23.3.0" } },
+      application: { dependencies: { effect: "4.0.0-rc.1" }, devDependencies: {} },
+      backend: { dependencies: { effect: "4.0.0-rc.1" }, devDependencies: {} },
+      shared: { dependencies: { effect: "4.0.0-rc.1" }, devDependencies: {} },
+      ui: { dependencies: {}, devDependencies: {} },
+    })
+  );
+
   yield* fs.writeFileString(
     path.join(versionsDirectory, "versions.ts"),
     `export const packageVersions = {\n  "@effect/platform-node": "4.0.0-rc.1",\n  "@nx/devkit": "23.3.0",\n  "@nx/oxlint": "23.3.0",\n  effect: "4.0.0-rc.1",\n  nx: "23.3.0",\n} satisfies Record<string, string>;\n\nexport const runtimeVersions = {\n  bun: "1.4.2",\n  nodeRange: ">=24.15 <25",\n} satisfies Record<string, string>;\n`
@@ -66,6 +79,7 @@ describe("dependency updater", () => {
         const resolver: RegistryResolver = (packageName, selector) =>
           E.sync(() => {
             calls.push([packageName, selector]);
+            if (packageName.startsWith("@nx/") || packageName === "nx") return "23.3.0";
             return packageName === "@confect/core" ? "10.0.0" : "4.0.2";
           });
 
@@ -139,17 +153,8 @@ describe("dependency updater", () => {
   test("keeps coupled and registry-incompatible members on qualified exact versions", () => {
     expect(prereleaseChannels).toEqual({ nx: "next" });
     expect(compatibilityVersionOverrides).toEqual({
-      "@effect/platform-node": "4.0.2",
-      "@effect/platform-node-shared": "4.0.2",
-      "@effect/vitest": "4.0.2",
-      "@nx/devkit": "23.3.0",
-      "@nx/oxlint": "23.3.0",
-      "@nx/vitest": "23.3.0",
       "@workos-inc/node": "10.14.0",
-      nx: "23.3.0",
-      oxlint: "1.87.0",
       "oxlint-plugin-effect": "0.27.1",
-      "oxlint-tsgolint": "7.0.2003",
       typescript: "6.0.3",
     });
     expect(Object.values(compatibilityVersionOverrides).every(isExactPackageVersion)).toBe(true);
@@ -173,29 +178,10 @@ describe("dependency updater", () => {
           });
         const updates = yield* updateDependencySources(root, compatibilityVersionOverrides, resolver);
         expect(selectedVersions(updates)).toEqual(compatibilityVersionOverrides);
-        expect(calls).toEqual([
-          "@effect/platform-node",
-          "@effect/platform-node-shared",
-          "@effect/vitest",
-          "@nx/devkit",
-          "@nx/devkit",
-          "@nx/oxlint",
-          "@nx/oxlint",
-          "@nx/vitest",
-          "@nx/vitest",
-          "@workos-inc/node",
-          "nx",
-          "nx",
-          "oxlint",
-          "oxlint-plugin-effect",
-          "oxlint-tsgolint",
-          "typescript",
-        ]);
+        expect(calls).toEqual(["@workos-inc/node", "oxlint-plugin-effect", "typescript"]);
         for (const [name, selected] of Object.entries(compatibilityVersionOverrides)) {
           expect(updates[name]).toMatchObject({ held: true, selected, selector: "latest", stableCandidate: "99.0.0" });
-          if (name === "nx" || name.startsWith("@nx/"))
-            expect(updates[name]).toMatchObject({ prereleaseCandidate: "99.0.0", prereleaseChannel: "next" });
-          else expect(O.fromNullishOr(updates[name].prereleaseCandidate)).toEqual(O.none());
+          expect(O.fromNullishOr(updates[name].prereleaseCandidate)).toEqual(O.none());
           expect(yield* fs.readFileString(path.join(root, "src/generators/versions.ts"))).toContain(
             `${name.includes("@") || name.includes("-") ? encodeJsonString(name) : name}: ${encodeJsonString(selected)}`
           );
@@ -211,7 +197,7 @@ describe("dependency updater", () => {
     ["23.3.0", "23.4.0-beta.1"],
     ["23.2.1", "23.3.0"],
   ])
-    it.live(`discovers Nx stable ${stableCandidate} and next ${prereleaseCandidate} without adoption`, () =>
+    it.live(`discovers Nx stable ${stableCandidate} and next ${prereleaseCandidate} without prerelease adoption`, () =>
       provideNodeServices(
         E.gen(function* () {
           const root = yield* fixture();
@@ -243,21 +229,22 @@ describe("dependency updater", () => {
           );
           for (const name of family)
             expect(updates[name]).toEqual({
-              held: true,
+              held: false,
               prereleaseCandidate,
               prereleaseChannel: "next",
-              selected: current.nx,
+              selected: stableCandidate,
               selector: "latest",
               stableCandidate,
             });
           const manifest = yield* S.decodeEffect(sTestManifest)(yield* fs.readFileString(path.join(root, "package.json")));
-          expect(manifest.devDependencies).toEqual({ ...current, "@nx/js": current.nx });
+          expect(manifest.devDependencies).toEqual(Object.fromEntries(family.map((name) => [name, stableCandidate])));
           const versions = yield* fs.readFileString(path.join(root, "src/generators/versions.ts"));
-          for (const name of Object.keys(current)) expect(versions).toContain(`${name === "nx" ? name : encodeJsonString(name)}: "23.3.0"`);
+          for (const name of Object.keys(current))
+            expect(versions).toContain(`${name === "nx" ? name : encodeJsonString(name)}: "${stableCandidate}"`);
           expect(versions).not.toContain('"@nx/js"');
           expect(formatDependencyUpdates(updates, current)).toEqual(
             family.map(
-              (name) => `${name}: stable candidate ${stableCandidate}, next candidate ${prereleaseCandidate}, selected 23.3.0 (held)`
+              (name) => `${name}: stable candidate ${stableCandidate}, next candidate ${prereleaseCandidate}, selected ${stableCandidate}`
             )
           );
         }).pipe(E.scoped)
@@ -308,7 +295,7 @@ describe("dependency updater", () => {
     provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
-        const current = { "@confect/cli": "10.0.0", "@confect/core": "10.0.0", "@confect/server": "10.0.0", "@confect/test": "10.0.0" };
+        const current = { "@confect/cli": "10.2.0", "@confect/core": "10.2.0", "@confect/server": "10.2.0", "@confect/test": "10.2.0" };
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         yield* fs.writeFileString(path.join(root, "package.json"), serializeJson({ dependencies: current, devDependencies: {} }));
@@ -316,18 +303,18 @@ describe("dependency updater", () => {
         const resolver: RegistryResolver = (name, selector) =>
           E.sync(() => {
             calls.push([name, selector]);
-            return "10.0.0";
+            return "10.3.1";
           });
         const updates = yield* updateDependencySources(root, current, resolver);
         expect(calls).toEqual(Object.keys(current).map((name) => [name, "latest"]));
         for (const name of Object.keys(current))
-          expect(updates[name]).toEqual({ held: false, selected: "10.0.0", selector: "latest", stableCandidate: "10.0.0" });
+          expect(updates[name]).toEqual({ held: false, selected: "10.3.1", selector: "latest", stableCandidate: "10.3.1" });
       }).pipe(E.scoped)
     )
   );
 
   for (const candidate of ["1.88.0", "1.87.0"])
-    it.live(`discovers Oxlint candidate ${candidate} while holding the selected version at 1.87.0`, () =>
+    it.live(`discovers Oxlint candidate ${candidate} after lifting the obsolete hold`, () =>
       provideNodeServices(
         E.gen(function* () {
           const root = yield* fixture();
@@ -350,13 +337,13 @@ describe("dependency updater", () => {
           const updates = yield* updateDependencySources(root, { oxlint: "1.87.0" }, resolver);
 
           expect(calls).toEqual([["oxlint", "latest"]]);
-          expect(updates.oxlint).toEqual({ held: true, selected: "1.87.0", selector: "latest", stableCandidate: candidate });
+          expect(updates.oxlint).toEqual({ held: false, selected: candidate, selector: "latest", stableCandidate: candidate });
           expect(formatDependencyUpdates(updates, { oxlint: "1.87.0" })).toEqual(
-            candidate === "1.87.0" ? [] : ["oxlint: stable candidate 1.88.0, selected 1.87.0 (held)"]
+            candidate === "1.87.0" ? [] : ["oxlint: stable candidate 1.88.0, selected 1.88.0"]
           );
-          expect(yield* fs.readFileString(versionsPath)).toContain('oxlint: "1.87.0"');
+          expect(yield* fs.readFileString(versionsPath)).toContain(`oxlint: "${candidate}"`);
           const manifest = yield* S.decodeEffect(sTestManifest)(yield* fs.readFileString(manifestPath));
-          expect(manifest.devDependencies.oxlint).toBe("1.87.0");
+          expect(manifest.devDependencies.oxlint).toBe(candidate);
         }).pipe(E.scoped)
       )
     );
@@ -601,10 +588,10 @@ describe("dependency updater", () => {
         ]);
         expect(selectedVersions(updates)).toEqual({
           "@confect/core": "10.0.0",
-          "@nx/js": "23.3.0",
+          "@nx/js": "9.8.7",
           effect: "4.0.0",
-          nx: "23.3.0",
-          oxlint: "1.87.0",
+          nx: "9.8.7",
+          oxlint: "9.8.7",
           react: "9.8.7",
         });
       }).pipe(E.scoped)
@@ -641,7 +628,12 @@ describe("dependency updater", () => {
         const root = yield* fixture();
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const ownedPaths = [path.join(root, "src/generators/versions.ts"), path.join(root, "package.json"), path.join(root, "bun.lock")];
+        const ownedPaths = [
+          path.join(root, "src/generators/versions.ts"),
+          path.join(root, "package.json"),
+          path.join(root, "bun.lock"),
+          path.join(root, "tests/fixtures/current-dependencies.json"),
+        ];
         const before = yield* E.forEach(ownedPaths, (ownedPath) => fs.readFileString(ownedPath));
         const unrelatedPath = path.join(root, "docs/versions.md");
         yield* fs.writeFileString(unrelatedPath, "unrelated dirty fixture\n");

@@ -1,0 +1,11 @@
+{
+  "migrations": [
+    {
+      "version": "1.0.6-rc.0",
+      "description": "Include optional backend data modules in compiler coverage, preserving application-owned source and configuration.",
+      "factory": "./dist/migrations/backend-convention-1-0-5",
+      "package": "keenko",
+      "name": "1.0.6-optional-data-coverage"
+    }
+  ]
+}

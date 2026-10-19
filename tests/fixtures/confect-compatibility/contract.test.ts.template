@@ -1,4 +1,4 @@
-import { QueryStream } from "@confect/server";
+import { QueryStream, RegisteredFunctions } from "@confect/server";
 import { TestConfect } from "@confect/test";
 import { it } from "@effect/vitest";
 import { Cause, Effect as E, Option as O, Schema as S, Stream } from "effect";
@@ -8,11 +8,15 @@ import convexSchema from "../confect/_generated/convexSchema";
 import refs from "../confect/_generated/refs";
 import schema from "../confect/_generated/schema";
 import { DatabaseReader, DatabaseWriter, MutationCtx } from "../confect/_generated/services";
+import compatibilityImpl from "../confect/compatibility.impl";
+import type compatibilitySpec from "../confect/compatibility.spec";
 import { sChecked } from "../confect/tables/compatibilityRows";
 import * as compatibilityData from "../data/compatibility";
 import { CompatibilityFailure } from "../errors/compatibility";
 import { FooDefect, FooFailure, sFooSchemaIssue } from "../errors/foo";
 
+// Consumer-owned test registrations use the current two-argument public API.
+const registered = RegisteredFunctions.buildForGroup<typeof compatibilitySpec>(schema, compatibilityImpl);
 const Test = TestConfect.TestConfect<typeof schema>();
 const layer = TestConfect.layer(schema, convexSchema, {
   "../convex/_generated/api.js": () => import("../convex/_generated/api.js"),
@@ -21,6 +25,7 @@ const layer = TestConfect.layer(schema, convexSchema, {
 
 it.effect("returns a configured and domain-qualified resource directly from data without a feature wrapper", () =>
   E.gen(function* () {
+    expect(Object.keys(registered).toSorted()).toEqual(["create", "find", "forward", "getUsable", "publish"]);
     const t = yield* Test;
     yield* t.run(
       E.gen(function* () {
