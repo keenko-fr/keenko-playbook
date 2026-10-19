@@ -76,7 +76,6 @@ describe("generated Nx/Oxlint module boundaries", () => {
             return manifest;
           });
           tree.write("apps/web/src/boundary-target.ts", "export const boundaryTarget = true;\n");
-          // KEE-60: current topology owns this proof, rather than a 1.0.1 upgrade.
           for (const change of tree.listChanges())
             if (change.path.startsWith("apps/web/")) tree.rename(change.path, change.path.replace("apps/web/", "apps/portal/"));
           updateJson<PackageJson>(tree, "apps/portal/package.json", (manifest) => ({ ...manifest, name: "@multi-app-test/portal" }));

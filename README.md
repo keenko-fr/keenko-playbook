@@ -33,7 +33,9 @@ From the created project, bun run check is the canonical merge-ready verificatio
 
 ## Project compatibility
 
-Default direct forward support is immediately preceding stable → current stable. The next release supports published stable `1.0.5`. This corrective cycle also retains the explicit `1.0.4`, `1.0.5-rc.0` and partial-recovery paths, owned by `tests/fixtures/upgrade-source.json`. New projects start current. Prereleases are not permanent supported origins; older stable releases are outside the default direct-support window. There is no default guarantee of recovery through sequential historical releases. A release may explicitly widen the source window.
+Default direct forward support is immediately preceding stable → current stable. The next candidate supports published stable `1.0.6`, owned by `tests/fixtures/upgrade-source.json`. New projects start current. Prereleases are not permanent supported origins; older stable releases are outside the default direct-support window. There is no default guarantee of recovery through sequential historical releases. A release may explicitly widen the source window for a concrete product requirement.
+
+The cleanup candidate retains the `1.0.6` generated dependency and configuration baseline, so it ships no migration. The plugin directly pins its compatible shared Effect runtime to prevent transitive drift during a clean installation. Managed dependencies and consumer customizations are checked on the real upgrade path. Repair of deliberately changed managed slots applies when a future release requires a migration.
 
 Nx remains migration authority and Bun remains lockfile owner. Migration code and assets are retained only while a supported path or current behavior requires them. Add migrations only when persisted project state needs transformation, then follow the native migration and synchronization lifecycle:
 

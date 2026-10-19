@@ -140,6 +140,7 @@ describe("dependency updater", () => {
     expect(prereleaseChannels).toEqual({ nx: "next" });
     expect(compatibilityVersionOverrides).toEqual({
       "@effect/platform-node": "4.0.2",
+      "@effect/platform-node-shared": "4.0.2",
       "@effect/vitest": "4.0.2",
       "@nx/devkit": "23.3.0",
       "@nx/oxlint": "23.3.0",
@@ -174,6 +175,7 @@ describe("dependency updater", () => {
         expect(selectedVersions(updates)).toEqual(compatibilityVersionOverrides);
         expect(calls).toEqual([
           "@effect/platform-node",
+          "@effect/platform-node-shared",
           "@effect/vitest",
           "@nx/devkit",
           "@nx/devkit",

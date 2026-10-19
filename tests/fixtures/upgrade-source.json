@@ -1,5 +1,4 @@
 {
-  "version": "1.0.4",
-  "prerelease": "1.0.5-rc.0",
-  "current": "1.0.5"
+  "version": "1.0.6",
+  "platformNodeShared": "4.0.2"
 }

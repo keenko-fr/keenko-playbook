@@ -6,17 +6,10 @@ import { parse as parseToml } from "smol-toml";
 
 import { packageVersions } from "../src/generators/versions.js";
 
-const upgradeSources = readJsonFile<{ version: string; prerelease: string; current: string }>("tests/fixtures/upgrade-source.json");
-const supportedSource = upgradeSources.version;
-const publishedRcSource = upgradeSources.prerelease;
-const migrationCollection = readJsonFile<{ generators: Record<string, { version: string }> }>("migrations.json").generators;
-
-interface ReleasedWorkspace {
-  readonly workspace: string;
-  readonly sourceVersion: string;
-  readonly legacyBackend: boolean;
-  readonly partial: boolean;
-}
+const { version: supportedSource, platformNodeShared: sourceNodeShared } = readJsonFile<{
+  version: string;
+  platformNodeShared: string;
+}>("tests/fixtures/upgrade-source.json");
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 
@@ -143,10 +136,6 @@ const sDependencyBaseline = S.fromJsonString(
 
 type DependencyBaseline = S.Schema.Type<typeof sDependencyBaseline>;
 type DependencySections = S.Schema.Type<typeof sDependencySections>;
-interface MutableDependencySections {
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
-}
 
 const verifyFreshNxCohort = E.fn("product.verifyFreshNxCohort")(function* (workspace: string) {
   const fs = yield* FileSystem.FileSystem;
@@ -249,6 +238,34 @@ const createWorkspace = E.fn("product.createWorkspace")(function* (
   ]);
 });
 
+const verifyPackedRuntime = E.fn("product.verifyPackedRuntime")(function* (
+  tarball: string,
+  temporary: string,
+  env: Readonly<Record<string, string>>
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const workspace = path.join(temporary, "packed-runtime");
+  yield* fs.makeDirectory(workspace);
+  yield* fs.writeFileString(path.join(workspace, "package.json"), serializeJson({ private: true, dependencies: { keenko: tarball } }));
+  yield* fs.writeFileString(path.join(workspace, "bunfig.toml"), '[install]\nlinker = "isolated"\nhoist = false\n');
+  const npmrc = path.join(workspace, ".npmrc");
+  yield* fs.writeFileString(npmrc, "registry=https://registry.npmjs.org\n");
+  const publicEnv = {
+    ...env,
+    BUN_CONFIG_REGISTRY: "https://registry.npmjs.org",
+    BUN_INSTALL_CACHE_DIR: path.join(workspace, "bun-cache"),
+    NPM_CONFIG_REGISTRY: "https://registry.npmjs.org",
+    NPM_CONFIG_USERCONFIG: npmrc,
+  };
+  yield* command(workspace, publicEnv, "bun", ["install", "--ignore-scripts"]);
+  const probe = yield* fs.readFileString(yield* path.fromFileUrl(new URL("fixtures/packed-runtime.mjs.template", import.meta.url)));
+  yield* command(workspace, publicEnv, "node", ["--input-type=module", "--eval", probe, workspace]);
+  yield* Console.log(
+    "Packed runtime cold install passed against public npm: plugin import, exact shared runtime and Effect peer resolution."
+  );
+});
+
 const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   source: PackageSource,
   repository: string,
@@ -260,10 +277,9 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     yield* Console.log(`Keenko published product test version: ${source.version}`);
     return {
       bootstrapEnv: env,
-      bootstrapExecutable: "bunx",
       localLicense: O.none<string>(),
       packageVersion: source.version,
-      releasedWorkspaces: [],
+      releasedWorkspace: O.none<string>(),
     };
   }
 
@@ -286,9 +302,9 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     BUN_INSTALL_CACHE_DIR: bunCache,
   };
 
-  // Keep the candidate and supported source local; all other packages use the public uplink.
+  // The N-1 fixture uses its released runtime; the candidate also gets a public-registry cold install.
   const config = path.join(temporary, "verdaccio.yml");
-  const localPackages = ["keenko"];
+  const localPackages = forwardUpgrade ? ["keenko", "@effect/platform-node-shared"] : ["keenko"];
   const localRules = localPackages.map((name) => `  "${name}":\n    access: $all\n    publish: $all\n    unpublish: $all\n`).join("");
   yield* fs.writeFileString(
     config,
@@ -317,7 +333,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     )
   );
 
-  const releasedWorkspaces: ReleasedWorkspace[] = [];
+  let releasedWorkspace = O.none<string>();
   if (forwardUpgrade) {
     const archives = path.join(temporary, "released-archives");
     yield* fs.makeDirectory(archives);
@@ -327,13 +343,15 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
       NPM_CONFIG_USERCONFIG: path.join(temporary, "public-npmrc"),
     };
     yield* fs.writeFileString(publicEnv.NPM_CONFIG_USERCONFIG, "registry=https://registry.npmjs.org\n");
-    const bootstraps = new Map<string, string>();
-    for (const version of [supportedSource, publishedRcSource, upgradeSources.current]) {
-      const sourceStartedAt = yield* startPhase(`published ${version} source setup`);
-      yield* command(temporary, publicEnv, "npm", ["pack", `keenko@${version}`, "--pack-destination", archives, "--ignore-scripts"]);
+    const sourceStartedAt = yield* startPhase(`published ${supportedSource} source setup`);
+    for (const [name, version] of [
+      ["keenko", supportedSource],
+      ["@effect/platform-node-shared", sourceNodeShared],
+    ]) {
+      yield* command(temporary, publicEnv, "npm", ["pack", `${name}@${version}`, "--pack-destination", archives, "--ignore-scripts"]);
       yield* command(temporary, npmEnv, "npm", [
         "publish",
-        path.join(archives, `keenko-${version}.tgz`),
+        path.join(archives, `${name.replaceAll("@", "").replaceAll("/", "-")}-${version}.tgz`),
         "--ignore-scripts",
         "--provenance=false",
         "--access",
@@ -342,33 +360,26 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
         "source",
         "--loglevel=error",
       ]);
-      const sourceArtifact = path.join(temporary, `source-artifact-${version}`);
-      yield* fs.makeDirectory(sourceArtifact);
-      yield* command(temporary, publicEnv, "tar", ["-xzf", path.join(archives, `keenko-${version}.tgz`), "-C", sourceArtifact]);
-      const sourceManifest = yield* S.decodeEffect(sDependencySections)(
-        yield* fs.readFileString(path.join(sourceArtifact, "package/package.json"))
-      );
-      const bootstrapVersion = yield* S.decodeUnknownEffect(S.String)(sourceManifest.dependencies?.["@nx/devkit"]);
-      yield* assert(exactSemver.test(bootstrapVersion), "Published source has no exact Nx bootstrap cohort");
-      bootstraps.set(version, bootstrapVersion);
-      yield* completePhase(`published ${version} source setup`, sourceStartedAt);
     }
-    for (const [identity, version, legacyBackend, partial] of [
-      ["upgrade-stable", supportedSource, true, false],
-      ["upgrade-rc", publishedRcSource, false, false],
-      ["upgrade-current", upgradeSources.current, false, false],
-      ["upgrade-partial", supportedSource, true, true],
-    ] as const) {
-      const bootstrapVersion = yield* S.decodeUnknownEffect(S.String)(bootstraps.get(version));
-      yield* createWorkspace(
-        temporary,
-        { ...bootstrapEnv, BUN_INSTALL_CACHE_DIR: path.join(temporary, `published-${version}-bun-cache`) },
-        identity,
-        `keenko@${version}`,
-        bootstrapVersion
-      );
-      releasedWorkspaces.push({ legacyBackend, partial, sourceVersion: version, workspace: path.join(temporary, identity) });
-    }
+    const archive = path.join(archives, `keenko-${supportedSource}.tgz`);
+    const sourceArtifact = path.join(temporary, "source-artifact");
+    yield* fs.makeDirectory(sourceArtifact);
+    yield* command(temporary, publicEnv, "tar", ["-xzf", archive, "-C", sourceArtifact]);
+    const sourceManifest = yield* S.decodeEffect(sDependencySections)(
+      yield* fs.readFileString(path.join(sourceArtifact, "package/package.json"))
+    );
+    const bootstrapVersion = yield* S.decodeUnknownEffect(S.String)(sourceManifest.dependencies?.["@nx/devkit"]);
+    yield* assert(exactSemver.test(bootstrapVersion), "Published source has no exact Nx bootstrap cohort");
+    const identity = "upgrade-stable";
+    yield* createWorkspace(
+      temporary,
+      { ...bootstrapEnv, BUN_INSTALL_CACHE_DIR: path.join(temporary, "published-source-bun-cache") },
+      identity,
+      `keenko@${supportedSource}`,
+      bootstrapVersion
+    );
+    releasedWorkspace = O.some(path.join(temporary, identity));
+    yield* completePhase(`published ${supportedSource} source setup`, sourceStartedAt);
   }
 
   yield* command(repository, env, "bun", ["run", "build"]);
@@ -379,6 +390,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   const localPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(path.join(repository, "package.json")));
   const tarball = path.join(packed, `keenko-${localPackage.version}.tgz`);
   yield* assert(yield* fs.exists(tarball), `Packed Keenko artifact is missing: ${tarball}`);
+  yield* verifyPackedRuntime(tarball, temporary, env);
 
   const runId = `run-${path.basename(temporary).replaceAll(/[^0-9A-Za-z-]/gu, "-")}`;
   const rcVersionPattern = /to get new version (?<version>\d+\.\d+\.\d+-rc\.\d+)/u;
@@ -451,10 +463,9 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
 
   return {
     bootstrapEnv,
-    bootstrapExecutable: "bunx",
     localLicense: O.some(yield* fs.readFileString(path.join(repository, "src/generators/sync/files/skills/grilling/LICENSE"))),
     packageVersion,
-    releasedWorkspaces,
+    releasedWorkspace,
   };
 });
 
@@ -830,150 +841,67 @@ const verifyContext7Ownership = E.fn("product.verifyContext7Ownership")(function
   yield* Console.log("Packed Context7 ownership verified: equivalent entries, unrelated configuration and atomic conflicts.");
 });
 
-const divergeSupportedSlots = E.fn("product.divergeSupportedSlots")(function* (workspace: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  for (const relative of ["package.json", "packages/shared/package.json", "packages/backend/package.json"]) {
-    const file = path.join(workspace, relative);
-    const manifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(file));
-    const decoded = yield* S.decodeEffect(sDependencySections)(yield* fs.readFileString(file));
-    const slots: MutableDependencySections = { ...decoded };
-    if (relative === "package.json") {
-      slots.devDependencies = { ...slots.devDependencies, oxfmt: "0.71.0" };
-      slots.dependencies = { ...slots.dependencies, "is-number": "7.0.0" };
-    } else if (relative === "packages/shared/package.json") {
-      slots.devDependencies = { ...slots.devDependencies, effect: "4.0.1" };
-      if (slots.dependencies) Reflect.deleteProperty(slots.dependencies, "effect");
-    } else if (slots.devDependencies) Reflect.deleteProperty(slots.devDependencies, "@confect/test");
-    yield* fs.writeFileString(file, serializeJson({ ...manifest, ...slots }));
-  }
-  yield* Console.log(
-    "Supported source divergence: root oxfmt 0.71.0; shared Effect moved to devDependencies; backend @confect/test deleted; consumer is-number 7.0.0 added. All other managed slots remain canonical."
-  );
-});
-
 const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* (
-  released: ReleasedWorkspace,
+  workspace: string,
   env: Record<string, string>,
   packageVersion: string,
   roles: DependencyBaseline
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const { workspace, sourceVersion, legacyBackend, partial } = released;
-  const label = partial ? "partial migration recovery" : `supported ${sourceVersion} forward upgrade`;
+  const label = `supported ${supportedSource} forward upgrade`;
   const upgradeStartedAt = yield* startPhase(label);
   const target = roleBaseline(roles, ["web"]);
   const lockPath = path.join(workspace, "bun.lock");
   const installedPath = path.join(workspace, "node_modules/keenko/package.json");
   yield* assert(
-    (yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPath))).version === sourceVersion,
-    `Upgrade source is not the published ${sourceVersion} package`
+    (yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPath))).version === supportedSource,
+    `Upgrade source is not the published ${supportedSource} package`
   );
-  const helperPath = legacyBackend ? "packages/backend/data/confect.ts" : "packages/backend/features/confect.ts";
-  const helperSource = yield* fs.readFileString(path.join(workspace, helperPath));
+  const helperPath = "packages/backend/data/confect.ts";
+  const preserved = new Map<string, string>();
+  for (const relative of [helperPath, "oxlint.config.ts", "packages/backend/tsconfig.json"])
+    preserved.set(relative, yield* fs.readFileString(path.join(workspace, relative)));
   yield* verifyContext7(workspace);
   yield* verifyResolution(workspace, env);
-  // Derive one divergent consumer from the authentic installed source. Keep all
-  // canonical slots except these explicit owned edits; no second bootstrap.
-  yield* divergeSupportedSlots(workspace);
+  // Add only project-owned state; the unchanged baseline needs no migration.
+  const rootManifestPath = path.join(workspace, "package.json");
+  const rootManifest = yield* S.decodeEffect(sManifest)(yield* fs.readFileString(rootManifestPath));
+  const rootDependencies = yield* S.decodeEffect(sDependencySections)(yield* fs.readFileString(rootManifestPath));
+  yield* fs.writeFileString(
+    rootManifestPath,
+    serializeJson({
+      ...rootManifest,
+      dependencies: { ...rootDependencies.dependencies, "is-number": "7.0.0" },
+    })
+  );
   yield* command(workspace, env, "bun", ["install"]);
   const before = new Map<string, DependencySections>();
   for (const relative of Object.keys(target))
     before.set(relative, yield* S.decodeEffect(sDependencySections)(yield* fs.readFileString(path.join(workspace, relative))));
-  const sourceLock = yield* fs.readFileString(lockPath);
-  yield* verifyInstalledSlots(
-    workspace,
-    {
-      "package.json": { dependencies: { "is-number": "7.0.0" }, devDependencies: { oxfmt: "0.71.0" } },
-      "packages/shared/package.json": { dependencies: {}, devDependencies: { effect: "4.0.1" } },
-    },
-    sourceLock
-  );
-  yield* assert(
-    !Object.hasOwn(before.get("packages/backend/package.json")?.devDependencies ?? {}, "@confect/test"),
-    "Deleted managed slot remains in divergent source"
-  );
-  if (partial) {
-    const lintFile = path.join(workspace, "oxlint.config.ts");
-    const lint = yield* fs.readFileString(lintFile);
-    yield* fs.writeFileString(
-      lintFile,
-      `// Consumer common type override\n${lint.replace(
-        "\n  ],\n  plugins:",
-        '\n    {\n      excludeFiles: ["packages/ui/**", "apps/**"],\n      files: ["packages/backend/**/*.ts", "packages/shared/**/*.ts"],\n      rules: { "typescript/consistent-type-definitions": "off" },\n    },\n  ],\n  plugins:'
-      )}`
-    );
-    yield* command(workspace, env, "bun", ["x", "nx", "migrate", `keenko@${publishedRcSource}`]);
-    yield* command(workspace, env, "bun", ["install"]);
-    const unchanged = new Map<string, string>();
-    for (const relative of [...Object.keys(target), "bun.lock", "oxlint.config.ts", "packages/backend/tsconfig.json", helperPath])
-      unchanged.set(relative, yield* fs.readFileString(path.join(workspace, relative)));
-    const failure = yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"], "failure");
-    yield* assert(
-      failure.includes("reconcile the backend convention manually"),
-      "Published RC did not reproduce the common-override migration failure"
-    );
-    for (const [relative, content] of unchanged)
-      yield* assert(
-        (yield* fs.readFileString(path.join(workspace, relative))) === content,
-        `Failed published migration changed ${relative}`
-      );
-    yield* Console.log("Published RC migration failure reproduced without factory writes; package/lock preparation already happened.");
-  }
-  const lintBeforeMigration = yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"));
   const preparedLock = yield* fs.readFileString(lockPath);
-  const preparation = yield* command(workspace, env, "bun", [
-    "x",
-    "nx",
-    "migrate",
-    `keenko@${packageVersion}`,
-    ...(partial ? [`--from=keenko@${supportedSource}`] : []),
-  ]);
-  yield* assert(!preparation.includes("There are no migrations to run"), "Native Nx did not select managed dependency convergence");
+  yield* command(workspace, env, "bun", ["x", "nx", "migrate", `keenko@${packageVersion}`]);
   yield* assert((yield* fs.readFileString(lockPath)) === preparedLock, "Nx preparation changed the Bun-owned lockfile");
   yield* command(workspace, env, "bun", ["install"]);
   yield* assert(
     (yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(installedPath))).version === packageVersion,
     "Stable upgrade did not install the packed candidate"
   );
-  const plan = yield* S.decodeEffect(
-    S.fromJsonString(S.Struct({ migrations: S.Array(S.Struct({ name: S.String, package: S.String, version: S.String })) }))
-  )(yield* fs.readFileString(path.join(workspace, "migrations.json")));
-  const expectedNames = ["1.0.6-optional-data-coverage"];
-  if (sourceVersion !== upgradeSources.current) {
-    expectedNames.unshift("1.0.5-backend-shared-types");
-    if (sourceVersion !== publishedRcSource) expectedNames.unshift("1.0.5-backend-convention");
-  }
-  yield* assert(
-    serializeJson(plan.migrations) ===
-      serializeJson(expectedNames.map((name) => ({ name, package: "keenko", version: migrationCollection[name].version }))),
-    "Native Nx selected an unexpected migration plan"
-  );
-  yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"]);
-  // Native Nx may run Bun after dependency changes. The focused factory suite
-  // proves no direct lockfile write; the unconditional install remains below.
+  const hasMigrations = yield* fs.exists(path.join(workspace, "migrations.json"));
+  if (hasMigrations) yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"]);
   yield* command(workspace, env, "bun", ["install"]);
   yield* verifyDependencySlots(workspace, target, before);
   yield* verifyInstalledSlots(workspace, target, yield* fs.readFileString(lockPath));
-  yield* verifyBackendConfiguration(workspace, env, legacyBackend);
-  yield* assert((yield* fs.readFileString(path.join(workspace, helperPath))) === helperSource, "Migration changed the consumer helper");
-  yield* verifyTypePolicy(workspace, env);
-  if (partial)
-    yield* assert(
-      (yield* fs.readFileString(path.join(workspace, "oxlint.config.ts"))) === lintBeforeMigration,
-      "Recovery changed the compatible common override or its foreign excludeFiles"
-    );
+  for (const [relative, content] of preserved)
+    yield* assert((yield* fs.readFileString(path.join(workspace, relative))) === content, `Upgrade changed consumer-owned ${relative}`);
   yield* command(workspace, env, "bun", ["x", "nx", "sync"]);
   yield* verifyCanonicalGuidance(workspace);
   yield* verifyContext7(workspace);
-  yield* verifyContext7Ownership(workspace, env);
   yield* command(workspace, env, "bun", ["run", "codegen"]);
   const compatibilityStartedAt = yield* startPhase("supported upgrade compatibility verification");
   const initialResolution = yield* verifyResolution(workspace, env);
 
   yield* verifyAuthkitTest(workspace, env);
-  yield* verifyConfectTuple(workspace, env);
   yield* verifyBackendTestOwnership(workspace, env);
   yield* verifyTestingTuple(workspace, env, ["web"]);
   yield* completePhase("supported upgrade compatibility verification", compatibilityStartedAt);
@@ -981,13 +909,10 @@ const verifySupportedUpgrade = E.fn("product.verifySupportedUpgrade")(function* 
   const stabilityStartedAt = yield* startPhase("supported upgrade reinstall and sync idempotence");
   yield* verifyReinstalls(workspace, env, initialResolution);
   yield* verifySyncRerun(workspace, env);
-  yield* verifyMigrationRerun(workspace, env, Object.keys(target), helperPath);
   yield* verifyInstalledSlots(workspace, target, yield* fs.readFileString(lockPath));
   yield* completePhase("supported upgrade reinstall and sync idempotence", stabilityStartedAt);
   yield* completePhase(label, upgradeStartedAt);
-  yield* Console.log(
-    `Published divergent ${sourceVersion} converged target dependencies and backend/shared configuration through native Nx migration and Bun installs: ${label}.`
-  );
+  yield* Console.log(`Published ${supportedSource} upgraded through native Nx and Bun installs: ${label}.`);
 });
 
 const verifyTypePolicy = E.fn("product.verifyTypePolicy")(function* (workspace: string, env: Record<string, string>) {
@@ -1017,11 +942,7 @@ const verifyTypePolicy = E.fn("product.verifyTypePolicy")(function* (workspace: 
   yield* Console.log("Effective Oxlint type policy verified: backend/shared allow types; UI/application retain their existing rule.");
 });
 
-const verifyBackendConfiguration = E.fn("product.verifyBackendConfiguration")(function* (
-  workspace: string,
-  env: Record<string, string>,
-  legacyBackend: boolean
-) {
+const verifyBackendConfiguration = E.fn("product.verifyBackendConfiguration")(function* (workspace: string, env: Record<string, string>) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const backend = path.join(workspace, "packages/backend");
@@ -1029,36 +950,15 @@ const verifyBackendConfiguration = E.fn("product.verifyBackendConfiguration")(fu
     yield* fs.readFileString(path.join(backend, "tsconfig.json"))
   );
   for (const pattern of ["data/**/*.ts", "features/**/*.ts", "domain/**/*.ts", "errors/**/*.ts"])
-    yield* assert(config.include.includes(pattern), `Upgraded backend compiler omits ${pattern}`);
-  yield* assert((yield* fs.exists(path.join(backend, "data/confect.ts"))) === legacyBackend, "Migration changed the data helper topology");
-  yield* assert(
-    (yield* fs.exists(path.join(backend, "features/confect.ts"))) !== legacyBackend,
-    "Migration changed the feature helper topology"
-  );
+    yield* assert(config.include.includes(pattern), `Backend compiler omits ${pattern}`);
   for (const folder of ["data", "domain", "errors"]) {
-    const probe = path.join(backend, folder, "keenko-migration-probe.ts");
+    const probe = path.join(backend, folder, "keenko-compiler-probe.ts");
     yield* fs.makeDirectory(path.dirname(probe), { recursive: true });
     yield* fs.writeFileString(probe, 'export const invalid: number = "not a number";\n');
     const output = yield* command(workspace, env, "bun", ["x", "nx", "run", "backend:typecheck", "--outputStyle=static"], "failure");
-    yield* assert(output.includes(`${folder}/keenko-migration-probe.ts`), `Compiler did not check the migrated ${folder} owner`);
+    yield* assert(output.includes(`${folder}/keenko-compiler-probe.ts`), `Compiler did not check the ${folder} owner`);
     yield* fs.remove(probe);
   }
-});
-
-const verifyMigrationRerun = E.fn("product.verifyMigrationRerun")(function* (
-  workspace: string,
-  env: Record<string, string>,
-  manifests: readonly string[],
-  helperPath: string
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const before = new Map<string, string>();
-  for (const file of [...manifests, "bun.lock", "oxlint.config.ts", "packages/backend/tsconfig.json", helperPath])
-    before.set(file, yield* fs.readFileString(path.join(workspace, file)));
-  yield* command(workspace, env, "bun", ["x", "nx", "migrate", "--run-migrations"]);
-  for (const [file, content] of before)
-    yield* assert((yield* fs.readFileString(path.join(workspace, file))) === content, `Migration rerun changed ${file}`);
 });
 
 const verifySyncRerun = E.fn("product.verifySyncRerun")(function* (workspace: string, env: Record<string, string>) {
@@ -1122,7 +1022,7 @@ const product = E.gen(function* () {
     WORKOS_COOKIE_PASSWORD: "",
   };
   const preparationStartedAt = yield* startPhase("package preparation and registry setup");
-  const { bootstrapEnv, bootstrapExecutable, localLicense, packageVersion, releasedWorkspaces } = yield* preparePackageSource(
+  const { bootstrapEnv, localLicense, packageVersion, releasedWorkspace } = yield* preparePackageSource(
     source,
     repository,
     temporary,
@@ -1144,20 +1044,16 @@ const product = E.gen(function* () {
   ];
   const freshStartedAt = yield* startPhase("fresh product verification");
   const creationStartedAt = yield* startPhase("fresh workspace creation");
-  const createOutput = yield* command(temporary, bootstrapEnv, "env", [
-    ...withoutBackendWorkOSEnv,
-    bootstrapExecutable,
-    ...createArguments,
-  ]);
+  const createOutput = yield* command(temporary, bootstrapEnv, "env", [...withoutBackendWorkOSEnv, "bunx", ...createArguments]);
   yield* assert(!createOutput.includes("MODULE_TYPELESS_PACKAGE_JSON"), "Creation emitted a module-typeless package warning");
   yield* completePhase("fresh workspace creation", creationStartedAt);
 
   const workspace = path.join(temporary, identity);
   const freshCompatibilityStartedAt = yield* startPhase("fresh compatibility verification");
-  // Fresh owns a coherent bootstrap cohort. Stable N-1 may carry an older
-  // scaffold outside Keenko's managed slots; dependency convergence preserves it.
+  // Fresh owns a coherent bootstrap cohort; upgrades preserve scaffolds outside managed slots.
   yield* verifyFreshNxCohort(workspace);
   yield* verifyTypePolicy(workspace, env);
+  yield* verifyBackendConfiguration(workspace, env);
   const initialResolution = yield* verifyResolution(workspace, env);
   yield* verifyAuthkitTest(workspace, env);
   const roles = yield* S.decodeEffect(sDependencyBaseline)(
@@ -1232,36 +1128,15 @@ const product = E.gen(function* () {
   const installedPackageSource = yield* fs.readFileString(installedPackagePath);
   const installedPackage = yield* S.decodeEffect(sVersionPackage)(installedPackageSource);
   yield* assert(installedPackage.version === packageVersion, `The consumer did not install Keenko ${packageVersion}`);
-  const installedPackageManifest = yield* S.decodeEffect(sManifest)(installedPackageSource);
-  yield* assert(
-    installedPackageManifest["nx-migrations"] === "./migrations.json",
-    "Installed Keenko package is missing the expected Nx migration metadata"
-  );
-
-  yield* assert(
-    yield* fs.exists(path.join(workspace, "node_modules/keenko/migrations.json")),
-    "Installed Keenko package is missing migrations.json"
-  );
   if (source._tag === "local") {
     const installedRoot = path.join(workspace, "node_modules/keenko");
+    const installedPackageManifest = yield* S.decodeEffect(sManifest)(installedPackageSource);
+    yield* assert(!Object.hasOwn(installedPackageManifest, "nx-migrations"), "Packed package retains unused migration metadata");
     yield* assert(
-      serializeJson(yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(installedRoot, "migrations.json")))) ===
-        serializeJson(yield* S.decodeEffect(sManifest)(yield* fs.readFileString(path.join(repository, "migrations.json")))),
-      "Packed Keenko metadata differs from the current supported migration collection"
+      !(yield* fs.exists(path.join(installedRoot, "migrations.json"))),
+      "Packed package retains a retired migration collection"
     );
-    const migrationFiles = yield* fs.readDirectory(path.join(installedRoot, "dist/migrations"), { recursive: true });
-    yield* assert(
-      migrationFiles.toSorted().join(",") ===
-        [
-          "backend-convention-1-0-5.d.ts",
-          "backend-convention-1-0-5.d.ts.map",
-          "backend-convention-1-0-5.js",
-          "managed-dependencies-1-0-4.d.ts",
-          "managed-dependencies-1-0-4.d.ts.map",
-          "managed-dependencies-1-0-4.js",
-        ].join(","),
-      "Packed migrations contain retired factories or assets"
-    );
+    yield* assert(!(yield* fs.exists(path.join(installedRoot, "dist/migrations"))), "Packed package retains retired migration factories");
     for (const artifact of [
       "dist/compatibility/authkit-test.js",
       "dist/compatibility/files/workos-authkit-0.2.10.patch",
@@ -1375,8 +1250,7 @@ const product = E.gen(function* () {
 
   if (source._tag === "published") return;
 
-  // KEE-63: qualify stable N-1, the published RC and recovery of its failed migration.
-  for (const releasedWorkspace of releasedWorkspaces) yield* verifySupportedUpgrade(releasedWorkspace, bootstrapEnv, packageVersion, roles);
+  if (O.isSome(releasedWorkspace)) yield* verifySupportedUpgrade(releasedWorkspace.value, bootstrapEnv, packageVersion, roles);
 });
 
 const timedProduct = E.gen(function* () {

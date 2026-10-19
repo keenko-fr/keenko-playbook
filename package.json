@@ -12,7 +12,6 @@
     "dist",
     "!**/*.tsbuildinfo",
     "generators.json",
-    "migrations.json",
     "README.md",
     "LICENSE"
   ],
@@ -51,10 +50,10 @@
   },
   "dependencies": {
     "@effect/platform-node": "4.0.2",
+    "@effect/platform-node-shared": "4.0.2",
     "@nx/devkit": "23.3.0",
     "@tanstack/create": "0.70.1",
     "effect": "4.0.2",
-    "minimatch": "10.2.6",
     "smol-toml": "1.9.0",
     "tslib": "2.8.1",
     "typescript": "6.0.3",
@@ -139,6 +138,5 @@
         }
       }
     }
-  },
-  "nx-migrations": "./migrations.json"
+  }
 }
