@@ -6,7 +6,7 @@ import type { PackageJson } from "../../helpers.js";
 import { packageVersions } from "../../versions.js";
 
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
-const dependencies = Struct.pick(packageVersions, [
+export const dependencies = Struct.pick(packageVersions, [
   "@base-ui/react",
   "@fontsource-variable/inter",
   "class-variance-authority",
@@ -16,7 +16,7 @@ const dependencies = Struct.pick(packageVersions, [
   "tw-animate-css",
 ]);
 
-const devDependencies = Struct.pick(packageVersions, [
+export const devDependencies = Struct.pick(packageVersions, [
   "@testing-library/dom",
   "@testing-library/react",
   "@types/react",

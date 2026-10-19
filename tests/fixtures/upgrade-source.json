@@ -1,4 +1,5 @@
 {
   "version": "1.0.6",
-  "platformNodeShared": "4.0.2"
+  "platformNodeShared": "4.0.2",
+  "correctiveRc": "1.0.7-rc.0"
 }

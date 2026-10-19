@@ -113,7 +113,7 @@ Non-persisted/provider schemas follow their own semantics, with Schema/type adja
 
 Derive related contracts from the nearest owner of their facts rather than repeating equivalent field declarations. Alias only when distinct, already-earned contracts genuinely share a structure.
 
-The installed Effect `4.0.2` structural APIs include:
+The installed Effect `4.0.5` structural APIs include:
 
 ```ts
 const sSelected = schema.mapFields(Struct.pick(["a", "b"]));
@@ -154,7 +154,7 @@ Transport projection: caller-appropriate encoding, such as null | string
 
 Reserve omitted keys for contracts where presence itself has semantics, especially patches and genuinely optional inputs.
 
-For installed Effect `4.0.2`, distinguish intentionally:
+For installed Effect `4.0.5`, distinguish intentionally:
 
 - `S.optionalKey(schema)`: the key may be absent; explicit `undefined` is not automatically accepted as the field value;
 - `S.optional(schema)`: absence/explicit `undefined` semantics differ and may be appropriate when intentionally clearing an optional value;

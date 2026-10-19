@@ -1,0 +1,9 @@
+{
+  "generators": {
+    "1.0.7-managed-dependencies": {
+      "version": "1.0.7-rc.1",
+      "description": "Converge Keenko-managed dependency slots to the qualified target tuple, preserving consumer-owned state.",
+      "factory": "./dist/migrations/managed-dependencies"
+    }
+  }
+}

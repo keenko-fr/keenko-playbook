@@ -4,7 +4,7 @@ import { Effect as E, Path, Struct } from "effect";
 import { packageVersions } from "../../versions.js";
 
 // CONSTANTS -------------------------------------------------------------------------------------------------------------------------------
-const dependencies = Struct.pick(packageVersions, ["effect"]);
+export const dependencies = Struct.pick(packageVersions, ["effect"]);
 
 // GENERATE --------------------------------------------------------------------------------------------------------------------------------
 export const generateShared = E.fn("keenko.preset.generateShared")(function* (tree: Tree, workspace: string) {
