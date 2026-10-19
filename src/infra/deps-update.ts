@@ -26,7 +26,7 @@ export const compatibilityVersionOverrides = {
   "oxlint-plugin-effect": "0.27.1",
   // @effect/tsgo 0.51.1 cannot patch the 7.0.2004 native binary.
   "oxlint-tsgolint": "7.0.2003",
-  // Nx and Keenko migrations require the JavaScript compiler API absent from TypeScript 7.
+  // Nx requires the JavaScript compiler API absent from TypeScript 7.
   typescript: "6.0.3",
 };
 

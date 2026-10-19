@@ -13,7 +13,7 @@ Use [`application-authority.md`](../../conventions/application-authority.md) to 
 - Production and preview deployment configuration is separate from local `.env.local`; supply their credentials and frontend deployment URL through the hosting or CI contract.
 - WorkOS AuthKit is the fixed authentication provider. Root `convex.json` owns Convex-managed development provisioning, while `packages/backend/convex` owns the official WorkOS component, auth provider configuration, webhook routes, and authenticated function boundaries. See `../workos-authkit/README.md`.
 
-Before Keenko `1.0.0`, recreate an older dogfood repository from the current release candidate to adopt this integration model; do not write a `0.x` project migration. Preserve project-owned application work deliberately while keeping all Convex source under `packages/backend/convex`. After `1.0.0`, a later Keenko release uses a native Nx migration only if supported persisted repository state actually needs transformation.
+Keep project-owned Convex source under `packages/backend/convex`. A Keenko release uses a native Nx migration only when supported persisted repository state needs transformation. See the [Keenko migration contract](../../core/migrations.md) for the N-1 support window.
 
 ## Persistence and queries
 
