@@ -8,7 +8,7 @@ Default direct forward support is immediately preceding stable → current stabl
 
 Migrations exist only when persisted project state requires transformation. Retain migration entries, implementations and assets only while a supported path or current behavior needs them. Published packages and Git tags preserve historical releases; the current package does not retain executable migrations solely for archaeology.
 
-The next candidate supports published stable `1.0.6` with the same dependency tuple and configuration baseline. It ships no migration collection or factory. The supported upgrade preserves consumer state, installs the candidate and synchronizes guidance; it does not force-repair deliberately changed managed dependencies. Add native migration metadata only when a future supported transition requires it.
+The next candidate supports published stable `1.0.6` with the same generated dependency tuple and configuration baseline. The plugin's internal shared Effect runtime pin requires no consumer-state migration. It ships no migration collection or factory. The supported upgrade preserves consumer state, installs the candidate and synchronizes guidance; it does not force-repair deliberately changed managed dependencies. Add native migration metadata only when a future supported transition requires it.
 
 ## Native lifecycle
 

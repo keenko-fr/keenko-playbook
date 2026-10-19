@@ -1,0 +1,19 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const root = createRequire(join(process.argv[1], "package.json"));
+const keenko = createRequire(root.resolve("keenko"));
+const manifest = root("keenko/package.json");
+const node = createRequire(keenko.resolve("@effect/platform-node"));
+const shared = createRequire(node.resolve("@effect/platform-node-shared"));
+const declared = manifest.dependencies["@effect/platform-node-shared"];
+const installed = node("@effect/platform-node-shared/package.json");
+const semver = createRequire(keenko.resolve("@nx/devkit"))("semver");
+assert.equal(installed.version, declared, "The Node adapter must use Keenko's exact shared runtime");
+assert.ok(semver.valid(declared), "The shared runtime must be an exact version");
+assert.ok(semver.satisfies(shared("effect/package.json").version, installed.peerDependencies.effect));
+assert.equal(shared("effect/package.json").version, manifest.dependencies.effect);
+const plugin = await import(pathToFileURL(root.resolve("keenko")).href);
+assert.equal(typeof plugin.presetGenerator, "function");

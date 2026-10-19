@@ -6,7 +6,10 @@ import { parse as parseToml } from "smol-toml";
 
 import { packageVersions } from "../src/generators/versions.js";
 
-const { version: supportedSource } = readJsonFile<{ version: string }>("tests/fixtures/upgrade-source.json");
+const { version: supportedSource, platformNodeShared: sourceNodeShared } = readJsonFile<{
+  version: string;
+  platformNodeShared: string;
+}>("tests/fixtures/upgrade-source.json");
 
 class ProductFailure extends S.TaggedError<ProductFailure>()("ProductFailure", { message: S.String }) {}
 
@@ -235,6 +238,34 @@ const createWorkspace = E.fn("product.createWorkspace")(function* (
   ]);
 });
 
+const verifyPackedRuntime = E.fn("product.verifyPackedRuntime")(function* (
+  tarball: string,
+  temporary: string,
+  env: Readonly<Record<string, string>>
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const workspace = path.join(temporary, "packed-runtime");
+  yield* fs.makeDirectory(workspace);
+  yield* fs.writeFileString(path.join(workspace, "package.json"), serializeJson({ private: true, dependencies: { keenko: tarball } }));
+  yield* fs.writeFileString(path.join(workspace, "bunfig.toml"), '[install]\nlinker = "isolated"\nhoist = false\n');
+  const npmrc = path.join(workspace, ".npmrc");
+  yield* fs.writeFileString(npmrc, "registry=https://registry.npmjs.org\n");
+  const publicEnv = {
+    ...env,
+    BUN_CONFIG_REGISTRY: "https://registry.npmjs.org",
+    BUN_INSTALL_CACHE_DIR: path.join(workspace, "bun-cache"),
+    NPM_CONFIG_REGISTRY: "https://registry.npmjs.org",
+    NPM_CONFIG_USERCONFIG: npmrc,
+  };
+  yield* command(workspace, publicEnv, "bun", ["install", "--ignore-scripts"]);
+  const probe = yield* fs.readFileString(yield* path.fromFileUrl(new URL("fixtures/packed-runtime.mjs.template", import.meta.url)));
+  yield* command(workspace, publicEnv, "node", ["--input-type=module", "--eval", probe, workspace]);
+  yield* Console.log(
+    "Packed runtime cold install passed against public npm: plugin import, exact shared runtime and Effect peer resolution."
+  );
+});
+
 const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   source: PackageSource,
   repository: string,
@@ -271,14 +302,13 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     BUN_INSTALL_CACHE_DIR: bunCache,
   };
 
-  // Keep the candidate and supported source local; all other packages use the public uplink.
+  // The N-1 fixture uses its released runtime; the candidate also gets a public-registry cold install.
   const config = path.join(temporary, "verdaccio.yml");
+  const localPackages = forwardUpgrade ? ["keenko", "@effect/platform-node-shared"] : ["keenko"];
+  const localRules = localPackages.map((name) => `  "${name}":\n    access: $all\n    publish: $all\n    unpublish: $all\n`).join("");
   yield* fs.writeFileString(
     config,
-    (yield* fs.readFileString(path.join(repository, ".verdaccio/config.yml"))).replace(
-      "packages:\n",
-      'packages:\n  "keenko":\n    access: $all\n    publish: $all\n    unpublish: $all\n'
-    )
+    (yield* fs.readFileString(path.join(repository, ".verdaccio/config.yml"))).replace("packages:\n", `packages:\n${localRules}`)
   );
 
   yield* spawner.spawn(
@@ -314,19 +344,24 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
     };
     yield* fs.writeFileString(publicEnv.NPM_CONFIG_USERCONFIG, "registry=https://registry.npmjs.org\n");
     const sourceStartedAt = yield* startPhase(`published ${supportedSource} source setup`);
-    yield* command(temporary, publicEnv, "npm", ["pack", `keenko@${supportedSource}`, "--pack-destination", archives, "--ignore-scripts"]);
+    for (const [name, version] of [
+      ["keenko", supportedSource],
+      ["@effect/platform-node-shared", sourceNodeShared],
+    ]) {
+      yield* command(temporary, publicEnv, "npm", ["pack", `${name}@${version}`, "--pack-destination", archives, "--ignore-scripts"]);
+      yield* command(temporary, npmEnv, "npm", [
+        "publish",
+        path.join(archives, `${name.replaceAll("@", "").replaceAll("/", "-")}-${version}.tgz`),
+        "--ignore-scripts",
+        "--provenance=false",
+        "--access",
+        "public",
+        "--tag",
+        "source",
+        "--loglevel=error",
+      ]);
+    }
     const archive = path.join(archives, `keenko-${supportedSource}.tgz`);
-    yield* command(temporary, npmEnv, "npm", [
-      "publish",
-      archive,
-      "--ignore-scripts",
-      "--provenance=false",
-      "--access",
-      "public",
-      "--tag",
-      "source",
-      "--loglevel=error",
-    ]);
     const sourceArtifact = path.join(temporary, "source-artifact");
     yield* fs.makeDirectory(sourceArtifact);
     yield* command(temporary, publicEnv, "tar", ["-xzf", archive, "-C", sourceArtifact]);
@@ -355,6 +390,7 @@ const preparePackageSource = E.fn("product.preparePackageSource")(function* (
   const localPackage = yield* S.decodeEffect(sVersionPackage)(yield* fs.readFileString(path.join(repository, "package.json")));
   const tarball = path.join(packed, `keenko-${localPackage.version}.tgz`);
   yield* assert(yield* fs.exists(tarball), `Packed Keenko artifact is missing: ${tarball}`);
+  yield* verifyPackedRuntime(tarball, temporary, env);
 
   const runId = `run-${path.basename(temporary).replaceAll(/[^0-9A-Za-z-]/gu, "-")}`;
   const rcVersionPattern = /to get new version (?<version>\d+\.\d+\.\d+-rc\.\d+)/u;

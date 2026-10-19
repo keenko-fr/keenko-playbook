@@ -8,6 +8,7 @@ export const packageVersions = {
   "@convex-dev/workos-authkit": "0.2.10",
   "@edge-runtime/vm": "5.0.0",
   "@effect/platform-node": "4.0.2",
+  "@effect/platform-node-shared": "4.0.2",
   "@effect/tsgo": "0.51.1",
   "@effect/vitest": "4.0.2",
   "@fontsource-variable/inter": "5.3.0",

@@ -10,8 +10,9 @@ export const prereleaseChannels = { nx: "next" } satisfies Readonly<Record<strin
 
 // Holds reflect current upstream contracts; requalify the whole tuple before changing them.
 export const compatibilityVersionOverrides = {
-  // The 4.0.3 integrations require effect ^4.0.3, which is not available on npm.
+  // Keep the qualified Effect 4.0.2 runtime and test integrations together.
   "@effect/platform-node": "4.0.2",
+  "@effect/platform-node-shared": "4.0.2",
   "@effect/vitest": "4.0.2",
   // Qualify the Nx family together; stable 23.3 supports Vitest 5.
   "@nx/devkit": "23.3.0",
