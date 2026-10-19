@@ -1,3 +1,14 @@
+## 1.0.7 (2026-10-19)
+
+### Changes
+
+- Prepare rc.1 dependency convergence and migration-plan recovery ([#66](https://github.com/keenko-fr/keenko-playbook/pull/66))
+- Remove unsupported upgrade history and fix Effect runtime resolution ([#65](https://github.com/keenko-fr/keenko-playbook/pull/65))
+
+### ❤️ Thank You
+
+- Gregory Bouteiller
+
 ## 1.0.6 (2026-10-11)
 
 ### Changes
