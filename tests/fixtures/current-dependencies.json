@@ -22,7 +22,7 @@
   },
   "application": {
     "dependencies": {
-      "@confect/core": "10.2.0",
+      "@confect/core": "10.3.1",
       "@convex-dev/react-query": "0.1.0",
       "@tailwindcss/vite": "4.3.3",
       "@tanstack/react-devtools": "0.10.13",
@@ -60,8 +60,8 @@
   },
   "backend": {
     "dependencies": {
-      "@confect/core": "10.2.0",
-      "@confect/server": "10.2.0",
+      "@confect/core": "10.3.1",
+      "@confect/server": "10.3.1",
       "@convex-dev/workos-authkit": "0.2.10",
       "@workos-inc/authkit-react": "0.16.3",
       "@workos-inc/node": "10.14.0",
@@ -69,8 +69,8 @@
       "effect": "4.0.5"
     },
     "devDependencies": {
-      "@confect/cli": "10.2.0",
-      "@confect/test": "10.2.0",
+      "@confect/cli": "10.3.1",
+      "@confect/test": "10.3.1",
       "@edge-runtime/vm": "5.0.0",
       "@typescript/native": "npm:typescript@7.0.2",
       "convex-test": "0.0.62",

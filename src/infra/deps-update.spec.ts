@@ -69,7 +69,7 @@ const fixture = E.fn("test.deps.fixture")(function* () {
 });
 
 describe("dependency updater", () => {
-  it.live("resolves stable Effect and reports the constrained Confect candidate", () =>
+  it.live("resolves stable Effect and stable Confect to exact versions", () =>
     provideNodeServices(
       E.gen(function* () {
         const root = yield* fixture();
@@ -112,7 +112,7 @@ describe("dependency updater", () => {
           ["@nx/js", "next"],
         ]);
         expect(selectedVersions(updates)).toEqual({
-          "@confect/core": "10.2.0",
+          "@confect/core": "10.0.0",
           "@effect/platform-node": "4.0.2",
           "@nx/devkit": "23.3.0",
           "@nx/js": "23.3.0",
@@ -153,10 +153,6 @@ describe("dependency updater", () => {
   test("keeps coupled and registry-incompatible members on qualified exact versions", () => {
     expect(prereleaseChannels).toEqual({ nx: "next" });
     expect(compatibilityVersionOverrides).toEqual({
-      "@confect/cli": "10.2.0",
-      "@confect/core": "10.2.0",
-      "@confect/server": "10.2.0",
-      "@confect/test": "10.2.0",
       "@workos-inc/node": "10.14.0",
       "oxlint-plugin-effect": "0.27.1",
       typescript: "6.0.3",
@@ -182,15 +178,7 @@ describe("dependency updater", () => {
           });
         const updates = yield* updateDependencySources(root, compatibilityVersionOverrides, resolver);
         expect(selectedVersions(updates)).toEqual(compatibilityVersionOverrides);
-        expect(calls).toEqual([
-          "@confect/cli",
-          "@confect/core",
-          "@confect/server",
-          "@confect/test",
-          "@workos-inc/node",
-          "oxlint-plugin-effect",
-          "typescript",
-        ]);
+        expect(calls).toEqual(["@workos-inc/node", "oxlint-plugin-effect", "typescript"]);
         for (const [name, selected] of Object.entries(compatibilityVersionOverrides)) {
           expect(updates[name]).toMatchObject({ held: true, selected, selector: "latest", stableCandidate: "99.0.0" });
           expect(O.fromNullishOr(updates[name].prereleaseCandidate)).toEqual(O.none());
@@ -320,7 +308,7 @@ describe("dependency updater", () => {
         const updates = yield* updateDependencySources(root, current, resolver);
         expect(calls).toEqual(Object.keys(current).map((name) => [name, "latest"]));
         for (const name of Object.keys(current))
-          expect(updates[name]).toEqual({ held: true, selected: "10.2.0", selector: "latest", stableCandidate: "10.3.1" });
+          expect(updates[name]).toEqual({ held: false, selected: "10.3.1", selector: "latest", stableCandidate: "10.3.1" });
       }).pipe(E.scoped)
     )
   );
@@ -599,7 +587,7 @@ describe("dependency updater", () => {
           ["@nx/js", "next"],
         ]);
         expect(selectedVersions(updates)).toEqual({
-          "@confect/core": "10.2.0",
+          "@confect/core": "10.0.0",
           "@nx/js": "9.8.7",
           effect: "4.0.0",
           nx: "9.8.7",

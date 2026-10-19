@@ -1,4 +1,4 @@
-import { QueryStream, RegisteredConvexFunction, RegisteredFunctions } from "@confect/server";
+import { QueryStream, RegisteredFunctions } from "@confect/server";
 import { TestConfect } from "@confect/test";
 import { it } from "@effect/vitest";
 import { Cause, Effect as E, Option as O, Schema as S, Stream } from "effect";
@@ -15,8 +15,8 @@ import * as compatibilityData from "../data/compatibility";
 import { CompatibilityFailure } from "../errors/compatibility";
 import { FooDefect, FooFailure, sFooSchemaIssue } from "../errors/foo";
 
-// Existing consumer test harnesses use this public registration-factory argument.
-const registered = RegisteredFunctions.buildForGroup<typeof compatibilitySpec>(schema, compatibilityImpl, RegisteredConvexFunction.make);
+// Consumer-owned test registrations use the current two-argument public API.
+const registered = RegisteredFunctions.buildForGroup<typeof compatibilitySpec>(schema, compatibilityImpl);
 const Test = TestConfect.TestConfect<typeof schema>();
 const layer = TestConfect.layer(schema, convexSchema, {
   "../convex/_generated/api.js": () => import("../convex/_generated/api.js"),

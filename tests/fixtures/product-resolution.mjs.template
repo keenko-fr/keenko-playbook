@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 
@@ -96,7 +96,8 @@ const effects = Object.fromEntries(
     return [directory, realpathSync(req.resolve("effect"))];
   })
 );
-console.log(
+writeFileSync(
+  process.argv[2],
   JSON.stringify({
     rootTypescript,
     nxTypescript,

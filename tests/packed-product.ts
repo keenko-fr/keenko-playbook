@@ -139,6 +139,14 @@ const sDependencyBaseline = S.fromJsonString(
   S.Record(S.String, S.Struct({ dependencies: S.Record(S.String, S.String), devDependencies: S.Record(S.String, S.String) }))
 );
 
+const sVitestReport = S.fromJsonString(
+  S.Struct({
+    numPassedTests: S.Finite,
+    numTotalTests: S.Finite,
+    testResults: S.Array(S.Struct({ assertionResults: S.Array(S.Struct({ fullName: S.String })), name: S.String })),
+  })
+);
+
 type DependencyBaseline = S.Schema.Type<typeof sDependencyBaseline>;
 type DependencySections = S.Schema.Type<typeof sDependencySections>;
 
@@ -550,15 +558,7 @@ const verifyBackendTestOwnership = E.fn("product.verifyBackendTestOwnership")(fu
   yield* fs.writeFileString(generatedTest, 'throw new Error("Generated convex tests must not run");\n');
   yield* E.gen(function* () {
     yield* command(backend, env, "bun", ["x", "vitest", "run", "--reporter=json", `--outputFile=${report}`]);
-    const result = yield* S.decodeEffect(
-      S.fromJsonString(
-        S.Struct({
-          numPassedTests: S.Finite,
-          numTotalTests: S.Finite,
-          testResults: S.Array(S.Struct({ assertionResults: S.Array(S.Struct({ fullName: S.String })), name: S.String })),
-        })
-      )
-    )(yield* fs.readFileString(report));
+    const result = yield* S.decodeEffect(sVitestReport)(yield* fs.readFileString(report));
     yield* assert(
       result.numTotalTests === 2 && result.numPassedTests === 2 && result.testResults.length === 2,
       "Backend verification discovered tests outside the two authored ownership fixtures"
@@ -645,7 +645,10 @@ const verifyResolution = E.fn("product.verifyResolution")(function* (workspace: 
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const script = yield* fs.readFileString(yield* path.fromFileUrl(new URL("fixtures/product-resolution.mjs.template", import.meta.url)));
-  const resolution = (yield* command(workspace, env, "node", ["--input-type=module", "--eval", script, workspace])).trim();
+  const report = yield* fs.makeTempFileScoped({ prefix: "keenko-product-resolution-" });
+  const diagnostics = yield* command(workspace, env, "node", ["--input-type=module", "--eval", script, workspace, report]);
+  if (diagnostics.trim()) yield* Console.log(diagnostics.trim());
+  const resolution = yield* fs.readFileString(report);
   const compiler = yield* command(workspace, env, "node", ["node_modules/@typescript/native/bin/tsc", "--version"]);
   const manifest = yield* S.decodeEffect(sDependencySections)(yield* fs.readFileString(path.join(workspace, "package.json")));
   yield* assert(
@@ -694,28 +697,37 @@ const verifyTestingTuple = E.fn("product.verifyTestingTuple")(function* (
     yield* fs.makeDirectory(path.dirname(path.join(workspace, relative)), { recursive: true });
     yield* fs.writeFileString(path.join(workspace, relative), contents);
   }
+  const reportName = "keenko-product-testing.json";
+  const reports = ["packages/backend", "packages/shared", "packages/ui", ...applications.map((app) => `apps/${app}`)].map(
+    (directory) => `${directory}/${reportName}`
+  );
   yield* E.gen(function* () {
     yield* command(workspace, env, "bun", ["x", "oxfmt", ...files.keys()]);
     yield* command(workspace, env, "bun", ["x", "oxlint", ...files.keys()]);
-    const output = yield* command(workspace, env, "bun", ["run", "test", "--reporter=verbose", "--output-style=static"]);
-    for (const name of [
-      "backend Node",
-      "backend Edge Runtime",
-      "shared Node",
-      "UI jsdom",
-      ...applications.map((application) => `${application} jsdom`),
-    ])
-      yield* assert(output.includes(`KEE-54 ${name}`), `Root testing did not run ${name}:\n${output}`);
+    yield* command(workspace, env, "bun", ["run", "test", "--reporter=json", `--outputFile=${reportName}`, "--output-style=static"]);
+    const executed: string[] = [];
+    for (const report of reports) {
+      const result = yield* S.decodeEffect(sVitestReport)(yield* fs.readFileString(path.join(workspace, report)));
+      yield* assert(result.numPassedTests === result.numTotalTests, `Root testing failed assertions in ${report}`);
+      executed.push(...result.testResults.flatMap((file) => file.assertionResults.map((test) => test.fullName)));
+    }
+    const expected = ["backend Node", "backend Edge Runtime", "shared Node", "UI jsdom", ...applications.map((app) => `${app} jsdom`)];
     yield* assert(
-      output.split(`RUN  v${packageVersions.vitest}`).length - 1 === applications.length + 3,
-      `Root Nx orchestration did not start all ${applications.length + 3} Vitest 5 targets:\n${output}`
+      executed.toSorted().join("|") ===
+        expected
+          .map((name) => `KEE-54 ${name}`)
+          .toSorted()
+          .join("|"),
+      `Root Nx orchestration did not run every authored environment exactly once: ${executed.join(", ")}`
     );
     yield* Console.log(
       "KEE-54 testing proof: official Effect integration, active lint policy, Node, Edge Runtime, web/UI jsdom, shared, and Nx root orchestration passed."
     );
   }).pipe(
     E.ensuring(
-      E.forEach(files.keys(), (relative) => fs.remove(path.join(workspace, relative), { force: true }), { discard: true }).pipe(E.orDie)
+      E.forEach([...files.keys(), ...reports], (relative) => fs.remove(path.join(workspace, relative), { force: true }), {
+        discard: true,
+      }).pipe(E.orDie)
     )
   );
 });

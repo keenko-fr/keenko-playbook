@@ -86,6 +86,7 @@ test("current AuthKit patch fixes the public test entrypoint without phantom dep
         "--eval",
         await readFile(path.join(repository, "tests/fixtures/product-resolution.mjs.template"), "utf-8"),
         root,
+        path.join(root, "resolution.json"),
       ]);
       expect(probe.code, probe.output).toBe(0);
       expect(await readFile(sourcePath, "utf-8")).toBe(upstreamSource);

@@ -11,11 +11,6 @@ export const prereleaseChannels = { nx: "next" } satisfies Readonly<Record<strin
 
 // Holds reflect current upstream contracts; requalify the whole tuple before changing them.
 export const compatibilityVersionOverrides = {
-  // 10.3 removes the public registration-factory argument used by existing consumers.
-  "@confect/cli": "10.2.0",
-  "@confect/core": "10.2.0",
-  "@confect/server": "10.2.0",
-  "@confect/test": "10.2.0",
   // Both AuthKit integrations still require SDK 10.
   "@workos-inc/node": "10.14.0",
   // 0.29 enforces tagged constructors, requiring a separate convention/source change.

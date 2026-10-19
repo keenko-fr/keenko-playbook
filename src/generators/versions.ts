@@ -1,9 +1,9 @@
 export const packageVersions = {
   "@base-ui/react": "1.9.0",
-  "@confect/cli": "10.2.0",
-  "@confect/core": "10.2.0",
-  "@confect/server": "10.2.0",
-  "@confect/test": "10.2.0",
+  "@confect/cli": "10.3.1",
+  "@confect/core": "10.3.1",
+  "@confect/server": "10.3.1",
+  "@confect/test": "10.3.1",
   "@convex-dev/react-query": "0.1.0",
   "@convex-dev/workos-authkit": "0.2.10",
   "@edge-runtime/vm": "5.0.0",
